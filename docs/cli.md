@@ -48,6 +48,13 @@ DOCKET_POLICY_DIGEST  digest of the policy in force
 DOCKET_TOOL_VERSION   the version producing the record
 ```
 
+The `/docket/*` endpoints on the boundary accept agent-asserted events from any language:
+`/docket/tool/call`, `/docket/tool/result`, `/docket/note`, and `/docket/event` for any type in
+the vocabulary (`{"type": "model.response", "data": {...}}`). They append to the *current*
+session's ledger and label everything they record with `reported_by: "agent"`, so a reader can
+tell a claim from a boundary observation. The supervisor stays the only process that appends to
+the ledger file — which is what keeps the hash chain valid.
+
 Provider variables injected with `--profile full`: `OPENAI_BASE_URL`, `OPENAI_API_BASE`,
 `ANTHROPIC_BASE_URL`, `GEMINI_API_BASE_URL`, `DEEPSEEK_BASE_URL`, `MISTRAL_BASE_URL`,
 `OPENROUTER_BASE_URL`, `GROQ_BASE_URL`. An agent that honours none of these still works via
@@ -62,7 +69,7 @@ Verifies offline. Exits `0` if it checks out, `1` if it does not, `2` on usage/I
 | flag | meaning |
 | --- | --- |
 | `--ledger PATH` | also check the ledger file the receipt came from (chain, roots, file digest, re-binding of usage rows) |
-| `--seal-key PATH` | HMAC key file, to check a sealed receipt |
+| `--seal-key PATH\|HEX` | the HMAC key file written by `docket run --seal` (or the hex key itself), to check a sealed receipt |
 | `--public-key HEX` | expected Ed25519 public key; without it, a signature is checked only against the key embedded in the receipt |
 | `--json` | machine-readable result (same `checks[]` array, with `status` of `pass`/`fail`/`skip` and a `detail`) |
 

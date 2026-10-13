@@ -54,10 +54,82 @@ def _usage_rows(events: list[Event], proofs: dict[int, list[dict[str, str]]] | N
             "cost_usd": str(data.get("cost_usd", "0.00")),
             "event_hash": event.hash,
         }
+        # Provenance of the numbers themselves: a row asserted by the agent under
+        # supervision is a claim, not a boundary observation. A reader must be able to
+        # tell the two apart, so the label travels with the row.
+        if data.get("reported_by") == "agent":
+            row["asserted_by"] = "agent"
         if proofs is not None and event.seq in proofs:
             row["merkle_path"] = proofs[event.seq]
         rows.append(row)
     return rows
+
+
+def _totals_from_rows(rows: list[dict[str, Any]], meter: CostMeter) -> dict[str, Any]:
+    """Totals computed from the usage rows that verification will recompute.
+
+    Deriving totals from the same data the verifier checks means the receipt cannot
+    disagree with its own appendix — the failure mode being a receipt that reports $0.00
+    while the appendix recomputes to $0.0042, which verification (correctly) refuses.
+    Rows asserted by the agent are counted and labelled separately, because a claim is
+    not an observation.
+    """
+    input_tokens = sum(int(row.get("input_tokens") or 0) for row in rows)
+    cached_tokens = sum(int(row.get("cached_input_tokens") or 0) for row in rows)
+    output_tokens = sum(int(row.get("output_tokens") or 0) for row in rows)
+    cost = sum((Decimal(str(row.get("cost_usd") or "0")) for row in rows), Decimal("0"))
+    reported = sum(1 for row in rows if str(row.get("usage_source")) == "reported")
+    estimated = sum(1 for row in rows if str(row.get("usage_source")) == "estimated")
+    asserted = sum(1 for row in rows if row.get("asserted_by") == "agent")
+
+    by_model: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        model = str(row.get("model") or "unknown")
+        entry = by_model.setdefault(
+            model,
+            {
+                "model": model,
+                "calls": 0,
+                "input_tokens": 0,
+                "cached_input_tokens": 0,
+                "output_tokens": 0,
+                "cost_usd": Decimal("0"),
+            },
+        )
+        entry["calls"] += 1
+        entry["input_tokens"] += int(row.get("input_tokens") or 0)
+        entry["cached_input_tokens"] += int(row.get("cached_input_tokens") or 0)
+        entry["output_tokens"] += int(row.get("output_tokens") or 0)
+        entry["cost_usd"] += Decimal(str(row.get("cost_usd") or "0"))
+
+    if meter.mode == "quota":
+        basis = "quota mode: subscription usage is counted in tokens, not dollars"
+    elif estimated and reported:
+        basis = "mixed: reported and estimated usage"
+    elif estimated:
+        basis = "estimated: provider reported no usage"
+    else:
+        basis = "reported: provider usage fields"
+    if asserted:
+        basis += f"; {asserted} call(s) asserted by the agent, not observed at the boundary"
+
+    ordered = sorted(by_model.values(), key=lambda item: -item["cost_usd"])
+    for entry in ordered:
+        entry["cost_usd"] = usd(entry["cost_usd"])
+    return {
+        "calls": len(rows),
+        "input_tokens": input_tokens,
+        "cached_input_tokens": cached_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+        "cost_usd": usd(cost),
+        "cost_basis": basis,
+        "usage_reported_calls": reported,
+        "usage_estimated_calls": estimated,
+        "asserted_calls": asserted,
+        "assumed_price_models": sorted(meter.assumed_models),
+        "by_model": ordered,
+    }
 
 
 def build_receipt(
@@ -138,9 +210,9 @@ def build_receipt(
             "document": policy.to_dict(),
             "source": policy.source_path,
         },
-        "totals": meter.to_dict(),
+        "totals": _totals_from_rows(usage_rows, meter),
         "model_calls": {
-            "count": meter.calls,
+            "count": len(usage_rows),
             "by_provider": by_provider,
             "denied": counts.get(ev.MODEL_DENIED, 0),
             "errors": counts.get(ev.MODEL_ERROR, 0),
@@ -186,14 +258,17 @@ def build_receipt(
             "denials": proxy_stats.denials,
         }
 
+    # Order matters, and getting it wrong produces a receipt whose signature cannot be
+    # verified: the signature covers everything except itself, *including* the seal.
+    # So both fields must exist (sealed value or None) before the signature is computed.
     core = receipt
     if seal_key:
         receipt["seal"] = make_seal(core, seal_key)
+    receipt.setdefault("seal", None)
     if sign_key:
-        receipt["signature"] = make_signature(receipt, sign_key)
+        receipt["signature"] = make_signature(receipt_signable(receipt), sign_key)
     else:
         receipt["signature"] = None
-    receipt.setdefault("seal", None)
     return receipt
 
 

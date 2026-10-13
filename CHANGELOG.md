@@ -52,6 +52,14 @@ First release: a bounded, legible, provable agent run.
 
 ### Notes
 
+- **Attached sessions.** An SDK `Session` started inside `docket run` writes through the
+  boundary's `/docket/event` endpoint instead of opening the ledger file itself: one writer per
+  chain, and every agent-asserted event carries `reported_by: "agent"` so a reader can tell
+  claims from boundary observations. Outside a supervised run it keeps its own ledger, as before.
+- **Totals are derived from the usage appendix**, so a receipt can never disagree with the rows
+  a verifier recomputes (the failure mode being `$0.00` claimed against `$0.0042` recomputed).
+  Rows asserted by the agent are counted and labelled separately (`asserted_calls`).
+- `docket verify --seal-key` accepts the key file written by `docket run --seal` or the hex key.
 - Zero runtime dependencies. `docket[sign]` is the only extra that installs anything
   (`cryptography`, for Ed25519 signatures).
 - Prices in `src/docket/prices.json` are as of 2026-10-13 with sources recorded in the file;

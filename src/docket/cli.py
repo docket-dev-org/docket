@@ -125,10 +125,17 @@ def cmd_verify(args: argparse.Namespace) -> int:
         _out(sys.stderr, f"{PROGRAM}: no such receipt: {path}")
         return 1
     receipt = load_receipt(path)
+    # `--seal-key` accepts either the key file written by `docket run --seal` or the
+    # hex key itself; the file is the common case (and the one that gets pasted wrong).
+    seal_key = args.seal_key
+    if seal_key:
+        candidate = Path(seal_key)
+        if candidate.is_file():
+            seal_key = candidate.read_text(encoding="utf-8").strip()
     result = verify_receipt(
         receipt,
         ledger_path=args.ledger,
-        seal_key=args.seal_key,
+        seal_key=seal_key,
         expect_public_key=args.public_key,
     )
     if args.json:

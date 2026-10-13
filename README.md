@@ -257,6 +257,16 @@ VERIFIED  DKT-20261013-746EF4
   SKIP  signature: receipt is not signed
 ```
 
+Sealed or signed receipts verify too — the seal needs the operator's key, the signature only the
+public key in the receipt (pin the one you expect with `--public-key`):
+
+```console
+$ docket verify DKT-*.receipt.json --seal-key .docket/keys/seal.key --public-key 3c3adc3f…
+VERIFIED  DKT-…-85A1F6
+  PASS  seal: HMAC-SHA256 valid (key 95a17907576b3027)
+  PASS  signature: Ed25519 signature valid
+```
+
 Exit codes: `0` verified, `1` not verified, `2` usage/IO error — so this drops straight into
 CI. If any check cannot be performed, it is reported as `SKIP` with a reason, never as a
 pass; a verifier that overstates its coverage is worse than no verifier.
@@ -353,7 +363,7 @@ real bugs in this repository, and it is checked by tests and by the committed ve
 
 ```bash
 git clone https://github.com/docket-dev/docket && cd docket
-make test        # 150 tests, offline, no API keys, ~30s
+make test        # 158 tests, offline, no API keys, ~30s
 make demo        # the demo above, with the tamper demonstration
 make verify-js   # independent verifier conformance (needs Node; no npm install)
 make lint        # ruff

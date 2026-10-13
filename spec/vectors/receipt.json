@@ -81,6 +81,7 @@
     "cost_basis": "mixed: reported and estimated usage",
     "usage_reported_calls": 3,
     "usage_estimated_calls": 1,
+    "asserted_calls": 0,
     "assumed_price_models": [
       "unlisted-model-1"
     ],
@@ -451,6 +452,6 @@
       "reported token usage is the provider's own count; estimated usage is marked as estimated"
     ]
   },
-  "signature": null,
-  "seal": null
+  "seal": null,
+  "signature": null
 }

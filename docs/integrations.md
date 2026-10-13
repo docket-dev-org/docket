@@ -86,9 +86,17 @@ with docket.Session(max_usd=2.00) as s:          # runs under `docket run`, or s
         break
 ```
 
-Inside a supervised run, `Session()` attaches to the active ledger through the environment.
-Outside one, it creates its own ledger and receipt — useful when the agent *is* the process you
-control.
+Inside a supervised run (`docket run -- … python agent.py`) the session detects the boundary
+through the environment and **attaches**: every event goes over HTTP to `/docket/event`, so the
+supervisor remains the only writer of the ledger file and the chain stays valid. Outside a
+supervised run it opens its own ledger and writes its own receipt — useful when the agent *is*
+the process you control, and the case where its claims are the whole record.
+
+```python
+with docket.Session() as s:
+    print(s.attached)     # True under `docket run`, False standalone
+    s.record_note("…")    # either way, labelled as an agent assertion
+```
 
 Records made through the SDK are marked as *asserted by the agent* (`reported_by: "agent"`)
 rather than observed at the boundary. That distinction survives into the receipt: a reader can
@@ -97,6 +105,7 @@ see which parts of the record the agent claimed and which parts the boundary wit
 ## Any language — the HTTP recording endpoints
 
 ```bash
+# a tool call
 curl -X POST "$DOCKET_PROXY_URL/docket/tool/call" \
      -H 'content-type: application/json' \
      -d '{"name":"sql.query","args_digest":"9f86d081884c7d659a2feaa0c55ad015","result_bytes":2048}'
@@ -106,6 +115,13 @@ curl -X POST "$DOCKET_PROXY_URL/docket/tool/result" \
 
 curl -X POST "$DOCKET_PROXY_URL/docket/note" \
      -d '{"message":"batch 3 of 12 finished"}'
+
+# any event in the vocabulary (docs/concepts.md), including model calls your agent
+# made outside the boundary — recorded as an assertion, with provenance preserved
+curl -X POST "$DOCKET_PROXY_URL/docket/event" \
+     -d '{"type":"model.response","data":{"model":"gpt-6.1","provider":"openai",
+          "usage":{"input_tokens":1200,"output_tokens":340},
+          "usage_source":"reported","cost_usd":"0.005800"}}'
 ```
 
 Arguments and payloads are recorded as **digests and byte counts**, not contents: the record

@@ -38,7 +38,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install pytest
+      - name: Install test dependencies
+        # cryptography is optional for users but required for the signing tests to run
+        # rather than skip in CI.
+        run: pip install pytest cryptography
       - run: PYTHONPATH=src python -m pytest tests -q
 
   conformance:

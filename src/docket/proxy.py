@@ -448,11 +448,30 @@ class _Handler(BaseHTTPRequestHandler):
             "tool/result": ev.TOOL_RESULT,
             "note": ev.NOTE,
         }
-        event_type = mapping.get(kind)
-        if event_type is None:
-            self._send_json(404, {"error": {"type": "docket_unknown_route", "message": self.path}})
-            return
         data = dict(payload) if isinstance(payload, dict) else {"value": payload}
+        if kind == "event":
+            # Generic route: any language, any event in the vocabulary. The agent is
+            # asserting the event, so it is labelled as such; the boundary keeps the
+            # single writer role, which is what keeps the chain valid.
+            event_type = str(data.pop("type", ""))
+            if event_type not in ev.KNOWN_TYPES:
+                self._send_json(
+                    400,
+                    {
+                        "error": {
+                            "type": "docket_unknown_event",
+                            "message": f"unknown event type {event_type!r}; see docs/concepts.md",
+                        }
+                    },
+                )
+                return
+            nested = data.pop("data", None)
+            data = dict(nested) if isinstance(nested, dict) else data
+        else:
+            event_type = mapping.get(kind)
+            if event_type is None:
+                self._send_json(404, {"error": {"type": "docket_unknown_route", "message": self.path}})
+                return
         data["reported_by"] = "agent"
         event = self.proxy.ledger.append(event_type, data)
         self._send_json(200, {"ok": True, "seq": event.seq, "session": self.proxy.session_id})

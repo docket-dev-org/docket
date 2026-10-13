@@ -65,7 +65,12 @@ def policy() -> Policy:
 def make_receipt(tmp_path: Path, clock: SteppedClock, price_table: PriceTable):
     """Build a small but complete receipt from a synthetic ledger."""
 
-    def _make(*, max_usd: str | None = None) -> tuple[dict, Path, Path]:
+    def _make(
+        *,
+        max_usd: str | None = None,
+        sign_key: Path | None = None,
+        seal_key: str | None = None,
+    ) -> tuple[dict, Path, Path]:
         led = Ledger.open(tmp_path / "runs" / "s.jsonl", clock=clock)
         led.append("session.start", {"argv": ["pytest"], "cwd": str(tmp_path), "host": {}})
         pol = Policy(name="t", caps=Caps(max_usd=None if max_usd is None else __import__("decimal").Decimal(max_usd)))
@@ -100,6 +105,8 @@ def make_receipt(tmp_path: Path, clock: SteppedClock, price_table: PriceTable):
             exit_code=0,
             duration_seconds=1.5,
             price_table=price_table,
+            seal_key=seal_key,
+            sign_key=sign_key,
         )
         path = tmp_path / "receipts" / "DKT-20260101-ABC123.receipt.json"
         write_receipt(receipt, path)
