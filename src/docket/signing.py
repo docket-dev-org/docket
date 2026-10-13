@@ -1,0 +1,138 @@
+"""Sealing (HMAC) and signing (Ed25519) of receipts.
+
+Two different promises, deliberately kept apart:
+
+``seal``
+    HMAC-SHA256 with a key held by the operator. Cheap, dependency-free and good
+    for *integrity*: nobody can change the receipt without the key. It does **not**
+    give third-party verifiability, because verifying requires the same secret
+    that produces it.
+
+``sign``
+    Ed25519 over the receipt core. Anyone with the public key can verify, and the
+    public key is embedded in the receipt, so a reviewer can check that the
+    holder of a specific key attested to this exact record. Requires the optional
+    ``cryptography`` package; Docket degrades gracefully and says so rather than
+    inventing home-made cryptography.
+
+Docket never rolls its own cryptographic primitives.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import os
+import secrets
+from pathlib import Path
+from typing import Any
+
+from .canon import canonical_bytes
+from .util import atomic_write
+
+ALG_SEAL = "hmac-sha256"
+ALG_SIGN = "ed25519"
+
+
+def new_seal_key() -> str:
+    return secrets.token_hex(32)
+
+
+def key_id(key_hex: str) -> str:
+    return hashlib.sha256(bytes.fromhex(key_hex)).hexdigest()[:16]
+
+
+def seal(receipt_core: dict[str, Any], key_hex: str) -> dict[str, Any]:
+    value = hmac.new(bytes.fromhex(key_hex), canonical_bytes(receipt_core), hashlib.sha256).hexdigest()
+    return {"alg": ALG_SEAL, "key_id": key_id(key_hex), "value": value}
+
+
+def verify_seal(receipt_core: dict[str, Any], sealed: dict[str, Any], key_hex: str) -> bool:
+    expected = seal(receipt_core, key_hex)
+    return hmac.compare_digest(expected["value"], str(sealed.get("value", ""))) and expected[
+        "key_id"
+    ] == sealed.get("key_id")
+
+
+def load_or_create_seal_key(key_path: str | os.PathLike[str]) -> str:
+    path = Path(key_path)
+    if path.exists():
+        return path.read_text(encoding="utf-8").strip()
+    key = new_seal_key()
+    atomic_write(path, key + "\n")
+    try:
+        os.chmod(path, 0o600)
+    except OSError:  # pragma: no cover - platform dependent
+        pass
+    return key
+
+
+# --------------------------------------------------------------------------- #
+# Ed25519 (optional dependency)
+# --------------------------------------------------------------------------- #
+
+def ed25519_available() -> bool:
+    try:
+        import cryptography  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def generate_keypair(private_path: str | os.PathLike[str]) -> str:
+    """Create an Ed25519 keypair; returns the public key as hex."""
+    if not ed25519_available():  # pragma: no cover - environment dependent
+        raise RuntimeError(
+            "Ed25519 signing needs the optional 'cryptography' package: "
+            "pip install 'docket[sign]'"
+        )
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    key = Ed25519PrivateKey.generate()
+    pem = key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    path = Path(private_path)
+    atomic_write(path, pem)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:  # pragma: no cover
+        pass
+    public = key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw
+    )
+    return public.hex()
+
+
+def sign(receipt_core: dict[str, Any], private_path: str | os.PathLike[str]) -> dict[str, Any]:
+    if not ed25519_available():  # pragma: no cover - environment dependent
+        raise RuntimeError("Ed25519 signing needs the optional 'cryptography' package")
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    key = serialization.load_pem_private_key(Path(private_path).read_bytes(), password=None)
+    signature = key.sign(canonical_bytes(receipt_core))
+    public = key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw
+    )
+    return {"alg": ALG_SIGN, "public_key": public.hex(), "value": base64.b16encode(signature).decode().lower()}
+
+
+def verify_signature(receipt_core: dict[str, Any], signature: dict[str, Any]) -> bool:
+    if signature.get("alg") != ALG_SIGN:
+        return False
+    if not ed25519_available():  # pragma: no cover - environment dependent
+        raise RuntimeError("verifying an Ed25519 signature needs the 'cryptography' package")
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    try:
+        public = Ed25519PublicKey.from_public_bytes(bytes.fromhex(str(signature["public_key"])))
+        public.verify(bytes.fromhex(str(signature["value"])), canonical_bytes(receipt_core))
+        return True
+    except (InvalidSignature, ValueError, KeyError):
+        return False
