@@ -24,12 +24,13 @@ as passed. A verification tool that overstates its own coverage is worse than no
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
-from .canon import merkle_root, sha256_hex, usd, verify_merkle_proof
+from .canon import merkle_root, sha256_hex, verify_merkle_proof
 from .ledger import Event, Ledger
 from .pricing import recompute_totals
 from .receipt import receipt_core, receipt_signable
@@ -223,15 +224,25 @@ def verify_receipt(
     if not isinstance(price_doc, dict):
         add("cost-recomputation", "fail", "receipt does not embed the price table it used")
     else:
-        recomputed = recompute_totals([{"seq": r.get("seq"), "type": "model.response", "data": {
-            "model": r.get("model"),
-            "usage": {
-                "input_tokens": r.get("input_tokens"),
-                "cached_input_tokens": r.get("cached_input_tokens"),
-                "output_tokens": r.get("output_tokens"),
-            },
-            "cost_usd": r.get("cost_usd"),
-        }} for r in rows], price_doc)
+        recomputed = recompute_totals(
+            [
+                {
+                    "seq": r.get("seq"),
+                    "type": "model.response",
+                    "data": {
+                        "model": r.get("model"),
+                        "usage": {
+                            "input_tokens": r.get("input_tokens"),
+                            "cached_input_tokens": r.get("cached_input_tokens"),
+                            "output_tokens": r.get("output_tokens"),
+                        },
+                        "cost_usd": r.get("cost_usd"),
+                    },
+                }
+                for r in rows
+            ],
+            price_doc,
+        )
         totals = receipt.get("totals", {})
         if recomputed["per_call_mismatches"]:
             first = recomputed["per_call_mismatches"][0]

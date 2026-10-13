@@ -16,11 +16,11 @@ library users want :func:`record`, :class:`Session` and :func:`verify_receipt`.
 
 from __future__ import annotations
 
-from .ledger import Ledger, Event
-from .policy import Policy, Caps
-from .receipt import build_receipt, write_receipt, load_receipt
-from .verify import verify_receipt, VerifyResult
+from .ledger import Event, Ledger
+from .policy import Caps, Policy
+from .receipt import build_receipt, load_receipt, write_receipt
 from .sdk import Session, record_model_call, record_note, record_tool
+from .verify import VerifyResult, verify_receipt
 
 __all__ = [
     "Ledger",

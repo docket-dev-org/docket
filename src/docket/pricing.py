@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import fnmatch
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from .canon import canonical_bytes, digest_of, sha256_hex, usd
 
@@ -58,7 +59,7 @@ class PriceTable:
     fallback_pattern: str
 
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "PriceTable":
+    def load(cls, path: str | Path | None = None) -> PriceTable:
         raw = json.loads(Path(path or BUNDLED).read_text(encoding="utf-8"))
         families = raw.get("families", [])
         prices: list[Price] = []
@@ -262,9 +263,7 @@ def recompute_totals(events: Iterable[dict[str, Any]], price_document: dict[str,
         computed, _assumed = table.cost(model, it, ct, ot)
         recorded = str(data.get("cost_usd", ""))
         if recorded and Decimal(recorded) != computed:
-            mismatches.append(
-                {"seq": ev.get("seq"), "model": model, "recorded": recorded, "recomputed": usd(computed)}
-            )
+            mismatches.append({"seq": ev.get("seq"), "model": model, "recorded": recorded, "recomputed": usd(computed)})
         cost += computed
         input_tokens += it
         cached += ct

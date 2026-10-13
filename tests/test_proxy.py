@@ -10,8 +10,7 @@ from decimal import Decimal
 
 import pytest
 
-from docket.ledger import Ledger
-from docket.policy import Caps, Policy
+from docket.policy import Policy
 from docket.pricing import CostMeter, PriceTable
 from docket.proxy import RecordingProxy
 
@@ -70,7 +69,10 @@ def test_auth_headers_are_forwarded_but_never_recorded(ledger, fake_upstream):
 def test_bodies_are_not_recorded_by_default(ledger, fake_upstream):
     proxy, _, base = _start(ledger, Policy(), fake_upstream.url)
     try:
-        _post(f"{base}/openai/v1/chat/completions", {"model": "claude-sonnet-5", "messages": [{"role": "user", "content": "TOPSECRET"}]})
+        _post(
+            f"{base}/openai/v1/chat/completions",
+            {"model": "claude-sonnet-5", "messages": [{"role": "user", "content": "TOPSECRET"}]},
+        )
     finally:
         proxy.stop()
     assert "TOPSECRET" not in json.dumps([e.to_dict() for e in ledger])
@@ -80,7 +82,10 @@ def test_bodies_are_not_recorded_by_default(ledger, fake_upstream):
 def test_record_bodies_opt_in(ledger, fake_upstream):
     proxy, _, base = _start(ledger, Policy(), fake_upstream.url, record_bodies=True)
     try:
-        _post(f"{base}/openai/v1/chat/completions", {"model": "claude-sonnet-5", "messages": [{"role": "user", "content": "TOPSECRET"}]})
+        _post(
+            f"{base}/openai/v1/chat/completions",
+            {"model": "claude-sonnet-5", "messages": [{"role": "user", "content": "TOPSECRET"}]},
+        )
     finally:
         proxy.stop()
     assert "TOPSECRET" in json.dumps([e.to_dict() for e in ledger])
@@ -262,7 +267,10 @@ def test_usage_estimate_is_marked_when_the_provider_reports_nothing(ledger):
     upstream = SilentUpstream()
     proxy, _, base = _start(ledger, Policy(), upstream.url)
     try:
-        _post(f"{base}/openai/v1/chat/completions", {"model": "claude-sonnet-5", "messages": [{"role": "user", "content": "x" * 400}]})
+        _post(
+            f"{base}/openai/v1/chat/completions",
+            {"model": "claude-sonnet-5", "messages": [{"role": "user", "content": "x" * 400}]},
+        )
     finally:
         proxy.stop()
         upstream.stop()

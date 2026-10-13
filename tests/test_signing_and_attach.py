@@ -169,9 +169,7 @@ print("standalone ok")
     )
     import subprocess
 
-    completed = subprocess.run(
-        [sys.executable, str(script)], capture_output=True, text=True, timeout=60, check=False
-    )
+    completed = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, timeout=60, check=False)
     assert completed.returncode == 0, completed.stderr
     receipts = list((docket_dir / "receipts").glob("*.receipt.json"))
     assert receipts, "standalone session produced no receipt"
@@ -188,7 +186,7 @@ def test_cli_verify_reads_the_seal_key_file(tmp_path, monkeypatch, capsys):
     passed the path through to an API that wanted key material.
     """
     from docket.cli import main
-    from docket.receipt import load_receipt, write_receipt
+    from docket.receipt import write_receipt
     from docket.signing import load_or_create_seal_key
 
     monkeypatch.chdir(tmp_path)

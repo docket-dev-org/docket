@@ -8,9 +8,9 @@ import os
 import secrets
 import tempfile
 import time
+from collections.abc import Iterable
 from decimal import Decimal
 from pathlib import Path
-from typing import Iterable
 
 from .canon import usd
 
@@ -37,9 +37,8 @@ def matches_any(path: str, patterns: Iterable[str]) -> bool:
     normalised = path[2:] if path.startswith("./") else path
     for pattern in patterns:
         pat = pattern[2:] if pattern.startswith("./") else pattern
-        if pat.endswith("/**"):
-            if normalised == pat[:-3] or normalised.startswith(pat[:-2]):
-                return True
+        if pat.endswith("/**") and (normalised == pat[:-3] or normalised.startswith(pat[:-2])):
+            return True
         if fnmatch.fnmatch(normalised, pat):
             return True
         if fnmatch.fnmatch(Path(normalised).name, pat):
@@ -70,7 +69,7 @@ def human_duration(seconds: float) -> str:
     return f"{hours}h{minutes:02d}m"
 
 
-def docket_number(when: float | None = None, rng: "secrets.SystemRandom | None" = None) -> str:
+def docket_number(when: float | None = None, rng: secrets.SystemRandom | None = None) -> str:
     """A human-quotable identifier: ``DKT-YYYYMMDD-XXXXXX``.
 
     The random part is drawn from ``secrets`` so that numbers are not guessable in

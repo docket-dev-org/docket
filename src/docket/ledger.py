@@ -21,9 +21,10 @@ import hashlib
 import json
 import os
 import time
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator
+from typing import Any
 
 from .canon import canonical_bytes, merkle_root, sha256_hex
 
@@ -58,7 +59,7 @@ class Event:
         return out
 
     @classmethod
-    def from_dict(cls, obj: dict[str, Any]) -> "Event":
+    def from_dict(cls, obj: dict[str, Any]) -> Event:
         return cls(
             seq=int(obj["seq"]),
             ts=str(obj["ts"]),
@@ -80,14 +81,14 @@ class Ledger:
 
     # -- construction ------------------------------------------------------ #
     @classmethod
-    def open(cls, path: str | os.PathLike[str], clock: Callable[[], str] | None = None) -> "Ledger":
+    def open(cls, path: str | os.PathLike[str], clock: Callable[[], str] | None = None) -> Ledger:
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         handle = p.open("a", encoding="utf-8")
         return cls(path=p, clock=clock or _now_rfc3339, _handle=handle)
 
     @classmethod
-    def in_memory(cls, clock: Callable[[], str] | None = None) -> "Ledger":
+    def in_memory(cls, clock: Callable[[], str] | None = None) -> Ledger:
         return cls(path=None, clock=clock or _now_rfc3339)
 
     # -- writing ----------------------------------------------------------- #
@@ -146,9 +147,7 @@ class Ledger:
     def file_sha256(self) -> str:
         """SHA-256 of the ledger file exactly as written on disk."""
         if self.path is None or not self.path.exists():
-            payload = "".join(
-                canonical_bytes(e.to_dict()).decode("utf-8") + "\n" for e in self.events
-            ).encode("utf-8")
+            payload = "".join(canonical_bytes(e.to_dict()).decode("utf-8") + "\n" for e in self.events).encode("utf-8")
             return hashlib.sha256(payload).hexdigest()
         return hashlib.sha256(self.path.read_bytes()).hexdigest()
 

@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from . import events as ev
-from .canon import digest_of, sha256_hex, usd
+from .canon import digest_of, usd
 from .ledger import Ledger
 from .policy import Policy
 from .pricing import CostMeter, PriceTable
@@ -37,7 +37,7 @@ from .util import atomic_write, docket_number
 _state = threading.local()
 
 
-def _require_session() -> "Session":
+def _require_session() -> Session:
     session = getattr(_state, "session", None)
     if session is None:
         raise RuntimeError("no active Docket session: use `with docket.Session() as s:` first")
@@ -147,7 +147,7 @@ class Session:
         self._docket_number = docket_number()
 
     # -- context manager --------------------------------------------------- #
-    def __enter__(self) -> "Session":
+    def __enter__(self) -> Session:
         # Attached to a supervised run (`docket run -- …`): write through the boundary.
         # That keeps one writer per ledger, which is what keeps the chain valid.
         proxy_url = os.environ.get("DOCKET_PROXY_URL")
@@ -336,12 +336,16 @@ class Session:
     def tokens(self) -> int:
         return self.meter.total_tokens
 
-    def would_exceed(self, *, usd: "Decimal | str | None" = None, tokens: int | None = None) -> bool:
+    def would_exceed(self, *, usd: Decimal | str | None = None, tokens: int | None = None) -> bool:
         """Check a prospective spend against the policy caps before spending it."""
-        if usd is not None and self.policy.caps.max_usd is not None:
-            if self.meter.cost + Decimal(str(usd)) > self.policy.caps.max_usd:
-                return True
-        if tokens is not None and self.policy.caps.max_tokens is not None:
-            if self.meter.total_tokens + tokens > self.policy.caps.max_tokens:
-                return True
-        return False
+        over_usd = (
+            usd is not None
+            and self.policy.caps.max_usd is not None
+            and self.meter.cost + Decimal(str(usd)) > self.policy.caps.max_usd
+        )
+        over_tokens = (
+            tokens is not None
+            and self.policy.caps.max_tokens is not None
+            and self.meter.total_tokens + tokens > self.policy.caps.max_tokens
+        )
+        return bool(over_usd or over_tokens)

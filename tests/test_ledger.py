@@ -10,7 +10,7 @@ from docket.ledger import GENESIS, Ledger, count_events
 def test_genesis_is_the_sha256_of_the_genesis_string():
     from docket.canon import sha256_hex
 
-    assert GENESIS == sha256_hex("docket/genesis/v1")
+    assert sha256_hex("docket/genesis/v1") == GENESIS
 
 
 def test_first_event_links_to_genesis(ledger):

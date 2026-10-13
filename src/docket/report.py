@@ -98,7 +98,11 @@ def render_receipt(receipt: dict[str, Any], *, color: bool = True, show_findings
             "files",
             f"{files.get('changed', 0)} changed "
             f"(+{files.get('added', 0)} ~{files.get('modified', 0)} -{files.get('removed', 0)})"
-            + (f"  {_paint(str(files.get('violations')) + ' deny-write violation(s)', RED, color)}" if files.get("violations") else ""),
+            + (
+                f"  {_paint(str(files.get('violations')) + ' deny-write violation(s)', RED, color)}"
+                if files.get("violations")
+                else ""
+            ),
             color,
         )
     )
@@ -111,22 +115,7 @@ def render_receipt(receipt: dict[str, Any], *, color: bool = True, show_findings
     if show_findings and findings:
         lines.append("")
         lines.append(_paint("FINDINGS", BOLD, color) + _paint("  (deterministic unless marked heuristic)", DIM, color))
-        for finding in findings:
-            code, label = SEVERITY_STYLE.get(str(finding.get("severity")), (DIM, "INFO"))
-            impact = finding.get("usd_impact") or ""
-            head = f"  {_paint(label.ljust(8), code, color)} {finding.get('title', '')}"
-            if impact:
-                head += _paint(f"  [{impact}]", DIM, color)
-            lines.append(head)
-            detail = str(finding.get("detail", ""))
-            for chunk in _wrap(detail, WIDTH - 14):
-                lines.append(" " * 12 + _paint(chunk, DIM, color))
-            if finding.get("confidence") == "heuristic":
-                lines.append(" " * 12 + _paint("(heuristic estimate)", YELLOW, color))
-        savings = total_estimated_savings(findings)
-        if savings != "$0.00":
-            lines.append("")
-            lines.append(_paint(f"  attributed impact: {savings}", BOLD, color))
+        lines.append(render_findings(findings, color=color))
 
     lines.append("")
     lines.append(_paint("WHAT THIS RECEIPT PROVES", BOLD, color))
@@ -145,6 +134,34 @@ def render_receipt(receipt: dict[str, Any], *, color: bool = True, show_findings
     lines.append(_paint("VERIFY IT YOURSELF (offline, no account)", BOLD, color))
     lines.append(f"  docket verify {number}.receipt.json")
     lines.append(f"  node verify-js/verify.mjs {number}.receipt.json")
+    return "\n".join(lines)
+
+
+def render_findings(findings: list[dict[str, Any]], *, color: bool = True) -> str:
+    """Render the findings block. Shared by `docket explain` and the receipt report."""
+    lines: list[str] = []
+    for finding in findings:
+        code, label = SEVERITY_STYLE.get(str(finding.get("severity")), (DIM, "INFO"))
+        impact = finding.get("usd_impact") or ""
+        head = f"  {_paint(label.ljust(8), code, color)} {finding.get('title', '')}"
+        if impact:
+            head += _paint(f"  [{impact}]", DIM, color)
+        lines.append(head)
+        detail = str(finding.get("detail", ""))
+        for chunk in _wrap(detail, WIDTH - 14):
+            lines.append(" " * 12 + _paint(chunk, DIM, color))
+        rule = finding.get("rule")
+        if rule:
+            lines.append(" " * 12 + _paint(f"rule: {rule}", DIM, color))
+        if finding.get("confidence") == "heuristic":
+            lines.append(" " * 12 + _paint("(heuristic estimate)", YELLOW, color))
+        remedy = finding.get("remedy")
+        if remedy:
+            lines.append(" " * 12 + _paint(f"-> {remedy}", GREEN, color))
+    savings = total_estimated_savings(findings)
+    if savings != "$0.00":
+        lines.append("")
+        lines.append(_paint(f"  attributed impact: {savings}", BOLD, color))
     return "\n".join(lines)
 
 
@@ -210,7 +227,12 @@ def render_markdown(receipt: dict[str, Any]) -> str:
         lines.append("")
     by_model = totals.get("by_model") or []
     if by_model:
-        lines += ["## Model mix", "", "| model | calls | input | cached | output | estimated cost |", "| --- | --- | --- | --- | --- | --- |"]
+        lines += [
+            "## Model mix",
+            "",
+            "| model | calls | input | cached | output | estimated cost |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
         for row in by_model:
             lines.append(
                 f"| {row['model']} | {row['calls']} | {human_int(row['input_tokens'])} | "
@@ -233,6 +255,7 @@ def render_markdown(receipt: dict[str, Any]) -> str:
 
 def diff_receipts(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
     """Compare two receipts: behaviour drift, cost drift, cap drift."""
+
     def num(d: dict[str, Any], *keys: str) -> Decimal:
         node: Any = d
         for key in keys:
@@ -251,7 +274,10 @@ def diff_receipts(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
         "total_tokens": (int(a_totals.get("total_tokens") or 0), int(b_totals.get("total_tokens") or 0)),
         "files_changed": (int(a.get("files", {}).get("changed") or 0), int(b.get("files", {}).get("changed") or 0)),
         "exit_code": (a.get("session", {}).get("exit_code"), b.get("session", {}).get("exit_code")),
-        "denied_calls": (int(a.get("model_calls", {}).get("denied") or 0), int(b.get("model_calls", {}).get("denied") or 0)),
+        "denied_calls": (
+            int(a.get("model_calls", {}).get("denied") or 0),
+            int(b.get("model_calls", {}).get("denied") or 0),
+        ),
         "models_added": (None, sorted(set(b_models) - set(a_models))),
         "models_removed": (None, sorted(set(a_models) - set(b_models))),
     }

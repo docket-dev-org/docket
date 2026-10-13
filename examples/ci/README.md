@@ -39,7 +39,7 @@ jobs:
           python - <<'PY'
           import json, sys
           receipt = json.load(open(".docket/latest.receipt.json"))
-          violations = [f for f in receipt["findings"] if f["rule"] in {"deny_write", "policy_denied"}]
+          violations = [f for f in receipt["findings"] if f["rule"] in {"write-scope", "policy-denials"}]
           for finding in violations:
               print(f"::error::{finding['title']} — {finding['detail']}")
           sys.exit(1 if violations else 0)

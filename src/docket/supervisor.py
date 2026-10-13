@@ -20,6 +20,7 @@ write.
 
 from __future__ import annotations
 
+import contextlib
 import io
 import os
 import platform
@@ -27,12 +28,13 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
 
 from . import events as ev
-from .canon import digest_of, num
+from .canon import num
 from .fsdiff import deny_write_violations, diff, snapshot, tree_digest
 from .ledger import Ledger
 from .policy import Policy
@@ -186,7 +188,12 @@ class Supervisor:
             before = snapshot(self.policy.files.watch, self.policy.files.ignore, cwd=self.cwd)
             ledger.append(
                 ev.FS_SNAPSHOT,
-                {"phase": "before", "files": len(before), "tree_sha256": tree_digest(before), "roots": self.policy.files.watch},
+                {
+                    "phase": "before",
+                    "files": len(before),
+                    "tree_sha256": tree_digest(before),
+                    "roots": self.policy.files.watch,
+                },
             )
 
         env = self._child_env(host, port)
@@ -211,24 +218,18 @@ class Supervisor:
                 nonlocal interrupted
                 interrupted = True
                 if proc and proc.poll() is None:
-                    try:
+                    with contextlib.suppress(OSError):
                         proc.send_signal(signum)
-                    except OSError:
-                        pass
 
             for sig in (signal.SIGINT, signal.SIGTERM):
-                try:
+                with contextlib.suppress(ValueError, OSError):  # pragma: no cover - non-main thread
                     previous_handlers[sig] = signal.signal(sig, _forward)
-                except (ValueError, OSError):  # pragma: no cover - non-main thread
-                    pass
 
             exit_code = self._supervise(proc, breach_state, started_mono, ledger)
         finally:
             for sig, handler in previous_handlers.items():
-                try:
+                with contextlib.suppress(ValueError, OSError):  # pragma: no cover
                     signal.signal(sig, handler)
-                except (ValueError, OSError):  # pragma: no cover
-                    pass
 
         # -- filesystem evidence -------------------------------------------- #
         after: dict[str, Any] = {}
@@ -379,10 +380,8 @@ class Supervisor:
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
         except (ProcessLookupError, PermissionError, OSError):  # pragma: no cover
-            try:
+            with contextlib.suppress(OSError):
                 proc.kill()
-            except OSError:
-                pass
         ledger.append(ev.NOTE, {"message": f"sent SIGKILL after {grace}s grace period"})
 
 

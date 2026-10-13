@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-import pytest
-
 from docket.explain import analyse, oversized_payloads, total_estimated_savings
 from docket.ledger import Ledger
 from docket.policy import Caps, Policy
@@ -55,7 +53,10 @@ def test_clean_session_produces_no_findings():
 
 def test_runaway_loop_is_deterministic_and_attributed():
     ledger, _ = _ledger_with(
-        [{"model": "claude-sonnet-5", "fingerprint": "same", "input_tokens": 40_000, "output_tokens": 300} for _ in range(9)]
+        [
+            {"model": "claude-sonnet-5", "fingerprint": "same", "input_tokens": 40_000, "output_tokens": 300}
+            for _ in range(9)
+        ]
     )
     findings = analyse(ledger, price_table=PriceTable.load())
     loop = next(f for f in findings if f["rule"] == "runaway-loop")
@@ -68,7 +69,10 @@ def test_runaway_loop_is_deterministic_and_attributed():
 
 def test_five_repeats_are_below_the_loop_threshold():
     ledger, _ = _ledger_with(
-        [{"model": "claude-sonnet-5", "fingerprint": "same", "input_tokens": 1_000, "output_tokens": 100} for _ in range(5)]
+        [
+            {"model": "claude-sonnet-5", "fingerprint": "same", "input_tokens": 1_000, "output_tokens": 100}
+            for _ in range(5)
+        ]
     )
     findings = analyse(ledger, price_table=PriceTable.load())
     assert not any(f["rule"] == "runaway-loop" for f in findings)
@@ -76,7 +80,10 @@ def test_five_repeats_are_below_the_loop_threshold():
 
 def test_counterfactual_says_what_a_cap_would_have_saved():
     ledger, _ = _ledger_with(
-        [{"model": "claude-sonnet-5", "fingerprint": f"fp{i}", "input_tokens": 100_000, "output_tokens": 1_000} for i in range(5)]
+        [
+            {"model": "claude-sonnet-5", "fingerprint": f"fp{i}", "input_tokens": 100_000, "output_tokens": 1_000}
+            for i in range(5)
+        ]
     )
     policy = Policy(caps=Caps(max_usd=Decimal("0.50")))
     findings = analyse(ledger, price_table=PriceTable.load(), policy=policy)
@@ -135,7 +142,15 @@ def test_policy_denials_and_write_violations_are_reported():
 
 def test_missing_usage_is_marked_estimated_in_the_meter():
     ledger, meter = _ledger_with(
-        [{"model": "claude-sonnet-5", "fingerprint": "a", "input_tokens": 10, "output_tokens": 5, "usage_source": "estimated"}]
+        [
+            {
+                "model": "claude-sonnet-5",
+                "fingerprint": "a",
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "usage_source": "estimated",
+            }
+        ]
     )
     assert meter.to_dict()["usage_estimated_calls"] == 1
     assert meter.to_dict()["cost_basis"].startswith("estimated")
@@ -143,7 +158,10 @@ def test_missing_usage_is_marked_estimated_in_the_meter():
 
 def test_findings_are_ordered_by_severity():
     ledger, _ = _ledger_with(
-        [{"model": "claude-opus-4-8", "fingerprint": "same", "input_tokens": 150_000, "output_tokens": 100} for _ in range(8)]
+        [
+            {"model": "claude-opus-4-8", "fingerprint": "same", "input_tokens": 150_000, "output_tokens": 100}
+            for _ in range(8)
+        ]
     )
     policy = Policy(caps=Caps(max_usd=Decimal("1.00")))
     findings = analyse(ledger, price_table=PriceTable.load(), policy=policy)

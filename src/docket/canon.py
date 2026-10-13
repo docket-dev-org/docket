@@ -20,8 +20,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Iterable
 from decimal import Decimal
-from typing import Any, Iterable
+from typing import Any
 
 __all__ = [
     "canonical_bytes",
@@ -60,7 +61,7 @@ def _normalise(obj: Any) -> Any:
         )
     if isinstance(obj, dict):
         return {str(k): _normalise(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
+    if isinstance(obj, list | tuple):
         return [_normalise(v) for v in obj]
     return obj
 
@@ -79,7 +80,7 @@ def canonical_json(obj: Any) -> str:
     return canonical_bytes(obj).decode("utf-8")
 
 
-def num(value: "int | float | Decimal | str") -> "int | str":
+def num(value: int | float | Decimal | str) -> int | str:
     """Encode a number for a hashed structure: integers stay integers, fractions
     become decimal strings. This is the only sanctioned way to put a number into a
     ledger event (see §3.3 of the spec)."""
@@ -186,7 +187,8 @@ def verify_merkle_proof(hexdigest: str, path: list[dict[str, str]], root: str) -
 # Money
 # --------------------------------------------------------------------------- #
 
-def usd(value: "Decimal | str | int | float") -> str:
+
+def usd(value: Decimal | str | int | float) -> str:
     """Render a monetary amount as the canonical decimal string.
 
     Amounts are rounded half-up to 6 decimal places (micro-dollars) and always

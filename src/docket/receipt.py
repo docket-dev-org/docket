@@ -19,12 +19,13 @@ from __future__ import annotations
 import time
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from . import events as ev
-from .canon import digest_of, merkle_proof, sha256_hex, usd
+from .canon import digest_of, merkle_proof, usd
 from .explain import analyse
-from .ledger import GENESIS, FORMAT as LEDGER_FORMAT, Event, Ledger
+from .ledger import FORMAT as LEDGER_FORMAT
+from .ledger import GENESIS, Event, Ledger
 from .policy import Policy
 from .pricing import CostMeter, PriceTable
 from .signing import seal as make_seal
@@ -170,7 +171,9 @@ def build_receipt(
         "added": sum(1 for f in files if f.get("change") == "added"),
         "modified": sum(1 for f in files if f.get("change") == "modified"),
         "removed": sum(1 for f in files if f.get("change") == "removed"),
-        "violations": sum(1 for e in events if e.type == ev.POLICY_VIOLATION and e.data.get("rule") == "files.deny_write"),
+        "violations": sum(
+            1 for e in events if e.type == ev.POLICY_VIOLATION and e.data.get("rule") == "files.deny_write"
+        ),
         "top_paths": [f.get("path") for f in files[:25]],
     }
 

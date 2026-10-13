@@ -14,10 +14,10 @@ from docket.demo import run_demo
 from docket.receipt import load_receipt
 from docket.verify import verify_receipt
 
-
 # --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
+
 
 def test_init_writes_a_policy(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
@@ -101,6 +101,7 @@ def test_bad_policy_is_reported_not_crashed(tmp_path, monkeypatch, capsys):
 # SDK
 # --------------------------------------------------------------------------- #
 
+
 def test_sdk_session_records_and_produces_a_verifiable_receipt(tmp_path, monkeypatch):
     import docket
 
@@ -116,7 +117,10 @@ def test_sdk_session_records_and_produces_a_verifiable_receipt(tmp_path, monkeyp
     assert session.receipt is not None
     assert verify_receipt(session.receipt).ok
     assert session.receipt_path and session.receipt_path.exists()
-    kinds = {event["type"] for event in _read_lines(session.receipt_path.parent.parent / "runs" / f"{session.session_id}.jsonl")}
+    kinds = {
+        event["type"]
+        for event in _read_lines(session.receipt_path.parent.parent / "runs" / f"{session.session_id}.jsonl")
+    }
     assert {"session.start", "model.request", "model.response", "tool.call", "note", "session.end"} <= kinds
 
 
@@ -160,6 +164,7 @@ def _read_lines(path: Path) -> list[dict]:
 # --------------------------------------------------------------------------- #
 # Demo
 # --------------------------------------------------------------------------- #
+
 
 def test_demo_stops_a_runaway_agent_and_verifies(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)

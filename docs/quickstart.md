@@ -50,11 +50,19 @@ docket run --max-usd 5 -- ./your-agent --flag value
 docket run --max-usd 5 --http-proxy -- ./build.sh     # everything through the boundary
 ```
 
-What you get back:
+What you get back is one line per run (numbers from your run, not this page):
+
+```console
+docket: DKT-20261013-A03507 completed · $0.004510 of $5.00 cap · 3 calls · receipt .docket/receipts/DKT-20261013-A03507.receipt.json
+```
+
+A run that crosses a cap ends the same way, with a different verb:
 
 ```console
 docket: DKT-20261013-746EF4 stopped by policy (max_usd) · $2.00 of $2.00 cap · 15 calls · receipt .docket/receipts/DKT-20261013-746EF4.receipt.json
 ```
+
+(Exit code `42` in that case — see [cli.md](cli.md).)
 
 ## 4. Read what happened
 

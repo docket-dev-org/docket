@@ -54,6 +54,7 @@ def _ratio(value: Any) -> float:
         raise ValueError("caps.warn_at must be a fraction (0.8) or a percentage (80)")
     return ratio
 
+
 DEFAULT_EGRESS_ALLOW = [
     "api.anthropic.com",
     "api.openai.com",
@@ -157,14 +158,14 @@ class Policy:
 
     # -- loading ----------------------------------------------------------- #
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "Policy":
+    def load(cls, path: str | Path | None = None) -> Policy:
         if path is None:
             return cls()
         raw = tomllib.loads(Path(path).read_text(encoding="utf-8"))
         return cls.from_dict(raw, source_path=str(path))
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any], source_path: str | None = None) -> "Policy":
+    def from_dict(cls, raw: dict[str, Any], source_path: str | None = None) -> Policy:
         caps_raw = raw.get("caps", {}) or {}
         models_raw = raw.get("models", {}) or {}
         egress_raw = raw.get("egress", {}) or {}
@@ -176,7 +177,9 @@ class Policy:
             max_usd=Decimal(str(caps_raw["max_usd"])) if caps_raw.get("max_usd") is not None else None,
             max_tokens=int(caps_raw["max_tokens"]) if caps_raw.get("max_tokens") is not None else None,
             max_model_calls=int(caps_raw["max_model_calls"]) if caps_raw.get("max_model_calls") is not None else None,
-            max_wall_seconds=int(caps_raw["max_wall_seconds"]) if caps_raw.get("max_wall_seconds") is not None else None,
+            max_wall_seconds=int(caps_raw["max_wall_seconds"])
+            if caps_raw.get("max_wall_seconds") is not None
+            else None,
             # tolerate an 80 value meaning 80% as well as 0.8 meaning 0.8, and the
             # decimal strings the serialised form uses
             warn_at=_ratio(caps_raw.get("warn_at", 0.8)),
@@ -232,7 +235,7 @@ class Policy:
     def to_toml(self) -> str:
         """Render the policy as a commented TOML document (used by ``docket init``)."""
         lines = [
-            f'# Docket policy — {self.name}',
+            f"# Docket policy — {self.name}",
             "# https://github.com/docket-dev/docket/blob/main/docs/policy-reference.md",
             "",
             "[policy]",
@@ -254,7 +257,7 @@ class Policy:
             cap_lines.append(f"max_wall_seconds = {self.caps.max_wall_seconds}")
         lines += cap_lines or ["# max_usd = 5.00", "# max_tokens = 2000000", "# max_model_calls = 200"]
         lines += [
-            f'warn_at = {self.caps.warn_at}',
+            f"warn_at = {self.caps.warn_at}",
             f'on_breach = "{self.caps.on_breach}"',
             f"grace_seconds = {self.caps.grace_seconds}",
             "",

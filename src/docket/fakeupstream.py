@@ -79,9 +79,7 @@ class FakeUpstream:
                 if body.get("stream"):
                     self._stream(step, model, anthropic)
                     return
-                payload = json.dumps(
-                    _response_payload(step, model, anthropic), ensure_ascii=False
-                ).encode("utf-8")
+                payload = json.dumps(_response_payload(step, model, anthropic), ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))
@@ -195,13 +193,17 @@ def _stream_chunks(step: Step, model: str, anthropic: bool) -> list[str]:
             )
             + "\n\n"
         )
-        out.append("event: message_stop\ndata: {\"type\": \"message_stop\"}\n\n")
+        out.append('event: message_stop\ndata: {"type": "message_stop"}\n\n')
         return out
     out.append(
         "data: "
         + json.dumps(
-            {"id": "chatcmpl-fake", "object": "chat.completion.chunk", "model": model,
-             "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}]}
+            {
+                "id": "chatcmpl-fake",
+                "object": "chat.completion.chunk",
+                "model": model,
+                "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
+            }
         )
         + "\n\n"
     )
@@ -209,25 +211,41 @@ def _stream_chunks(step: Step, model: str, anthropic: bool) -> list[str]:
         out.append(
             "data: "
             + json.dumps(
-                {"id": "chatcmpl-fake", "object": "chat.completion.chunk", "model": model,
-                 "choices": [{"index": 0, "delta": {"content": word + " "}, "finish_reason": None}]}
+                {
+                    "id": "chatcmpl-fake",
+                    "object": "chat.completion.chunk",
+                    "model": model,
+                    "choices": [{"index": 0, "delta": {"content": word + " "}, "finish_reason": None}],
+                }
             )
             + "\n\n"
         )
     out.append(
         "data: "
         + json.dumps(
-            {"id": "chatcmpl-fake", "object": "chat.completion.chunk", "model": model,
-             "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+            {
+                "id": "chatcmpl-fake",
+                "object": "chat.completion.chunk",
+                "model": model,
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            }
         )
         + "\n\n"
     )
     out.append(
         "data: "
         + json.dumps(
-            {"id": "chatcmpl-fake", "object": "chat.completion.chunk", "model": model, "choices": [],
-             "usage": {"prompt_tokens": step.input_tokens, "completion_tokens": step.output_tokens,
-                       "prompt_tokens_details": {"cached_tokens": step.cached_input_tokens}}}
+            {
+                "id": "chatcmpl-fake",
+                "object": "chat.completion.chunk",
+                "model": model,
+                "choices": [],
+                "usage": {
+                    "prompt_tokens": step.input_tokens,
+                    "completion_tokens": step.output_tokens,
+                    "prompt_tokens_details": {"cached_tokens": step.cached_input_tokens},
+                },
+            }
         )
         + "\n\n"
     )

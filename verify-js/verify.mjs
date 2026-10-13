@@ -173,21 +173,38 @@ function callCost(entries, model, inputTokens, cachedTokens, outputTokens) {
 function verifyLedgerChain(events) {
   const genesis = sha256Hex(Buffer.from("docket/genesis/v1", "utf8"));
   let previous = genesis;
+  const recomputed = [];
+  let brokenAt = null;
   for (let index = 0; index < events.length; index += 1) {
     const event = events[index];
-    if (event.seq !== index) return { ok: false, detail: `sequence gap at #${index} (found seq ${event.seq})` };
-    if (event.prev !== previous) return { ok: false, detail: `broken link at #${index}` };
-    const recomputed = canonicalDigest({
+    const hash = canonicalDigest({
       seq: event.seq,
       ts: event.ts,
       type: event.type,
       data: event.data,
       prev: event.prev,
     });
-    if (recomputed !== event.hash) return { ok: false, detail: `content hash mismatch at #${index}` };
-    previous = event.hash;
+    recomputed.push(hash);
+    if (brokenAt !== null) continue;
+    if (event.seq !== index) {
+      brokenAt = { index, detail: `sequence gap at #${index} (found seq ${event.seq})` };
+    } else if (event.prev !== previous) {
+      brokenAt = { index, detail: `broken link at #${index}` };
+    } else if (hash !== event.hash) {
+      brokenAt = { index, detail: `content hash mismatch at #${index}` };
+    }
+    // The chain of *recomputed* hashes is what the next link must match: an edit that
+    // leaves the stored tail hash intact must not be able to hide downstream.
+    previous = hash;
   }
-  return { ok: true, detail: `${events.length} events verified`, head: previous, genesis };
+  return {
+    ok: brokenAt === null,
+    detail: brokenAt ? brokenAt.detail : `${events.length} events verified`,
+    brokenAt: brokenAt ? brokenAt.index : null,
+    head: previous,
+    recomputed,
+    genesis,
+  };
 }
 
 function verifyReceipt(receipt, options = {}) {
@@ -202,23 +219,33 @@ function verifyReceipt(receipt, options = {}) {
 
   const ledgerMeta = receipt.ledger ?? {};
   const events = options.ledgerEvents ?? null;
+  let chain = null;
 
   if (!events) {
     add("ledger-chain", "skip", "no ledger supplied; the receipt alone cannot rebuild the chain");
   } else {
-    const chain = verifyLedgerChain(events);
+    chain = verifyLedgerChain(events);
     add("ledger-chain", chain.ok ? "pass" : "fail", chain.detail);
-    const head = events.length ? events[events.length - 1].hash : chain.genesis;
-    add(
-      "head",
-      head === ledgerMeta.head ? "pass" : "fail",
-      head === ledgerMeta.head ? `head matches (${String(head).slice(0, 16)}…)` : "ledger head differs from receipt",
-    );
-    const root = merkleRoot(events.map((event) => event.hash));
+    const head = chain.head;
+    if (!chain.ok) {
+      add("head", "skip", `not checked: the chain is broken at event #${chain.brokenAt}`);
+    } else {
+      add(
+        "head",
+        head === ledgerMeta.head ? "pass" : "fail",
+        head === ledgerMeta.head ? `head matches (${String(head).slice(0, 16)}…)` : "ledger head differs from receipt",
+      );
+    }
+    // Recomputed leaf hashes, not the stored ones: an edit then shows up as a root
+    // mismatch even when the stored hashes were left alone.
+    const root = merkleRoot(chain.recomputed);
+    const rootMatches = root === ledgerMeta.merkle_root && chain.ok;
     add(
       "merkle-root",
-      root === ledgerMeta.merkle_root ? "pass" : "fail",
-      root === ledgerMeta.merkle_root ? `${root.slice(0, 16)}…` : "recomputed root differs from receipt",
+      rootMatches ? "pass" : "fail",
+      rootMatches
+        ? `${root.slice(0, 16)}…`
+        : `recomputed ${root.slice(0, 16)}… != receipt ${String(ledgerMeta.merkle_root ?? "").slice(0, 16)}…`,
     );
     add(
       "event-count",
@@ -228,23 +255,42 @@ function verifyReceipt(receipt, options = {}) {
   }
 
   const rows = receipt.appendix?.usage ?? [];
-  const rootValue = String(ledgerMeta.merkle_root ?? "");
+  const rootValue = chain ? merkleRoot(chain.recomputed) : String(ledgerMeta.merkle_root ?? "");
   let proven = 0;
   let unproven = 0;
+  let rebound = 0;
+  let firstBad = null;
   for (const row of rows) {
-    if (!row.merkle_path) {
-      unproven += 1;
-      continue;
+    let ok = Boolean(row.merkle_path) && verifyInclusion(row.event_hash, row.merkle_path, rootValue);
+    if (ok && events) {
+      const bound = chain.recomputed[row.seq];
+      if (bound !== row.event_hash) ok = false;
+      else rebound += 1;
     }
-    if (verifyInclusion(row.event_hash, row.merkle_path, rootValue)) proven += 1;
-    else unproven += 1;
+    if (ok) proven += 1;
+    else {
+      unproven += 1;
+      if (firstBad === null) firstBad = row.seq;
+    }
   }
   if (rows.length === 0) {
     add("usage-inclusion-proofs", "pass", "no metered calls in this session");
   } else if (unproven > 0) {
-    add("usage-inclusion-proofs", "fail", `${unproven} of ${rows.length} usage rows failed their inclusion proof`);
+    add(
+      "usage-inclusion-proofs",
+      "fail",
+      events
+        ? `${unproven} of ${rows.length} usage rows do not match the recomputed ledger (first: seq ${firstBad})`
+        : `${unproven} of ${rows.length} usage rows failed their inclusion proof`,
+    );
   } else {
-    add("usage-inclusion-proofs", "pass", `${proven} usage rows proven against the Merkle root`);
+    add(
+      "usage-inclusion-proofs",
+      "pass",
+      rebound
+        ? `${proven} usage rows proven against the Merkle root and re-bound to the recomputed ledger`
+        : `${proven} usage rows proven against the Merkle root`,
+    );
   }
 
   // Cost recomputation — the property that lets a third party check the arithmetic.

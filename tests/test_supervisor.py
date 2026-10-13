@@ -9,9 +9,6 @@ from __future__ import annotations
 import json
 import sys
 from decimal import Decimal
-from pathlib import Path
-
-import pytest
 
 from docket.fakeupstream import FakeUpstream, Step
 from docket.ledger import Ledger
@@ -240,7 +237,7 @@ def test_base_url_environment_points_at_the_boundary(tmp_path):
         cwd=tmp_path,
     )
     result = supervisor.run()
-    captured = (tmp_path / "out.txt")
+    captured = tmp_path / "out.txt"
     # the child's stdout is the test process's stdout here; check the environment
     # was wired by asserting the receipt exists and the run succeeded
     assert result.exit_code == 0

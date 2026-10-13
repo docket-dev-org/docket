@@ -8,17 +8,18 @@ import json
 import os
 import shutil
 import sys
+from collections.abc import Sequence
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from . import __version__
 from .ledger import Ledger
-from .policy import DEFAULT_TOML, Caps, Policy
+from .policy import DEFAULT_TOML, Policy
 from .pricing import PriceTable
 from .receipt import load_receipt
-from .report import diff_receipts, render_diff, render_markdown, render_receipt
-from .supervisor import EXIT_CAP_EXCEEDED, EXIT_OK, Supervisor
+from .report import diff_receipts, render_diff, render_findings, render_markdown, render_receipt
+from .supervisor import Supervisor
 from .verify import verify_receipt
 
 PROGRAM = "docket"
@@ -39,6 +40,7 @@ def _out(stream: Any, text: str = "") -> None:
 # --------------------------------------------------------------------------- #
 # Commands
 # --------------------------------------------------------------------------- #
+
 
 def cmd_run(args: argparse.Namespace) -> int:
     try:
@@ -158,7 +160,7 @@ def cmd_report(args: argparse.Namespace) -> int:
 
 
 def cmd_explain(args: argparse.Namespace) -> int:
-    from .explain import analyse, total_estimated_savings
+    from .explain import analyse
 
     receipt = _load_receipt_arg(args.receipt)
     if receipt is None:
@@ -187,15 +189,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
     color = _color_enabled(sys.stdout)
     _out(sys.stdout, f"{receipt.get('docket_number')} — {len(findings)} finding(s)")
     _out(sys.stdout)
-    for finding in findings:
-        impact = f"  [{finding['usd_impact']}]" if finding.get("usd_impact") else ""
-        _out(sys.stdout, f"  {str(finding['severity']).upper():9} {finding['title']}{impact}")
-        _out(sys.stdout, f"            {finding['detail']}")
-        if finding.get("remedy"):
-            _out(sys.stdout, f"            → {finding['remedy']}")
-        _out(sys.stdout, f"            evidence: events {finding['evidence'][:8]}")
-        _out(sys.stdout)
-    _out(sys.stdout, f"  attributed impact: {total_estimated_savings(findings)}")
+    _out(sys.stdout, render_findings(findings, color=color))
     return 0
 
 
@@ -257,7 +251,10 @@ def cmd_prices(args: argparse.Namespace) -> int:
             f"  {price.pattern:32} {price.input:>9} {price.cached_input:>9} {price.output:>9}   {price.source[:40]}",
         )
     _out(sys.stdout)
-    _out(sys.stdout, "Docket estimates only; it never bills anyone. Override for one run with `docket run --prices <file>`.")
+    _out(
+        sys.stdout,
+        "Docket estimates only; it never bills anyone. Override for one run with `docket run --prices <file>`.",
+    )
     return 0
 
 
@@ -272,7 +269,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     try:
         from .signing import ed25519_available
 
-        checks.append(("cryptography (signing)", "installed" if ed25519_available() else "optional, not installed", True))
+        checks.append(
+            ("cryptography (signing)", "installed" if ed25519_available() else "optional, not installed", True)
+        )
     except Exception as exc:  # pragma: no cover
         checks.append(("cryptography (signing)", str(exc), True))
     _out(sys.stdout, f"{PROGRAM} {__version__} doctor")
@@ -286,6 +285,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------- #
 # Parser
 # --------------------------------------------------------------------------- #
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -301,8 +301,12 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--prices", help="price table JSON (default: the one bundled with this version)")
     run.add_argument("--docket-dir", default=".docket", help="where ledgers and receipts live (default: .docket)")
     run.add_argument("--cwd", help="working directory for the child process")
-    run.add_argument("--profile", choices=["full", "minimal"], default="full", help="how many provider base URLs to set")
-    run.add_argument("--http-proxy", action="store_true", help="also export HTTP_PROXY/HTTPS_PROXY for full egress control")
+    run.add_argument(
+        "--profile", choices=["full", "minimal"], default="full", help="how many provider base URLs to set"
+    )
+    run.add_argument(
+        "--http-proxy", action="store_true", help="also export HTTP_PROXY/HTTPS_PROXY for full egress control"
+    )
     run.add_argument("--record-bodies", action="store_true", help="store request bodies in the ledger (off by default)")
     run.add_argument("--seal", action="store_true", help="seal the receipt with a local HMAC key")
     run.add_argument("--sign", metavar="KEY_PATH", help="sign the receipt with an Ed25519 key (needs docket[sign])")

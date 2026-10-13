@@ -10,13 +10,14 @@ guesses is worse than no audit trail, because it launders the guesses.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from decimal import Decimal
-from typing import Any, Iterable
+from typing import Any
 
 from . import events as ev
 from .policy import Policy
 from .pricing import PriceTable
-from .util import human_int, human_usd, mb
+from .util import human_int, human_usd
 
 FAT_CONTEXT_TOKENS = 100_000
 FAT_PAYLOAD_BYTES = 32 * 1024
@@ -73,7 +74,7 @@ def analyse(
     by_fingerprint: dict[str, list[Any]] = defaultdict(list)
     for req in requests:
         by_fingerprint[str(req.data.get("fingerprint", "?"))].append(req)
-    for fingerprint, group in sorted(by_fingerprint.items(), key=lambda kv: -len(kv[1])):
+    for _fingerprint, group in sorted(by_fingerprint.items(), key=lambda kv: -len(kv[1])):
         if len(group) < LOOP_THRESHOLD:
             continue
         seqs = {g.seq for g in group}
@@ -163,15 +164,15 @@ def analyse(
     repeats = {fp: len(g) for fp, g in by_fingerprint.items() if len(g) > 1}
     if repeats:
         repeated_responses = [
-            r
-            for r in responses
-            if str(r.data.get("usage", {}).get("cached_input_tokens") or 0) == "0"
+            r for r in responses if str(r.data.get("usage", {}).get("cached_input_tokens") or 0) == "0"
         ]
         repeated_input_tokens = sum(int(r.data.get("usage", {}).get("input_tokens") or 0) for r in repeated_responses)
         if repeated_input_tokens > 0 and len(repeated_responses) >= 3:
             price, assumed = price_table.match(str(repeated_responses[0].data.get("model", "")))
             delta_per_million = max(price.input - price.cached_input, Decimal("0"))
-            potential = (Decimal(repeated_input_tokens) * delta_per_million / Decimal(1_000_000)).quantize(Decimal("0.000001"))
+            potential = (Decimal(repeated_input_tokens) * delta_per_million / Decimal(1_000_000)).quantize(
+                Decimal("0.000001")
+            )
             findings.append(
                 _finding(
                     "cache-miss",
@@ -308,9 +309,7 @@ def analyse(
     findings.sort(
         key=lambda f: (
             order.get(str(f["severity"]), 9),
-            -float(str(f["usd_impact"]).replace("$", "").replace(",", "") or 0)
-            if f["usd_impact"]
-            else 0,
+            -float(str(f["usd_impact"]).replace("$", "").replace(",", "") or 0) if f["usd_impact"] else 0,
         )
     )
     return findings[:max_findings]

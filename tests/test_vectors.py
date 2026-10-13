@@ -9,10 +9,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from docket.canon import canonical_json, merkle_root, sha256_hex, verify_merkle_proof
-from docket.ledger import GENESIS, Ledger
+from docket.ledger import GENESIS
 from docket.receipt import receipt_core
 from docket.verify import verify_receipt
 

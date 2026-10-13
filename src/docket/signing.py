@@ -21,6 +21,7 @@ Docket never rolls its own cryptographic primitives.
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import hmac
 import os
@@ -50,9 +51,9 @@ def seal(receipt_core: dict[str, Any], key_hex: str) -> dict[str, Any]:
 
 def verify_seal(receipt_core: dict[str, Any], sealed: dict[str, Any], key_hex: str) -> bool:
     expected = seal(receipt_core, key_hex)
-    return hmac.compare_digest(expected["value"], str(sealed.get("value", ""))) and expected[
+    return hmac.compare_digest(expected["value"], str(sealed.get("value", ""))) and expected["key_id"] == sealed.get(
         "key_id"
-    ] == sealed.get("key_id")
+    )
 
 
 def load_or_create_seal_key(key_path: str | os.PathLike[str]) -> str:
@@ -61,16 +62,15 @@ def load_or_create_seal_key(key_path: str | os.PathLike[str]) -> str:
         return path.read_text(encoding="utf-8").strip()
     key = new_seal_key()
     atomic_write(path, key + "\n")
-    try:
+    with contextlib.suppress(OSError):  # pragma: no cover - platform dependent
         os.chmod(path, 0o600)
-    except OSError:  # pragma: no cover - platform dependent
-        pass
     return key
 
 
 # --------------------------------------------------------------------------- #
 # Ed25519 (optional dependency)
 # --------------------------------------------------------------------------- #
+
 
 def ed25519_available() -> bool:
     try:
@@ -83,10 +83,7 @@ def ed25519_available() -> bool:
 def generate_keypair(private_path: str | os.PathLike[str]) -> str:
     """Create an Ed25519 keypair; returns the public key as hex."""
     if not ed25519_available():  # pragma: no cover - environment dependent
-        raise RuntimeError(
-            "Ed25519 signing needs the optional 'cryptography' package: "
-            "pip install 'docket[sign]'"
-        )
+        raise RuntimeError("Ed25519 signing needs the optional 'cryptography' package: " "pip install 'docket[sign]'")
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -98,13 +95,9 @@ def generate_keypair(private_path: str | os.PathLike[str]) -> str:
     )
     path = Path(private_path)
     atomic_write(path, pem)
-    try:
+    with contextlib.suppress(OSError):  # pragma: no cover - platform dependent
         os.chmod(path, 0o600)
-    except OSError:  # pragma: no cover
-        pass
-    public = key.public_key().public_bytes(
-        encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw
-    )
+    public = key.public_key().public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)
     return public.hex()
 
 
@@ -112,13 +105,10 @@ def sign(receipt_core: dict[str, Any], private_path: str | os.PathLike[str]) -> 
     if not ed25519_available():  # pragma: no cover - environment dependent
         raise RuntimeError("Ed25519 signing needs the optional 'cryptography' package")
     from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     key = serialization.load_pem_private_key(Path(private_path).read_bytes(), password=None)
     signature = key.sign(canonical_bytes(receipt_core))
-    public = key.public_key().public_bytes(
-        encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw
-    )
+    public = key.public_key().public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)
     return {"alg": ALG_SIGN, "public_key": public.hex(), "value": base64.b16encode(signature).decode().lower()}
 
 

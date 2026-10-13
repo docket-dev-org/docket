@@ -20,14 +20,16 @@ disclosing *what* it said.
 
 from __future__ import annotations
 
+import contextlib
 import http.client
 import json
 import socket
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import urlsplit
 
 from . import events as ev
@@ -87,13 +89,14 @@ def _extract_usage(provider: str, payload: dict[str, Any]) -> tuple[int, int, in
     usage = payload.get("usage") or payload.get("usageMetadata")
     if not isinstance(usage, dict):
         return None
-    if provider == "anthropic" or {"input_tokens", "output_tokens"} & set(usage):
-        if "input_tokens" in usage or "output_tokens" in usage:
-            return (
-                int(usage.get("input_tokens") or 0),
-                int(usage.get("cache_read_input_tokens") or 0),
-                int(usage.get("output_tokens") or 0),
-            )
+    if (provider == "anthropic" or {"input_tokens", "output_tokens"} & set(usage)) and (
+        "input_tokens" in usage or "output_tokens" in usage
+    ):
+        return (
+            int(usage.get("input_tokens") or 0),
+            int(usage.get("cache_read_input_tokens") or 0),
+            int(usage.get("output_tokens") or 0),
+        )
     if {"prompt_tokens", "completion_tokens"} & set(usage):
         cached = 0
         details = usage.get("prompt_tokens_details") or {}
@@ -168,7 +171,7 @@ class _Handler(BaseHTTPRequestHandler):
     server_version = "docket"
     sys_version = ""
 
-    proxy: "RecordingProxy"  # set by the server factory
+    proxy: RecordingProxy  # set by the server factory
 
     # -- logging ---------------------------------------------------------- #
     def log_message(self, fmt: str, *args: Any) -> None:  # noqa: D102 - silence stderr
@@ -316,7 +319,12 @@ class _Handler(BaseHTTPRequestHandler):
             "path": upstream_path,
             "streaming": streaming,
             "fingerprint": fingerprint,
-            "request_sha256": digest_of({"body": parsed_body if parsed_body is not None else body_bytes.decode("utf-8", "replace"), "path": self.path}),
+            "request_sha256": digest_of(
+                {
+                    "body": parsed_body if parsed_body is not None else body_bytes.decode("utf-8", "replace"),
+                    "path": self.path,
+                }
+            ),
             "body_bytes": len(body_bytes),
         }
         if proxy.record_bodies and parsed_body is not None:
@@ -352,7 +360,9 @@ class _Handler(BaseHTTPRequestHandler):
                     usage = (
                         estimate_tokens_from_text(body_bytes.decode("utf-8", "replace")),
                         0,
-                        estimate_tokens_from_text(json.dumps(parsed_response.get("content") or parsed_response.get("choices") or "")),
+                        estimate_tokens_from_text(
+                            json.dumps(parsed_response.get("content") or parsed_response.get("choices") or "")
+                        ),
                     )
                 response_model = parsed_response.get("model")
                 if isinstance(response_model, str) and response_model:
@@ -387,21 +397,20 @@ class _Handler(BaseHTTPRequestHandler):
 
         proxy._check_warning()
         breach = proxy.cap_breach()
-        if breach:
-            if not proxy.breached.is_set():
-                proxy.ledger.append(
-                    ev.CAP_EXCEEDED,
-                    {
-                        "cap": breach,
-                        "cost_usd": usd(proxy.meter.cost),
-                        "tokens": proxy.meter.total_tokens,
-                        "calls": proxy.meter.calls,
-                        "action": proxy.policy.caps.on_breach,
-                    },
-                )
-                proxy.breached.set()
-                if proxy.on_breach:
-                    proxy.on_breach(breach)
+        if breach and not proxy.breached.is_set():
+            proxy.ledger.append(
+                ev.CAP_EXCEEDED,
+                {
+                    "cap": breach,
+                    "cost_usd": usd(proxy.meter.cost),
+                    "tokens": proxy.meter.total_tokens,
+                    "calls": proxy.meter.calls,
+                    "action": proxy.policy.caps.on_breach,
+                },
+            )
+            proxy.breached.set()
+            if proxy.on_breach:
+                proxy.on_breach(breach)
 
         # -- respond ------------------------------------------------------ #
         if streaming:
@@ -418,10 +427,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._copy_headers(headers)
             self.send_header("Content-Length", str(len(blob)))
             self.end_headers()
-            try:
+            with contextlib.suppress(OSError):  # pragma: no cover - client hung up
                 self.wfile.write(blob)
-            except OSError:  # pragma: no cover
-                pass
 
     def _handle_instrumentation(self, body_bytes: bytes) -> None:
         """Language-agnostic instrumentation endpoint.
@@ -503,9 +510,7 @@ class _Handler(BaseHTTPRequestHandler):
         conn = conn_cls(parts.hostname, parts.port or (443 if secure else 80), timeout=300)
         target = (parts.path.rstrip("/") + path) if parts.path and parts.path != "/" else path
         headers = {
-            k: v
-            for k, v in self.headers.items()
-            if k.lower() not in HOP_BY_HOP and k.lower() != "authorization"
+            k: v for k, v in self.headers.items() if k.lower() not in HOP_BY_HOP and k.lower() != "authorization"
         }
         if self.headers.get("Authorization"):
             headers["Authorization"] = self.headers["Authorization"]
@@ -518,7 +523,11 @@ class _Handler(BaseHTTPRequestHandler):
             self.proxy.ledger.append(
                 ev.MODEL_ERROR, {"provider": provider, "path": path, "error": f"{type(exc).__name__}: {exc}"}
             )
-            return None, [], {"bytes": json.dumps({"error": {"type": "docket_upstream_error", "message": str(exc)}}).encode()}
+            return (
+                None,
+                [],
+                {"bytes": json.dumps({"error": {"type": "docket_upstream_error", "message": str(exc)}}).encode()},
+            )
 
         status = resp.status
         resp_headers = resp.getheaders()

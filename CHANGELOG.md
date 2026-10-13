@@ -31,7 +31,11 @@ First release: a bounded, legible, provable agent run.
 - **Verification**: offline `docket verify` (Python, zero dependencies) and an independent
   verifier in `verify-js/verify.mjs` (Node standard library only), both bound to the committed
   conformance vectors in `spec/vectors/`. Checks report `SKIP` with a reason rather than
-  passing when they cannot be performed.
+  passing when they cannot be performed, and the two implementations agree on the *shape* of a
+  failure as well as the verdict: both recompute every event hash, both decline to check the
+  head when the chain is broken, and both re-bind each usage row to the recomputed event at its
+  sequence number. The Node verifier additionally checks the receipt-core digest against a
+  committed vector.
 - **Findings**: runaway loops (byte-identical repeated requests), repeated context billed
   uncached, oversized context calls, policy-blocked calls, deny-write violations, premium-model
   leakage and retry storms — each with severity, confidence (`deterministic` / `heuristic`),

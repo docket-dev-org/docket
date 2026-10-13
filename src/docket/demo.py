@@ -12,6 +12,7 @@ burns money linearly until something stops it. Here, something does.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import random
@@ -91,10 +92,8 @@ def child_main() -> int:
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")
             code = "policy"
-            try:
+            with contextlib.suppress(json.JSONDecodeError, KeyError, TypeError):
                 code = json.loads(detail)["error"].get("code") or "policy"
-            except (json.JSONDecodeError, KeyError, TypeError):
-                pass
             print(f"    agent: the boundary refused this call ({exc.code}, {code})", file=sys.stderr, flush=True)
             return None
         if proxy_root:
@@ -113,10 +112,9 @@ def child_main() -> int:
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
         )
-        try:
+        # Instrumentation must never break the agent being recorded.
+        with contextlib.suppress(Exception):  # pragma: no cover
             urllib.request.urlopen(request, timeout=5).read()
-        except Exception:  # pragma: no cover - instrumentation must never break the agent
-            pass
 
     # 1. plan (small call on an expensive model)
     if call(PLAN_MODEL, "Plan the fix for the failing reconcile() assertion.", stream=False) is None:
@@ -132,8 +130,7 @@ def child_main() -> int:
     )
     (workdir / "src" / "reconcile_fix.py").write_text("TOLERANCE = 0.0\n", encoding="utf-8")
     (workdir / ".env").write_text(
-        "# written by the agent, inside the deny_write scope\n"
-        "AWS_SECRET_ACCESS_KEY=demo-not-a-real-key\n",
+        "# written by the agent, inside the deny_write scope\n" "AWS_SECRET_ACCESS_KEY=demo-not-a-real-key\n",
         encoding="utf-8",
     )
 

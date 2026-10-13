@@ -9,6 +9,7 @@
  *   node verify-js/test.mjs
  */
 
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +19,6 @@ import { canonical, canonicalDigest, formatMicros, merkleRoot, micros, verifyInc
 const HERE = dirname(fileURLToPath(import.meta.url));
 const VECTORS = join(HERE, "..", "spec", "vectors");
 const load = (name) => JSON.parse(readFileSync(join(VECTORS, name), "utf8"));
-import { createHash } from "node:crypto";
 const sha256Hex = (text) => createHash("sha256").update(text).digest("hex");
 
 let failures = 0;
@@ -93,6 +93,17 @@ check("an edited ledger is caught", !forgedLedgerResult.ok, forgedLedgerResult.f
 const missingTable = JSON.parse(JSON.stringify(receipt));
 delete missingTable.price_table;
 check("a missing price table is caught", !verifyReceipt(missingTable).ok);
+
+// Parity with the Python verifier on the *shape* of a failure, not just the verdict:
+// a mid-file edit must not leave head or the Merkle root reporting a pass.
+const midFileEdit = JSON.parse(JSON.stringify(ledger.events));
+midFileEdit[3].data = { ...midFileEdit[3].data, injected: "by an attacker" };
+const edited = verifyReceipt(receipt, { ledgerEvents: midFileEdit });
+const status = (name) => (edited.checks.find((c) => c.name === name) ?? {}).status;
+check("a mid-file edit breaks the chain", status("ledger-chain") === "fail");
+check("a mid-file edit skips the head check", status("head") === "skip", "stored tail hash is intact; claiming a pass would mislead");
+check("a mid-file edit fails the Merkle root", status("merkle-root") === "fail");
+check("a mid-file edit invalidates usage rows", status("usage-inclusion-proofs") === "fail");
 
 console.log("money");
 check("2-decimal canonical form", formatMicros(micros("0.018000")) === "0.018000");

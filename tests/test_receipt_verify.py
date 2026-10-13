@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from docket.ledger import Ledger
 from docket.receipt import load_receipt, receipt_core, receipt_digest, write_receipt
@@ -50,7 +49,9 @@ def test_receipt_with_ledger_verifies_fully(make_receipt):
     result = verify_receipt(load_receipt(path), ledger_path=ledger_path)
     assert result.ok, result.failures
     assert {c.status for c in result.checks} <= {"pass", "skip"}
-    assert all(c.status != "skip" for c in result.checks if c.name in {"ledger-chain", "merkle-root", "ledger-file-digest"})
+    assert all(
+        c.status != "skip" for c in result.checks if c.name in {"ledger-chain", "merkle-root", "ledger-file-digest"}
+    )
 
 
 def test_verification_fails_when_the_ledger_is_edited(make_receipt):
@@ -68,9 +69,7 @@ def test_verification_fails_when_the_ledger_is_edited(make_receipt):
 def test_verification_fails_when_a_receipt_field_is_faked(make_receipt):
     receipt, path, _ = make_receipt()
     receipt["totals"]["cost_usd"] = "0.00"
-    receipt["appendix"]["usage"] = [
-        {**row, "cost_usd": "0.00"} for row in receipt["appendix"]["usage"]
-    ]
+    receipt["appendix"]["usage"] = [{**row, "cost_usd": "0.00"} for row in receipt["appendix"]["usage"]]
     result = verify_receipt(receipt)
     assert not result.ok
     assert any("totals" in f for f in result.failures)
