@@ -1,0 +1,43 @@
+"""Docket — every agent run gets a docket number.
+
+Docket is a local-first supervisor and evidence layer for AI agents:
+
+* **Bounded** — it enforces hard caps (USD, tokens, wall-clock, call counts) at the
+  boundary and stops the process when a cap is crossed.
+* **Legible** — it records model traffic, tool calls, filesystem changes, egress
+  decisions and process lifecycle into an append-only, hash-chained ledger.
+* **Provable** — it emits a *receipt* whose integrity can be checked offline by a
+  third party who trusts neither the operator nor this tool, and whose cost totals
+  can be recomputed from raw usage numbers.
+
+The public API is intentionally small. Most users want the CLI (``docket run``);
+library users want :func:`record`, :class:`Session` and :func:`verify_receipt`.
+"""
+
+from __future__ import annotations
+
+from .ledger import Ledger, Event
+from .policy import Policy, Caps
+from .receipt import build_receipt, write_receipt, load_receipt
+from .verify import verify_receipt, VerifyResult
+from .sdk import Session, record_model_call, record_note, record_tool
+
+__all__ = [
+    "Ledger",
+    "Event",
+    "Policy",
+    "Caps",
+    "build_receipt",
+    "write_receipt",
+    "load_receipt",
+    "verify_receipt",
+    "VerifyResult",
+    "Session",
+    "record_model_call",
+    "record_note",
+    "record_tool",
+    "__version__",
+]
+
+__version__ = "0.1.0"
+FORMAT_VERSION = "docket/receipt/v1"
