@@ -1,0 +1,42 @@
+# A policy for CI: small budget, no surprises, and evidence kept as an artifact.
+#
+#   docket run -p examples/ci/docket.toml --label "$GITHUB_RUN_ID" -- python agent.py
+#
+# The run exits 42 when a cap fires. In CI that is usually not a job failure — it is the
+# boundary doing its job, and the interesting artifact is the receipt.
+
+[policy]
+name = "ci"
+
+[budget]
+mode = "usd"          # switch to "quota" if the job authenticates with a subscription
+
+[caps]
+max_usd = 2.00        # a job that needs more than this deserves a conversation
+max_model_calls = 60
+max_wall_seconds = 900
+warn_at = 0.7         # warn earlier in CI: nobody is watching the meter
+on_breach = "kill"    # stop the whole process group; do not leave a loop running
+grace_seconds = 3
+
+[models]
+deny = ["*opus*", "*o3*"]     # premium tiers are not for unattended jobs
+
+[files]
+watch = ["."]
+ignore = [".git/**", ".venv/**", "node_modules/**", "dist/**", ".docket/**"]
+# Lockfiles and secrets must not move in an unattended run.
+deny_write = ["uv.lock", "poetry.lock", "package-lock.json", ".env", "**/secrets/**"]
+
+[egress]
+# Deny everything that is not needed. Include the registries your job actually uses.
+mode = "deny"
+allow = [
+  "api.anthropic.com",
+  "api.openai.com",
+  "pypi.org",
+  "files.pythonhosted.org",
+  "registry.npmjs.org",
+  "localhost",
+  "127.0.0.1",
+]

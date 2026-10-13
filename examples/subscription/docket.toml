@@ -1,0 +1,34 @@
+# Subscription plan policy: cap the window, not a fictional invoice.
+#
+#   docket run -p examples/subscription/docket.toml -- claude -p "…"
+#
+# `mode = "quota"` means Docket counts tokens and calls and refuses to invent a dollar figure,
+# because a Pro/Max/Team plan has no per-token price to multiply.
+
+[policy]
+name = "subscription-workday"
+
+[budget]
+mode = "quota"
+
+[caps]
+max_tokens = 3_000_000      # roughly a heavy afternoon of coding-agent use
+max_model_calls = 250
+max_wall_seconds = 10_800   # three hours
+warn_at = 0.8
+on_breach = "kill"          # a runaway loop at 3am should not survive until morning
+grace_seconds = 5
+
+[models]
+# Subscription plans often include several tiers; deny the ones you do not want an agent
+# choosing on your behalf, and keep an allow-list empty to mean "everything else is fine".
+deny = []
+
+[files]
+watch = ["."]
+ignore = [".git/**", ".venv/**", "node_modules/**", ".docket/**"]
+deny_write = [".env", "**/secrets/**", "*.lock", "*-lock.json"]
+
+[egress]
+mode = "deny"
+allow = ['api.anthropic.com', 'api.openai.com', 'generativelanguage.googleapis.com', 'localhost', '127.0.0.1']
