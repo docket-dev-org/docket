@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability (private)
+    url: https://github.com/docket-dev/docket/security/advisories/new
+    about: Caps that can be bypassed, receipts that verify when they should not, secrets in ledgers.
+  - name: Question or idea
+    url: https://github.com/docket-dev/docket/discussions
+    about: Ask how to adopt Docket, share a receipt, propose a format change before writing it up.
+  - name: Specification
+    url: https://github.com/docket-dev/docket/blob/main/spec/docket-receipt-1.md
+    about: The normative receipt format, if you are writing your own implementation.
+  - name: Threat model (read this before reporting a limit as a bug)
+    url: https://github.com/docket-dev/docket/blob/main/docs/threat-model.md
+    about: What Docket can and cannot establish, attacker by attacker.

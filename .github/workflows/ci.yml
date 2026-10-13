@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff==0.6.9
+      - run: ruff check src tests spec
+      - run: ruff format --check src tests spec
+
+  test:
+    name: tests (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install pytest
+      - run: PYTHONPATH=src python -m pytest tests -q
+
+  conformance:
+    name: conformance (independent verifier, node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Verify the committed vectors with the independent implementation
+        run: node verify-js/test.mjs
+      - name: Cross-check both implementations against the same receipt
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python3 spec/vectors/generate.py
+          git diff --exit-code spec/vectors/ || {
+            echo "::error::spec/vectors changed. Regenerate deliberately and commit the bytes."
+            exit 1
+          }
+
+  package:
+    name: package (clean install, then run it)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      - name: Install the wheel into a clean venv and use it as a user would
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install --no-index --find-links dist docket
+          /tmp/clean/bin/docket --version
+          cd "$(mktemp -d)"
+          /tmp/clean/bin/docket demo | tee /tmp/demo.out
+          grep -q "VERIFIED" /tmp/demo.out
+          grep -q "Runaway loop" /tmp/demo.out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*

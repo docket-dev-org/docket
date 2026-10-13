@@ -1,0 +1,48 @@
+name: Bug report
+description: Something behaved wrongly — including a receipt that verified when it should not have.
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. If this is a **security issue** (a cap that can be bypassed, a
+        forged receipt that verifies, secrets leaking into a ledger), please stop and use
+        [private vulnerability reporting](https://github.com/docket-dev/docket/security/advisories/new)
+        instead — see [SECURITY.md](https://github.com/docket-dev/docket/blob/main/SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead. Numbers matter — spend, token counts, event counts.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Smallest reproduction
+      description: |
+        A command, a policy fragment, or a test. `docket demo` reproductions are ideal.
+        If it involves a receipt, redact secrets but keep the structure.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Environment
+      description: Paste the output of `docket doctor` (it reports versions, paths and policy resolution).
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: format
+    attributes:
+      label: Receipt format version
+      description: From the receipt's `format` field, if this involves a receipt (e.g. `docket/receipt/v1`).
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before filing
+      options:
+        - label: I read the "What Docket does not do" section of the README (some surprises are documented limits, not bugs)
+        - label: If a receipt failed to verify, I have included the failing check name and its message

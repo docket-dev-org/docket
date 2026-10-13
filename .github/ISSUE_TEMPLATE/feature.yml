@@ -1,0 +1,41 @@
+name: Feature or integration request
+description: Propose a capability, an integration, or a verifier in another language.
+labels: ["enhancement", "needs triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do that Docket makes hard today?
+      description: Describe the workflow, not the implementation. "I want to hand a receipt to a client who has Node but not Python" is perfect.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - caps / enforcement
+        - ledger / receipt format
+        - verification / another language
+        - findings / analysis
+        - policy
+        - provider or framework integration
+        - docs
+        - packaging / distribution
+        - other
+    validations:
+      required: true
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Project constraints this must respect
+      options:
+        - label: It works fully offline, without an account (checked to confirm)
+        - label: It adds no runtime dependency to the core (or is behind an optional extra)
+        - label: If it changes anything that is hashed, it follows the format-change process in CONTRIBUTING.md
