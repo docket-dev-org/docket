@@ -1,0 +1,225 @@
+"""Receipts: the compact artifact you can hand to someone else.
+
+A receipt has to answer three questions without the ledger, without the tool and
+without the vendor:
+
+1. *What happened?* — totals, model mix, files touched, denials, cap events.
+2. *Is this record intact?* — every usage row carries the hash of the ledger event
+   it came from plus a Merkle inclusion proof against the receipt's root, so the
+   receipt is cryptographically bound to the full ledger without shipping it.
+3. *Is the arithmetic right?* — the price table used is embedded, so the cost
+   totals can be recomputed from raw token counts by anyone.
+
+The result is a file of a few kilobytes that a reviewer, an auditor or a customer
+can check offline. See ``docs/verification.md``.
+"""
+
+from __future__ import annotations
+
+import time
+from decimal import Decimal
+from pathlib import Path
+from typing import Any, Iterable
+
+from . import events as ev
+from .canon import digest_of, merkle_proof, sha256_hex, usd
+from .explain import analyse
+from .ledger import GENESIS, FORMAT as LEDGER_FORMAT, Event, Ledger
+from .policy import Policy
+from .pricing import CostMeter, PriceTable
+from .signing import seal as make_seal
+from .signing import sign as make_signature
+from .util import atomic_write
+
+FORMAT = "docket/receipt/v1"
+TOOL_VERSION = "0.1.0"
+MAX_PROVEN_USAGE_ROWS = 4000
+
+
+def _usage_rows(events: list[Event], proofs: dict[int, list[dict[str, str]]] | None) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for event in events:
+        if event.type != ev.MODEL_RESPONSE:
+            continue
+        data = event.data
+        usage = data.get("usage") or {}
+        row: dict[str, Any] = {
+            "seq": event.seq,
+            "model": data.get("model"),
+            "provider": data.get("provider"),
+            "input_tokens": int(usage.get("input_tokens") or 0),
+            "cached_input_tokens": int(usage.get("cached_input_tokens") or 0),
+            "output_tokens": int(usage.get("output_tokens") or 0),
+            "usage_source": data.get("usage_source", "reported"),
+            "cost_usd": str(data.get("cost_usd", "0.00")),
+            "event_hash": event.hash,
+        }
+        if proofs is not None and event.seq in proofs:
+            row["merkle_path"] = proofs[event.seq]
+        rows.append(row)
+    return rows
+
+
+def build_receipt(
+    *,
+    events: list[Event],
+    ledger: Ledger,
+    meter: CostMeter,
+    policy: Policy,
+    session_id: str,
+    docket_number: str,
+    exit_code: int,
+    duration_seconds: float,
+    price_table: PriceTable,
+    proxy_stats: Any | None = None,
+    seal_key: str | None = None,
+    sign_key: str | Path | None = None,
+    label: str | None = None,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    """Assemble a receipt from a finished session.
+
+    ``created_at`` is injectable so that conformance vectors can be byte-stable.
+    """
+    hashes = [e.hash for e in events]
+    proof_map: dict[int, list[dict[str, str]]] = {}
+    if len(events) <= MAX_PROVEN_USAGE_ROWS:
+        for index, event in enumerate(events):
+            if event.type == ev.MODEL_RESPONSE:
+                proof_map[event.seq] = merkle_proof(hashes, index)
+
+    usage_rows = _usage_rows(events, proof_map)
+    counts = ledger.types()
+    findings = analyse(events, price_table=price_table, policy=policy)
+
+    files = [e.data for e in events if e.type == ev.FS_CHANGE]
+    file_summary = {
+        "changed": len(files),
+        "added": sum(1 for f in files if f.get("change") == "added"),
+        "modified": sum(1 for f in files if f.get("change") == "modified"),
+        "removed": sum(1 for f in files if f.get("change") == "removed"),
+        "violations": sum(1 for e in events if e.type == ev.POLICY_VIOLATION and e.data.get("rule") == "files.deny_write"),
+        "top_paths": [f.get("path") for f in files[:25]],
+    }
+
+    by_provider: dict[str, int] = {}
+    for event in events:
+        if event.type == ev.MODEL_RESPONSE:
+            provider = str(event.data.get("provider", "unknown"))
+            by_provider[provider] = by_provider.get(provider, 0) + 1
+
+    tools = [e.data for e in events if e.type == ev.TOOL_CALL]
+    tool_names = sorted({str(t.get("name", "unknown")) for t in tools})
+    tool_failures = sum(1 for e in events if e.type == ev.TOOL_RESULT and e.data.get("ok") is False)
+
+    session_start = next((e.data for e in events if e.type == ev.SESSION_START), {})
+    session_end = next((e.data for e in events if e.type == ev.SESSION_END), {})
+
+    receipt: dict[str, Any] = {
+        "format": FORMAT,
+        "docket_number": docket_number,
+        "label": label,
+        "created_at": created_at or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "tool": {"name": "docket", "version": TOOL_VERSION, "format": FORMAT},
+        "session": {
+            "id": session_id,
+            "argv": session_start.get("argv", []),
+            "cwd": session_start.get("cwd"),
+            "exit_code": exit_code,
+            # decimal string, not a float: hashed structures contain no floats (§3.3)
+            "duration_seconds": f"{duration_seconds:.3f}",
+            "breached": session_end.get("breached"),
+            "interrupted": session_end.get("interrupted", False),
+            "host": session_start.get("host", {}),
+        },
+        "policy": {
+            "name": policy.name,
+            "digest": policy.digest(),
+            "document": policy.to_dict(),
+            "source": policy.source_path,
+        },
+        "totals": meter.to_dict(),
+        "model_calls": {
+            "count": meter.calls,
+            "by_provider": by_provider,
+            "denied": counts.get(ev.MODEL_DENIED, 0),
+            "errors": counts.get(ev.MODEL_ERROR, 0),
+        },
+        "tools": {"calls": len(tools), "names": tool_names, "failures": tool_failures},
+        "files": file_summary,
+        "network": {
+            "tunnels_allowed": counts.get(ev.NET_ALLOWED, 0),
+            "tunnels_denied": counts.get(ev.NET_DENIED, 0),
+        },
+        "caps": {"exceeded": counts.get(ev.CAP_EXCEEDED, 0), "warnings": counts.get(ev.CAP_WARNING, 0)},
+        "event_counts": counts,
+        "ledger": {
+            "format": LEDGER_FORMAT,
+            "events": len(events),
+            "head": ledger.head,
+            "genesis": GENESIS,
+            "merkle_root": ledger.merkle_root(),
+            "file_sha256": ledger.file_sha256(),
+            "chain": "sha256(prev + canonical_json(event))",
+        },
+        "price_table": {
+            "schema": price_table.document.get("_meta", {}).get("schema", "docket/prices/v1"),
+            "as_of": price_table.as_of,
+            "digest": price_table.digest(),
+            "document": price_table.document,
+        },
+        "appendix": {
+            "usage": usage_rows,
+            "proof_included": bool(proof_map) and len(usage_rows) > 0,
+            "note": (
+                "Each usage row carries the hash of its ledger event and a Merkle inclusion "
+                "proof against ledger.merkle_root. Recompute cost from these rows using the "
+                "embedded price_table to check this receipt without trusting docket."
+            ),
+        },
+        "findings": findings,
+        "limits_disclosure": policy.limits_disclosure(),
+    }
+    if proxy_stats is not None:
+        receipt["proxy"] = {
+            "bytes_from_upstream": proxy_stats.bytes_from_upstream,
+            "denials": proxy_stats.denials,
+        }
+
+    core = receipt
+    if seal_key:
+        receipt["seal"] = make_seal(core, seal_key)
+    if sign_key:
+        receipt["signature"] = make_signature(receipt, sign_key)
+    else:
+        receipt["signature"] = None
+    receipt.setdefault("seal", None)
+    return receipt
+
+
+def receipt_core(receipt: dict[str, Any]) -> dict[str, Any]:
+    """Everything except ``seal`` and ``signature`` (what a seal covers)."""
+    return {k: v for k, v in receipt.items() if k not in {"seal", "signature"}}
+
+
+def receipt_signable(receipt: dict[str, Any]) -> dict[str, Any]:
+    """Everything except ``signature`` (what a signature covers, including the seal)."""
+    return {k: v for k, v in receipt.items() if k != "signature"}
+
+
+def write_receipt(receipt: dict[str, Any], path: str | Path) -> Path:
+    import json
+
+    atomic_write(path, json.dumps(receipt, indent=2, ensure_ascii=False) + "\n")
+    return Path(path)
+
+
+def load_receipt(path: str | Path) -> dict[str, Any]:
+    import json
+
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def receipt_digest(receipt: dict[str, Any]) -> str:
+    """Content digest of a receipt, ignoring its own seal and signature fields."""
+    return digest_of(receipt_core(receipt))
