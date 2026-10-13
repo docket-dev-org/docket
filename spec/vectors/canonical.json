@@ -1,0 +1,44 @@
+{
+  "schema": "docket/vectors/canonical/v1",
+  "cases": [
+    {
+      "input": {
+        "b": 1,
+        "a": 2
+      },
+      "canonical": "{\"a\":2,\"b\":1}",
+      "sha256": "d3626ac30a87e6f7a6428233b3c68299976865fa5508e4267c5415c76af7a772"
+    },
+    {
+      "input": {
+        "z": [
+          3,
+          2,
+          1
+        ],
+        "a": {
+          "y": true,
+          "x": null
+        }
+      },
+      "canonical": "{\"a\":{\"x\":null,\"y\":true},\"z\":[3,2,1]}",
+      "sha256": "ac47b872b8fce6af8630603275aeec6362f52f9feeafd9ea4de2c83b0599cbbe"
+    },
+    {
+      "input": {
+        "s": "café — ☕",
+        "n": 0
+      },
+      "canonical": "{\"n\":0,\"s\":\"café — ☕\"}",
+      "sha256": "0023c4d2b3bfa3b45d9a5c0ee0f55e18f838ebb9667b15eecdd9b113307409d7"
+    },
+    {
+      "input": {
+        "price": "0.018000",
+        "tokens": 1200
+      },
+      "canonical": "{\"price\":\"0.018000\",\"tokens\":1200}",
+      "sha256": "537699969ddf8b13cdc9a5fc59eb3b70b15d25cfbc3a9a378d10b60b748398da"
+    }
+  ]
+}

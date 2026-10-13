@@ -1,0 +1,456 @@
+{
+  "format": "docket/receipt/v1",
+  "docket_number": "DKT-20260102-VECT01",
+  "label": null,
+  "created_at": "2026-01-02T03:04:05Z",
+  "tool": {
+    "name": "docket",
+    "version": "0.1.0",
+    "format": "docket/receipt/v1"
+  },
+  "session": {
+    "id": "vectorsession",
+    "argv": [
+      "agent",
+      "--task",
+      "vector"
+    ],
+    "cwd": "/srv/vectors",
+    "exit_code": 0,
+    "duration_seconds": "2.500",
+    "breached": null,
+    "interrupted": false,
+    "host": {
+      "platform": "vector",
+      "python": "3.13.0",
+      "machine": "x86_64"
+    }
+  },
+  "policy": {
+    "name": "vector",
+    "digest": "fa2fe24519ebe475cccab02437c2e3edb07be9ff57030ff4927673e52e731df7",
+    "document": {
+      "name": "vector",
+      "caps": {
+        "max_usd": "5.00",
+        "max_tokens": null,
+        "max_model_calls": null,
+        "max_wall_seconds": null,
+        "warn_at": "0.8",
+        "on_breach": "kill",
+        "grace_seconds": 5
+      },
+      "models": {
+        "allow": [],
+        "deny": []
+      },
+      "egress": {
+        "mode": "deny",
+        "allow": [
+          "api.anthropic.com",
+          "api.openai.com",
+          "generativelanguage.googleapis.com",
+          "api.deepseek.com",
+          "api.mistral.ai",
+          "openrouter.ai",
+          "api.groq.com",
+          "localhost",
+          "127.0.0.1"
+        ]
+      },
+      "files": {
+        "watch": [
+          "."
+        ],
+        "ignore": [],
+        "deny_write": []
+      },
+      "budget": {
+        "mode": "usd"
+      }
+    },
+    "source": null
+  },
+  "totals": {
+    "calls": 4,
+    "input_tokens": 9000,
+    "cached_input_tokens": 1000,
+    "output_tokens": 900,
+    "total_tokens": 9900,
+    "cost_usd": "0.013500",
+    "cost_basis": "mixed: reported and estimated usage",
+    "usage_reported_calls": 3,
+    "usage_estimated_calls": 1,
+    "assumed_price_models": [
+      "unlisted-model-1"
+    ],
+    "by_model": [
+      {
+        "model": "claude-sonnet-5",
+        "calls": 2,
+        "input_tokens": 2000,
+        "cached_input_tokens": 1000,
+        "output_tokens": 400,
+        "cost_usd": "0.009300"
+      },
+      {
+        "model": "unlisted-model-1",
+        "calls": 1,
+        "input_tokens": 2000,
+        "cached_input_tokens": 0,
+        "output_tokens": 100,
+        "cost_usd": "0.003500"
+      },
+      {
+        "model": "gpt-6-luna",
+        "calls": 1,
+        "input_tokens": 5000,
+        "cached_input_tokens": 0,
+        "output_tokens": 400,
+        "cost_usd": "0.000700"
+      }
+    ]
+  },
+  "model_calls": {
+    "count": 4,
+    "by_provider": {
+      "vector": 4
+    },
+    "denied": 0,
+    "errors": 0
+  },
+  "tools": {
+    "calls": 1,
+    "names": [
+      "read_file"
+    ],
+    "failures": 0
+  },
+  "files": {
+    "changed": 0,
+    "added": 0,
+    "modified": 0,
+    "removed": 0,
+    "violations": 0,
+    "top_paths": []
+  },
+  "network": {
+    "tunnels_allowed": 0,
+    "tunnels_denied": 0
+  },
+  "caps": {
+    "exceeded": 0,
+    "warnings": 0
+  },
+  "event_counts": {
+    "session.start": 1,
+    "policy.applied": 1,
+    "model.request": 4,
+    "model.response": 4,
+    "tool.call": 1,
+    "session.end": 1
+  },
+  "ledger": {
+    "format": "docket/ledger/v1",
+    "events": 12,
+    "head": "676381c513abe9cfcd54b8df9b8d7ee7de74ae1f7b140bd8bb619a77d0a31b74",
+    "genesis": "adf41ffdf0fd9128f8f4fe88fa09fba359e27453b02be87886b621a2c2b0f7dc",
+    "merkle_root": "ac25baab32787ae72e90f526927c28e5588c591a6500adb75ba62918ab89990f",
+    "file_sha256": "361a6ee79a26d5516ac9d5af7d45618b5aa57b98d648bdea3e5e48fb530c00bf",
+    "chain": "sha256(prev + canonical_json(event))"
+  },
+  "price_table": {
+    "schema": "docket/prices/v1",
+    "as_of": "2026-10-13",
+    "digest": "61cd61c7fe295ef1e93b41907c0d73c5075aa63c6d730c325c4e9def95cc53f0",
+    "document": {
+      "_meta": {
+        "schema": "docket/prices/v1",
+        "as_of": "2026-10-13",
+        "currency": "USD",
+        "unit": "per_million_tokens",
+        "note": "List prices for public APIs, used to ESTIMATE cost from token counts reported by the provider. Docket never bills anyone and never claims these are the prices you pay: negotiated, regional, batch, flex, priority and subscription pricing all differ. Amounts are strings to keep verification reproducible across languages.",
+        "sources": [
+          "https://developers.openai.com/api/docs/pricing",
+          "https://www.anthropic.com/pricing",
+          "https://ai.google.dev/gemini-api/docs/pricing",
+          "https://api-docs.deepseek.com/quick_start/pricing"
+        ],
+        "matched_by": "fnmatch-style glob, case-insensitive, FIRST MATCH IN FILE ORDER WINS, so narrower families must be listed before wider ones (see gpt-6-luna* before gpt-6*)"
+      },
+      "families": [
+        {
+          "pattern": "gpt-6-luna*",
+          "input": "0.10",
+          "cached_input": "0.01",
+          "output": "0.50",
+          "source": "OpenAI, standard tier, smallest of the gpt-6 family (must precede gpt-6*)"
+        },
+        {
+          "pattern": "gpt-6.1*",
+          "input": "2.00",
+          "cached_input": "0.10",
+          "output": "10.00",
+          "source": "OpenAI, standard tier, short context"
+        },
+        {
+          "pattern": "gpt-6*",
+          "input": "10.00",
+          "cached_input": "1.00",
+          "output": "50.00",
+          "source": "OpenAI, standard tier, short context (flagship tier)"
+        },
+        {
+          "pattern": "gpt-5.6*",
+          "input": "4.00",
+          "cached_input": "0.40",
+          "output": "20.00",
+          "source": "OpenAI, standard tier, short context"
+        },
+        {
+          "pattern": "gpt-5*",
+          "input": "1.25",
+          "cached_input": "0.125",
+          "output": "10.00",
+          "source": "OpenAI, standard tier, short context"
+        },
+        {
+          "pattern": "gpt-4.1*",
+          "input": "2.00",
+          "cached_input": "0.50",
+          "output": "8.00",
+          "source": "OpenAI, standard tier"
+        },
+        {
+          "pattern": "o4* / o3*",
+          "input": "2.00",
+          "cached_input": "0.50",
+          "output": "8.00",
+          "source": "OpenAI, standard tier (reasoning)"
+        },
+        {
+          "pattern": "*opus*",
+          "input": "5.00",
+          "cached_input": "0.50",
+          "output": "25.00",
+          "source": "Anthropic listed API pricing, Claude Opus tier"
+        },
+        {
+          "pattern": "*sonnet*",
+          "input": "3.00",
+          "cached_input": "0.30",
+          "output": "15.00",
+          "source": "Anthropic listed API pricing, Claude Sonnet tier"
+        },
+        {
+          "pattern": "*haiku*",
+          "input": "1.00",
+          "cached_input": "0.10",
+          "output": "5.00",
+          "source": "Anthropic listed API pricing, Claude Haiku tier"
+        },
+        {
+          "pattern": "gemini-*-pro*",
+          "input": "2.00",
+          "cached_input": "0.20",
+          "output": "12.00",
+          "source": "Google Gemini API pricing"
+        },
+        {
+          "pattern": "gemini-*-flash*",
+          "input": "0.30",
+          "cached_input": "0.03",
+          "output": "2.50",
+          "source": "Google Gemini API pricing"
+        },
+        {
+          "pattern": "deepseek-*pro*",
+          "input": "0.44",
+          "cached_input": "0.004",
+          "output": "0.87",
+          "source": "DeepSeek API pricing"
+        },
+        {
+          "pattern": "deepseek-*",
+          "input": "0.14",
+          "cached_input": "0.003",
+          "output": "0.28",
+          "source": "DeepSeek API pricing"
+        },
+        {
+          "pattern": "*mini*",
+          "input": "0.25",
+          "cached_input": "0.025",
+          "output": "2.00",
+          "source": "OpenAI, standard tier (small model)"
+        },
+        {
+          "pattern": "*nano*",
+          "input": "0.05",
+          "cached_input": "0.005",
+          "output": "0.40",
+          "source": "OpenAI, standard tier (smallest model)"
+        },
+        {
+          "pattern": "llama-*",
+          "input": "0.00",
+          "cached_input": "0.00",
+          "output": "0.00",
+          "source": "self-hosted/open-weight: zero marginal list price"
+        },
+        {
+          "pattern": "*",
+          "input": "1.25",
+          "cached_input": "0.125",
+          "output": "10.00",
+          "source": "fallback: mid-tier assumption, flagged as 'assumed' in the receipt"
+        }
+      ],
+      "fallback_marker": "assumed"
+    }
+  },
+  "appendix": {
+    "usage": [
+      {
+        "seq": 3,
+        "model": "claude-sonnet-5",
+        "provider": "vector",
+        "input_tokens": 1000,
+        "cached_input_tokens": 0,
+        "output_tokens": 200,
+        "usage_source": "reported",
+        "cost_usd": "0.006000",
+        "event_hash": "75ec8f4dd2acd804736e03a0b7607aa8e8ceda7022c61c53a4c2ef79284cb83d",
+        "merkle_path": [
+          {
+            "side": "left",
+            "hash": "c5aef2c23ecc6e19e7716a7c12128b4084a4f3e73acc71ad3fb38861a0206acf"
+          },
+          {
+            "side": "left",
+            "hash": "ef457583c28232ff9107361595323ed6865581f21944ac130b86f4a4780800f0"
+          },
+          {
+            "side": "right",
+            "hash": "f66bf77657871c981de2b0c70c05ae80eda54577ed4885241acfd768161117c6"
+          },
+          {
+            "side": "right",
+            "hash": "0641a317642784db12a97934c86299c40871f3c8cec8e774261769980bd990be"
+          }
+        ]
+      },
+      {
+        "seq": 5,
+        "model": "claude-sonnet-5",
+        "provider": "vector",
+        "input_tokens": 1000,
+        "cached_input_tokens": 1000,
+        "output_tokens": 200,
+        "usage_source": "reported",
+        "cost_usd": "0.003300",
+        "event_hash": "744513f0b60f9446dcfda399093353c9290390147c8cd789a916c414178d55c1",
+        "merkle_path": [
+          {
+            "side": "left",
+            "hash": "9e523a147b46514717bacec94de1fbc008b7b855eddc9a5e7ded4be25a2a8d7a"
+          },
+          {
+            "side": "right",
+            "hash": "b238b8d3de40e58d16a7e34403f119552fc61567b1ed2e7c74af307d9fa9b9dc"
+          },
+          {
+            "side": "left",
+            "hash": "24e0fe69402f94bcdae12ab5f295256aba2b128b520930051d9406b4cf9e0379"
+          },
+          {
+            "side": "right",
+            "hash": "0641a317642784db12a97934c86299c40871f3c8cec8e774261769980bd990be"
+          }
+        ]
+      },
+      {
+        "seq": 7,
+        "model": "gpt-6-luna",
+        "provider": "vector",
+        "input_tokens": 5000,
+        "cached_input_tokens": 0,
+        "output_tokens": 400,
+        "usage_source": "reported",
+        "cost_usd": "0.000700",
+        "event_hash": "e2827c3efc6521c096912e23afabb9dda98898c500bb53ca5e3acc5663168877",
+        "merkle_path": [
+          {
+            "side": "left",
+            "hash": "56f24a54c8c38119d0a069541bcee9db811573dcd6aa2a301de0a60f6aea7422"
+          },
+          {
+            "side": "left",
+            "hash": "1969937a70ef43a82e418e5b4c9fe8c463cd88f5d5a725f56cf89045d611cbab"
+          },
+          {
+            "side": "left",
+            "hash": "24e0fe69402f94bcdae12ab5f295256aba2b128b520930051d9406b4cf9e0379"
+          },
+          {
+            "side": "right",
+            "hash": "0641a317642784db12a97934c86299c40871f3c8cec8e774261769980bd990be"
+          }
+        ]
+      },
+      {
+        "seq": 9,
+        "model": "unlisted-model-1",
+        "provider": "vector",
+        "input_tokens": 2000,
+        "cached_input_tokens": 0,
+        "output_tokens": 100,
+        "usage_source": "estimated",
+        "cost_usd": "0.003500",
+        "event_hash": "0eb14359b0fbb5172c30872ce1ee066fdb836dc35c9a3966c0a82a831db10d88",
+        "merkle_path": [
+          {
+            "side": "left",
+            "hash": "e166cf067056bfbfc4a62c262455d80974b6b56d0b98b6488b43134a7f4ac51f"
+          },
+          {
+            "side": "right",
+            "hash": "a96aab25f48030c17af836015d02c7ed3e6493c3ab44bf803e4e183eb02dd52e"
+          },
+          {
+            "side": "left",
+            "hash": "ff440724eeb37d5bc86f1761b96e988697f64d25b7ecac3b57b006202741a8ce"
+          }
+        ]
+      }
+    ],
+    "proof_included": true,
+    "note": "Each usage row carries the hash of its ledger event and a Merkle inclusion proof against ledger.merkle_root. Recompute cost from these rows using the embedded price_table to check this receipt without trusting docket."
+  },
+  "findings": [],
+  "limits_disclosure": {
+    "enforced_before_send": [
+      "per-session USD ceiling (where usage is reported or estimated)",
+      "per-session token ceiling",
+      "per-session model-call ceiling",
+      "model allow/deny rules",
+      "wall-clock ceiling (by terminating the supervised process)"
+    ],
+    "recorded_not_enforced": [
+      "filesystem changes under watched paths (detected by snapshot diffing)",
+      "writes to deny_write paths (proven after the fact, flagged as violations)",
+      "process spawn/exit of the supervised child only, not its descendants' syscalls"
+    ],
+    "not_observed": [
+      "traffic that does not pass through the Docket boundary (e.g. an agent configured with a direct provider URL, or HTTPS tunnels when egress.mode = tunnel)",
+      "prompts, completions or file contents unless --record-bodies is enabled",
+      "actions taken by processes outside the supervised process tree"
+    ],
+    "trust_assumptions": [
+      "the operator ran Docket honestly; the chain proves what was written, not that nothing else happened",
+      "reported token usage is the provider's own count; estimated usage is marked as estimated"
+    ]
+  },
+  "signature": null,
+  "seal": null
+}

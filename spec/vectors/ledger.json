@@ -1,0 +1,260 @@
+{
+  "schema": "docket/vectors/ledger/v1",
+  "genesis": "adf41ffdf0fd9128f8f4fe88fa09fba359e27453b02be87886b621a2c2b0f7dc",
+  "note": "regenerate together with the receipt vector: the receipt binds these hashes",
+  "events": [
+    {
+      "seq": 0,
+      "ts": "2026-01-02T03:04:05Z",
+      "type": "session.start",
+      "data": {
+        "session_id": "vectorsession",
+        "docket_number": "DKT-20260102-VECT01",
+        "argv": [
+          "agent",
+          "--task",
+          "vector"
+        ],
+        "cwd": "/srv/vectors",
+        "host": {
+          "platform": "vector",
+          "python": "3.13.0",
+          "machine": "x86_64"
+        }
+      },
+      "prev": "adf41ffdf0fd9128f8f4fe88fa09fba359e27453b02be87886b621a2c2b0f7dc",
+      "hash": "5c9e8b68b42a8f76c0455fd5e3b936f90f6d720d2a0efe02892b76a44a0a184c"
+    },
+    {
+      "seq": 1,
+      "ts": "2026-01-02T03:04:05Z",
+      "type": "policy.applied",
+      "data": {
+        "name": "vector",
+        "digest": "fa2fe24519ebe475cccab02437c2e3edb07be9ff57030ff4927673e52e731df7",
+        "document": {
+          "name": "vector",
+          "caps": {
+            "max_usd": "5.00",
+            "max_tokens": null,
+            "max_model_calls": null,
+            "max_wall_seconds": null,
+            "warn_at": "0.8",
+            "on_breach": "kill",
+            "grace_seconds": 5
+          },
+          "models": {
+            "allow": [],
+            "deny": []
+          },
+          "egress": {
+            "mode": "deny",
+            "allow": [
+              "api.anthropic.com",
+              "api.openai.com",
+              "generativelanguage.googleapis.com",
+              "api.deepseek.com",
+              "api.mistral.ai",
+              "openrouter.ai",
+              "api.groq.com",
+              "localhost",
+              "127.0.0.1"
+            ]
+          },
+          "files": {
+            "watch": [
+              "."
+            ],
+            "ignore": [],
+            "deny_write": []
+          },
+          "budget": {
+            "mode": "usd"
+          }
+        }
+      },
+      "prev": "5c9e8b68b42a8f76c0455fd5e3b936f90f6d720d2a0efe02892b76a44a0a184c",
+      "hash": "cfaefb838e4caed3026bb1bb27a3a7b5ab169c76627498402644c55f5265bc8e"
+    },
+    {
+      "seq": 2,
+      "ts": "2026-01-02T03:04:05Z",
+      "type": "model.request",
+      "data": {
+        "provider": "vector",
+        "model": "claude-sonnet-5",
+        "fingerprint": "fp00",
+        "request_sha256": "c1185fd39a300b0e112647404e3fbf535c94802eb8546025f6c2a046b5710dee",
+        "streaming": false,
+        "body_bytes": 512
+      },
+      "prev": "cfaefb838e4caed3026bb1bb27a3a7b5ab169c76627498402644c55f5265bc8e",
+      "hash": "1e8a3e21876c24e151e17a6be99d4fecc5c0a0f2f6ea759608df3880781c4019"
+    },
+    {
+      "seq": 3,
+      "ts": "2026-01-02T03:04:05Z",
+      "type": "model.response",
+      "data": {
+        "provider": "vector",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "latency_ms": 100,
+        "usage": {
+          "input_tokens": 1000,
+          "cached_input_tokens": 0,
+          "output_tokens": 200
+        },
+        "usage_source": "reported",
+        "cost_usd": "0.006000",
+        "cumulative_cost_usd": "0.006000"
+      },
+      "prev": "1e8a3e21876c24e151e17a6be99d4fecc5c0a0f2f6ea759608df3880781c4019",
+      "hash": "75ec8f4dd2acd804736e03a0b7607aa8e8ceda7022c61c53a4c2ef79284cb83d"
+    },
+    {
+      "seq": 4,
+      "ts": "2026-01-02T03:04:05Z",
+      "type": "model.request",
+      "data": {
+        "provider": "vector",
+        "model": "claude-sonnet-5",
+        "fingerprint": "fp01",
+        "request_sha256": "19f1064b619d49d35392eac7261cd7266c720671fc594f4b226f32bf0bee74ba",
+        "streaming": false,
+        "body_bytes": 512
+      },
+      "prev": "75ec8f4dd2acd804736e03a0b7607aa8e8ceda7022c61c53a4c2ef79284cb83d",
+      "hash": "b7ef11c06ca2270473a56c96ef7d55b0f3e02aa08422a11f20571f414b25c6a5"
+    },
+    {
+      "seq": 5,
+      "ts": "2026-01-02T03:04:05Z",
+      "type": "model.response",
+      "data": {
+        "provider": "vector",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "latency_ms": 101,
+        "usage": {
+          "input_tokens": 1000,
+          "cached_input_tokens": 1000,
+          "output_tokens": 200
+        },
+        "usage_source": "reported",
+        "cost_usd": "0.003300",
+        "cumulative_cost_usd": "0.009300"
+      },
+      "prev": "b7ef11c06ca2270473a56c96ef7d55b0f3e02aa08422a11f20571f414b25c6a5",
+      "hash": "744513f0b60f9446dcfda399093353c9290390147c8cd789a916c414178d55c1"
+    },
+    {
+      "seq": 6,
+      "ts": "2026-01-02T03:04:05Z",
+      "type": "model.request",
+      "data": {
+        "provider": "vector",
+        "model": "gpt-6-luna",
+        "fingerprint": "fp02",
+        "request_sha256": "6fc63565247226593c49a36e9da488e6e1c33a9a1fcd8a76f55573483136b880",
+        "streaming": false,
+        "body_bytes": 512
+      },
+      "prev": "744513f0b60f9446dcfda399093353c9290390147c8cd789a916c414178d55c1",
+      "hash": "49c9d8c103ae9153a96d0237fbfa0a7ef0023a1e63020f6a85d96fbab1b2668b"
+    },
+    {
+      "seq": 7,
+      "ts": "2026-01-02T03:04:05Z",
+      "type": "model.response",
+      "data": {
+        "provider": "vector",
+        "model": "gpt-6-luna",
+        "status": 200,
+        "latency_ms": 102,
+        "usage": {
+          "input_tokens": 5000,
+          "cached_input_tokens": 0,
+          "output_tokens": 400
+        },
+        "usage_source": "reported",
+        "cost_usd": "0.000700",
+        "cumulative_cost_usd": "0.010000"
+      },
+      "prev": "49c9d8c103ae9153a96d0237fbfa0a7ef0023a1e63020f6a85d96fbab1b2668b",
+      "hash": "e2827c3efc6521c096912e23afabb9dda98898c500bb53ca5e3acc5663168877"
+    },
+    {
+      "seq": 8,
+      "ts": "2026-01-02T03:04:05Z",
+      "type": "model.request",
+      "data": {
+        "provider": "vector",
+        "model": "unlisted-model-1",
+        "fingerprint": "fp03",
+        "request_sha256": "6a9bf8080a9636f003c3b91da45caf49d44e2fb974eca1d0a3ad51fd943f942b",
+        "streaming": false,
+        "body_bytes": 512
+      },
+      "prev": "e2827c3efc6521c096912e23afabb9dda98898c500bb53ca5e3acc5663168877",
+      "hash": "8c8cb8ffd036f49be47ecf68b9fc658ad4f07689118138f5ae6a9f6f1c2a0819"
+    },
+    {
+      "seq": 9,
+      "ts": "2026-01-02T03:04:05Z",
+      "type": "model.response",
+      "data": {
+        "provider": "vector",
+        "model": "unlisted-model-1",
+        "status": 200,
+        "latency_ms": 103,
+        "usage": {
+          "input_tokens": 2000,
+          "cached_input_tokens": 0,
+          "output_tokens": 100
+        },
+        "usage_source": "estimated",
+        "cost_usd": "0.003500",
+        "cumulative_cost_usd": "0.013500"
+      },
+      "prev": "8c8cb8ffd036f49be47ecf68b9fc658ad4f07689118138f5ae6a9f6f1c2a0819",
+      "hash": "0eb14359b0fbb5172c30872ce1ee066fdb836dc35c9a3966c0a82a831db10d88"
+    },
+    {
+      "seq": 10,
+      "ts": "2026-01-02T03:04:05Z",
+      "type": "tool.call",
+      "data": {
+        "name": "read_file",
+        "args_digest": "090772cf4068973daad3f715eb788d39fe2c02be42efd86de81f0e59198d6237",
+        "result_bytes": 4096
+      },
+      "prev": "0eb14359b0fbb5172c30872ce1ee066fdb836dc35c9a3966c0a82a831db10d88",
+      "hash": "bcea2ef88ab6b0bcd9fbfd4f55a058080df400663033b4a3ab0096125947b7d0"
+    },
+    {
+      "seq": 11,
+      "ts": "2026-01-02T03:04:05Z",
+      "type": "session.end",
+      "data": {
+        "exit_code": 0,
+        "duration_seconds": "2.500",
+        "breached": null,
+        "interrupted": false
+      },
+      "prev": "bcea2ef88ab6b0bcd9fbfd4f55a058080df400663033b4a3ab0096125947b7d0",
+      "hash": "676381c513abe9cfcd54b8df9b8d7ee7de74ae1f7b140bd8bb619a77d0a31b74"
+    }
+  ],
+  "head": "676381c513abe9cfcd54b8df9b8d7ee7de74ae1f7b140bd8bb619a77d0a31b74",
+  "merkle_root": "ac25baab32787ae72e90f526927c28e5588c591a6500adb75ba62918ab89990f",
+  "file_sha256": "361a6ee79a26d5516ac9d5af7d45618b5aa57b98d648bdea3e5e48fb530c00bf",
+  "counts": {
+    "session.start": 1,
+    "policy.applied": 1,
+    "model.request": 4,
+    "model.response": 4,
+    "tool.call": 1,
+    "session.end": 1
+  }
+}

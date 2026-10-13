@@ -1,0 +1,134 @@
+{
+  "schema": "docket/vectors/merkle/v1",
+  "leaf_prefix": "0x00",
+  "node_prefix": "0x01",
+  "rule": "RFC 6962: odd node promoted unchanged; empty tree = sha256('')",
+  "leaves": [
+    "d2dbf006f96dd05044a8f63d8f118f23925ba4cc5750f8b6c8e287fd506c8188",
+    "4140bf0e8569ed03ec838871ff2f190e9b3ea86bc083d7e9901049f75f00e855",
+    "649837ddcb7e1967086d7d35aaef7b975c513815d96fc6e70015e93a2bfe0f9a",
+    "9fde56c376760bd399b82eb8569229a2dff19219411ac71154dfeab2cf502454",
+    "697f943b9ec5f90eddda8ae7473f5eb688187e3467f312fefa8677dde255042c",
+    "fb1ec199d052a3ce6d141a28c2d706a51b99f09c2a8d61243062a046f06b68f1",
+    "add4b896cb06bf0d24fd68948f1e9f7e0084b19f7b37f3fbc0f4b5d0d58ae277"
+  ],
+  "root": "5d1a589fae6e1b4d2b212b90976159488957ddc2e2e0ec40d8e7a8b5fbdd3424",
+  "proofs": [
+    {
+      "index": 0,
+      "path": [
+        {
+          "side": "right",
+          "hash": "5c47f5b6a93755532767072086e2f0aa6ca762953a9848ede3c5df8281cf31f9"
+        },
+        {
+          "side": "right",
+          "hash": "7f9815265debfeaf43ce101e0f6db67ee115d051cfefb3cabe53ba37fe445f38"
+        },
+        {
+          "side": "right",
+          "hash": "46132ac4d4a6bb93e36d698e3bf33e718ea4ba308dd3ce0ed7e98237ad1493d8"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "path": [
+        {
+          "side": "left",
+          "hash": "3f16c0c2cd28088814f15c300b46158e83203cde690169a74602ca926fa2a8bc"
+        },
+        {
+          "side": "right",
+          "hash": "7f9815265debfeaf43ce101e0f6db67ee115d051cfefb3cabe53ba37fe445f38"
+        },
+        {
+          "side": "right",
+          "hash": "46132ac4d4a6bb93e36d698e3bf33e718ea4ba308dd3ce0ed7e98237ad1493d8"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "path": [
+        {
+          "side": "right",
+          "hash": "e86c052eed4821fecc19fb8d8d362c9069a7080c0179997399ecc6d40d5a27fe"
+        },
+        {
+          "side": "left",
+          "hash": "d3b4dcb90fabca433a71833cdc3f15c8827a424cf3f138675bccd1fca5b5bc76"
+        },
+        {
+          "side": "right",
+          "hash": "46132ac4d4a6bb93e36d698e3bf33e718ea4ba308dd3ce0ed7e98237ad1493d8"
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "path": [
+        {
+          "side": "left",
+          "hash": "4bcefc5a47a1d253b774f8f9d3ba7ab58404ec4815b4455f696259e123754115"
+        },
+        {
+          "side": "left",
+          "hash": "d3b4dcb90fabca433a71833cdc3f15c8827a424cf3f138675bccd1fca5b5bc76"
+        },
+        {
+          "side": "right",
+          "hash": "46132ac4d4a6bb93e36d698e3bf33e718ea4ba308dd3ce0ed7e98237ad1493d8"
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "path": [
+        {
+          "side": "right",
+          "hash": "6b57fe3aab8f5a9ab8bb62e891d305407495922fb90310f2d2e90d3aedf45d9f"
+        },
+        {
+          "side": "right",
+          "hash": "a316c858d8d6b45d691ed0ed15c01d2e34ddddc1088afab3e32a618f0b00f9ea"
+        },
+        {
+          "side": "left",
+          "hash": "3c83971924586eff51ef0248eb89b444439bad1cf54802638da4b099b91a8f6f"
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "path": [
+        {
+          "side": "left",
+          "hash": "d2ee56c01bd726e3da82b1dfa1406d6a899bc925b6c9aac2d8675c96c4589235"
+        },
+        {
+          "side": "right",
+          "hash": "a316c858d8d6b45d691ed0ed15c01d2e34ddddc1088afab3e32a618f0b00f9ea"
+        },
+        {
+          "side": "left",
+          "hash": "3c83971924586eff51ef0248eb89b444439bad1cf54802638da4b099b91a8f6f"
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "path": [
+        {
+          "side": "left",
+          "hash": "f87219bffeb151e6aa00c2820061a89cce80931573868cd2e90239a56955f81f"
+        },
+        {
+          "side": "left",
+          "hash": "3c83971924586eff51ef0248eb89b444439bad1cf54802638da4b099b91a8f6f"
+        }
+      ]
+    }
+  ],
+  "empty_tree_root": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
