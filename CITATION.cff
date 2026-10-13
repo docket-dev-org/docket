@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+title: "Docket: hard caps and tamper-evident receipts for AI agent runs"
+message: "If you use Docket or its receipt format in academic work or in a product, please cite it as below."
+type: software
+authors:
+  - name: "The Docket contributors"
+repository-code: "https://github.com/docket-dev/docket"
+url: "https://github.com/docket-dev/docket"
+license: Apache-2.0
+license-url: "https://github.com/docket-dev/docket/blob/main/LICENSE"
+abstract: >-
+  Docket supervises an AI agent process, enforces hard caps on spending, tokens, model calls
+  and wall-clock time at the provider boundary, and records model calls, tool calls,
+  filesystem changes, egress decisions and process lifecycle events into an append-only,
+  hash-chained ledger. Each run produces a receipt whose integrity, event order and cost
+  totals can be verified offline by a third party using the format specification and
+  conformance vectors in this repository, including by an independent implementation in a
+  different programming language.
+keywords:
+  - ai-agents
+  - provenance
+  - tamper-evident
+  - audit
+  - llm-cost
+  - transparency-log
+version: 0.1.0
+date-released: "2026-10-13"
+preferred-citation:
+  type: generic
+  title: "Docket receipt format, version 1 (docket/receipt/v1)"
+  authors:
+    - name: "The Docket contributors"
+  url: "https://github.com/docket-dev/docket/blob/main/spec/docket-receipt-1.md"

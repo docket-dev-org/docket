@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="Docket: a record with a seal">
+  <rect width="96" height="96" rx="21" fill="#0B1220"/>
+  <!-- the docket: a record card -->
+  <path d="M28 16h32l10 10v50a5 5 0 0 1-5 5H28a5 5 0 0 1-5-5V21a5 5 0 0 1 5-5z" fill="#F8FAFC"/>
+  <!-- folded corner -->
+  <path d="M60 16l10 10H60z" fill="#94A3B8"/>
+  <!-- the chain: entries are links, each covering the last -->
+  <g stroke="#2563EB" stroke-width="4.5" stroke-linecap="round">
+    <path d="M33 37h26"/>
+    <path d="M33 46h26"/>
+    <path d="M33 55h14"/>
+  </g>
+  <!-- the seal: verified -->
+  <circle cx="66" cy="65" r="13.5" fill="#2563EB" stroke="#0B1220" stroke-width="3.5"/>
+  <path d="M60 65l4.2 4.4 8.2-9.2" fill="none" stroke="#F8FAFC" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

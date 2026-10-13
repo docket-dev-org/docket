@@ -1,0 +1,26 @@
+# byte-compiled / caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# builds
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+
+# docket's own artifacts: ledgers and receipts are frequently sensitive
+.docket/
+*.receipt.json
+*.jsonl
+!spec/vectors/*.json
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
