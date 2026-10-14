@@ -11,6 +11,7 @@ refuses it with a 403 and a `docket_cap_exceeded` code, and the agent stops clea
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -51,10 +52,8 @@ def main() -> int:
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")
             code = "refused"
-            try:
+            with contextlib.suppress(json.JSONDecodeError, KeyError, TypeError):
                 code = json.loads(detail)["error"].get("code") or code
-            except (json.JSONDecodeError, KeyError, TypeError):
-                pass
             print(f"  agent: call {index} refused at the boundary ({exc.code}, {code})", flush=True)
             print("  agent: stopping cleanly. Without the boundary I would have kept looping.", flush=True)
             return 0

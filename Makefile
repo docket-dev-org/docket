@@ -1,4 +1,4 @@
-.PHONY: help test demo lint fmt verify-js vectors wheel clean check
+.PHONY: help test demo lint fmt verify-js vectors wheel clean check site site-check
 
 help:
 	@echo "make test       run the full test suite (offline, no API keys)"
@@ -8,6 +8,8 @@ help:
 	@echo "make wheel      build sdist + wheel into dist/"
 	@echo "make lint fmt   ruff check / ruff format"
 	@echo "make check      lint + tests + verify-js"
+	@echo "make site       build the docs site (needs mkdocs-material)"
+	@echo "make site-check build the docs site to a temp dir, strict: catches broken links"
 
 test:
 	PYTHONPATH=src python3 -m pytest tests -q
@@ -25,12 +27,18 @@ wheel:
 	python3 -m build
 
 lint:
-	ruff check src tests spec
-	ruff format --check src tests spec
+	ruff check src tests spec examples tools assets
+	ruff format --check src tests spec examples tools assets
 
 fmt:
-	ruff check --fix src tests spec
-	ruff format src tests spec
+	ruff check --fix src tests spec examples tools assets
+	ruff format src tests spec examples tools assets
+
+site:
+	python3 tools/build_docs_site.py
+
+site-check:
+	python3 tools/build_docs_site.py --check
 
 check: lint test verify-js
 

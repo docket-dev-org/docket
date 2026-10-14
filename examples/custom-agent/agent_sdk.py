@@ -69,13 +69,12 @@ def main() -> int:
         else:
             session.record_model_call(model="claude-haiku-4.5", input_tokens=800, output_tokens=120)
 
-        print(
-            f"recorded  {session.calls} model call(s), {session.tokens:,} tokens, "
-            f"${session.cost} attributed"
-        )
+        print(f"recorded  {session.calls} model call(s), {session.tokens:,} tokens, " f"${session.cost} attributed")
 
     receipt = session.receipt
-    print(f"receipt   {receipt['docket_number']} · {receipt['totals']['calls']} calls · ${receipt['totals']['cost_usd']}")
+    print(
+        f"receipt   {receipt['docket_number']} · {receipt['totals']['calls']} calls · ${receipt['totals']['cost_usd']}"
+    )
     print("\nevent types in this ledger:")
     for event_type, count in sorted(receipt["event_counts"].items()):
         print(f"  {count:>3}  {event_type}")

@@ -1,0 +1,53 @@
+name: docs site
+
+# Manual on purpose. Deploying Pages requires the repository's Pages source to be set to
+# "GitHub Actions" first, and a workflow that fails until someone flips a setting teaches
+# people to ignore red Xs on `main`. Enable Pages (Settings → Pages → Source: GitHub Actions),
+# then run this once from the Actions tab. Afterwards, if you want the site rebuilt on every
+# push, change `workflow_dispatch` below to `push: branches: [main]` with `paths: [docs/**,
+# mkdocs.yml, tools/build_docs_site.py, README.md]`.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # --strict: a broken internal link fails the build rather than shipping a 404.
+      - name: Install the docs toolchain
+        run: pip install mkdocs-material
+
+      - name: Build (strict)
+        run: python3 tools/build_docs_site.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

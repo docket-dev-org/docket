@@ -121,7 +121,7 @@ Tool arguments are stored as digests by default — evidence without a second co
 
 ## A worked example with files
 
-[`examples/`](../examples/) contains a runnable end-to-end scenario: a tiny agent, a policy, a
+[`examples/`](../examples/README.md) contains a runnable end-to-end scenario: a tiny agent, a policy, a
 CI recipe, and the expected receipt, including how to run it with no network at all.
 
 ## Where to go next

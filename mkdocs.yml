@@ -1,0 +1,103 @@
+# Documentation site configuration.
+#
+# The repository is readable without this file — every document is plain Markdown and every
+# link is relative, so GitHub renders the whole tree correctly. This exists for people who
+# prefer a searchable site, and for turning the docs into GitHub Pages with one workflow:
+#
+#     pip install mkdocs-material && mkdocs serve       # preview at http://127.0.0.1:8000
+#     mkdocs build --strict                             # fails on a broken internal link
+#
+# `--strict` is the point: it is the cheapest way to keep 15 documents mutually consistent.
+#
+# Note on `docs_dir`: it points at a staged copy of the tree (see tools/build_docs_site.py),
+# not at `docs/`, because documents link to files outside `docs/` with paths that must stay
+# valid on GitHub (`../ROADMAP.md`, `../spec/docket-receipt-1.md`). Staging keeps one set of
+# links working in both places. Build with `make site`, never by calling mkdocs directly.
+
+site_name: Docket
+site_description: Every AI agent run gets a docket number — a hard spending cap and a tamper-evident receipt anyone can verify offline.
+site_url: https://docket-dev.github.io/docket/
+repo_url: https://github.com/docket-dev/docket
+repo_name: docket-dev/docket
+edit_uri: edit/main/docs/
+copyright: Apache-2.0 for code · CC BY 4.0 for the specification
+
+docs_dir: .mkdocs-site
+
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/icon.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: README.md
+  - Start here:
+      - Quickstart: docs/quickstart.md
+      - Concepts: docs/concepts.md
+      - FAQ: docs/faq.md
+  - Using it:
+      - CLI reference: docs/cli.md
+      - Policy reference: docs/policy-reference.md
+      - Integrations: docs/integrations.md
+  - Trust:
+      - What verification proves: docs/verification.md
+      - Threat model and limits: docs/threat-model.md
+      - Evidence: docs/evidence.md
+      - Incident corpus: docs/incident-corpus.md
+      - Format specification: spec/docket-receipt-1.md
+  - Project:
+      - Architecture: docs/architecture.md
+      - Comparison: docs/comparison.md
+      - Roadmap: ROADMAP.md
+      - Governance: GOVERNANCE.md
+      - Contributing: CONTRIBUTING.md
+      - Security policy: SECURITY.md
+      - Sponsorship: SPONSORS.md
+      - Adoption model: docs/strategy.md
+      - Sponsorship detail: docs/sponsorship.md
+      - Decisions (ADRs):
+          - 0001 Record format decisions as ADRs: docs/adr/0001-record-format-decisions-as-adrs.md
+          - 0002 No floating point in hashed structures: docs/adr/0002-no-floating-point-in-hashed-structures.md
+          - 0003 Verification uses recomputed hashes: docs/adr/0003-verification-uses-recomputed-hashes.md
+  - Examples:
+      - Examples index: examples/README.md
+      - Quickstart example: examples/quickstart/README.md
+      - CI example: examples/ci/README.md
+      - Client deliverable: examples/client-deliverable/README.md
+      - Subscription mode: examples/subscription/README.md

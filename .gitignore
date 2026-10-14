@@ -10,6 +10,8 @@ htmlcov/
 # builds
 build/
 dist/
+site/
+.mkdocs-site/
 *.egg-info/
 .venv/
 venv/

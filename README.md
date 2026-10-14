@@ -28,17 +28,22 @@ $ docket demo
 ```
 
 The demo is not a mock-up: it starts a real supervisor, a real recording boundary, and a
-scripted provider, then kills an agent that loops. This is the actual output (numbers vary a
-little between runs; the shape does not):
+scripted provider, then kills an agent that loops. This is actual output from one run
+(trimmed in the middle, marked below). Totals and findings are deterministic; the head hash and
+Merkle root change between runs because timestamps live inside the hashed events — which is also
+why a receipt is bound to a *specific* run:
 
 ```text
+
   Scenario: an agent is asked to fix one failing test.
   It plans on an expensive model, reads a huge file, then gets stuck re-sending
   the same request. Nothing inside the agent will ever stop it.
 
   Policy: max_usd = $2.00, deny_write = [.env], watch = [.]
 
-┌─ DOCKET DKT-20261013-746EF4 ───────────────────────────────────────────────┐
+  running (real supervisor, real boundary, scripted provider)…
+
+┌─ DOCKET DKT-20261014-746EF4 ───────────────────────────────────────────────┐
 │ /usr/local/bin/python3 -m docket.demo --child                              │
 └────────────────────────────────────────────────────────────────────────────┘
   exit       42  (stopped: max_usd)
@@ -53,32 +58,40 @@ FINDINGS  (deterministic unless marked heuristic)
   CRITICAL Runaway loop: 13 identical model calls  [$1.62]
             13 byte-identical requests (same prompt, same tools) were sent
             between 17:46:44 and 17:47:00. Identical requests are the
-            signature of a loop that will not terminate on its own …
+            signature of a loop that will not terminate on its own; the
+            model sees no new information, so nothing changes. Estimated
+            cost of the repeated group: $1.62.
+            rule: runaway-loop
+            -> A cap would have stopped this: see the 'counterfactual' finding below, then set caps.max_usd / caps.max_model_calls in your policy.
   HIGH     1 file(s) inside a deny_write scope were changed
             Changed: .env. Docket proves this happened; it cannot veto
             another process's write syscalls from user space, so this is
             evidence rather than prevention.
-  MEDIUM   Repeated context appears to be uncached  [$2.89]
-            15 calls reported 0 cached input tokens across 642,900 input
-            tokens, while request fingerprints repeat. …
+            rule: write-scope
+            -> Give the agent a narrower working directory, or run it in a sandbox/container.
+
+  … (three more findings elided here: uncached repeat context $2.89, one call
+     carrying 100,000+ input tokens $0.37, one blocked call. `docket demo` prints them all.)
+
+  attributed impact: $4.89
 
 WHAT THIS RECEIPT PROVES
   ✓ 61 ledger events in order, hash-chained and Merkle-rooted
   ✓ $2.00 recomputable from provider token counts and the embedded price table
   ✓ 3 filesystem change(s) with content digests
-  ✗ does not observe: traffic that does not pass through the Docket boundary
+  ✗ does not observe: traffic that does not pass through the Docket boundary (e.g. an agent configured with a direct provider URL, or HTTPS tunnels when egress.mode = tunnel)
   ✗ does not observe: prompts, completions or file contents unless --record-bodies is enabled
 
 VERIFY IT YOURSELF (offline, no account)
-  docket verify DKT-20261013-746EF4.receipt.json
-  node verify-js/verify.mjs DKT-20261013-746EF4.receipt.json
+  docket verify DKT-20261014-746EF4.receipt.json
+  node verify-js/verify.mjs DKT-20261014-746EF4.receipt.json
 
-VERIFIED  DKT-20261013-746EF4
+VERIFIED  DKT-20261014-746EF4
   PASS  format: docket/receipt/v1
   PASS  ledger-chain: 61 events, every hash and link recomputed
-  PASS  head: head matches receipt (9ff3b4ca8f2cba8d…)
+  PASS  head: head matches receipt (d30a13b1f0bc894c…)
   PASS  event-count: 61 events
-  PASS  merkle-root: fd4127c0fd04eef4…
+  PASS  merkle-root: 451bdfccfea74097…
   PASS  usage-inclusion-proofs: 15 usage rows proven against the Merkle root and re-bound to the recomputed ledger
   PASS  cost-recomputation: 15 calls recomputed from token counts
   PASS  totals: total 2.000500 agrees with recomputation
@@ -93,11 +106,22 @@ Then break it on purpose — one byte, in the middle of the ledger:
 ```console
 $ docket demo --tamper
 …
-NOT VERIFIED  DKT-20261013-746EF4
-  FAIL  ledger-chain: chain broken at event #5 (hash mismatch)
+NOT VERIFIED  DKT-20261014-746EF4
+  PASS  format: docket/receipt/v1
+  FAIL  ledger-chain: broken at event #5: content hash mismatch (event was modified after it was written)
   SKIP  head: not checked: the chain is broken at event #5
-  FAIL  merkle-root: merkle root does not match the recomputed root (fd4127c0fd04eef4…)
-  FAIL  usage-inclusion-proofs: 15 usage rows do not match the recomputed ledger (first: seq 5)
+  PASS  event-count: 62 events
+  FAIL  merkle-root: recomputed 12a3b2bc9358f08e… != receipt a0da61f8ee504000…
+  FAIL  usage-inclusion-proofs: usage row 0 (seq 5) does not match the recomputed ledger event
+  PASS  cost-recomputation: 15 calls recomputed from token counts
+  PASS  totals: total 2.000500 agrees with recomputation
+  PASS  token-totals: 647,420 tokens
+  SKIP  seal: receipt is not sealed
+  SKIP  signature: receipt is not signed
+  PASS  limits-disclosure: receipt states what Docket could and could not observe
+
+  Try it on your own agent:
+    docket run --max-usd 5 -- my-agent --flag
 ```
 
 ## Use it on your own agent
