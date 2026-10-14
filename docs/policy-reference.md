@@ -73,6 +73,13 @@ Refusing before forwarding is the cheapest possible enforcement: a denied call i
 | `ignore` | list of globs | `[]` | paths excluded from snapshots, digest and content alike (use for `.git/**`, `.venv/**`, `node_modules/**`). An ignored path is also one a rollback cannot restore |
 | `deny_write` | list of globs | `[]` | paths that must not change. Changes are **detected, hashed and reported as `fs.change` + `policy.violation` events** |
 
+A cap is validated where it is set, not where it is used: `caps.max_usd` must be a finite,
+non-negative amount (a `NaN` cap compares false against every threshold, so it is a cap that can
+never fire — the one failure mode this tool must not have), and the same is true of the flags
+that override it (`docket run --max-usd`). In code, `Caps.set_max_usd(...)` is the sanctioned
+way to change it after construction, because assigning the field directly skips the check that
+`__post_init__` does for constructors.
+
 Read this twice: `deny_write` is a **tripwire, not a lock**. Docket runs in user space next to
 the agent; it cannot veto another process's write syscalls. The receipt proves the file
 changed, with content digests before and after — which is exactly what you need if it happens,
@@ -82,6 +89,16 @@ for the evidence).
 Snapshots are taken of the paths in `watch`, with large/binary files hashed by digest rather
 than stored. Changes appear as `fs.change` events with `added`/`modified`/`removed` and the
 digests involved.
+
+One exclusion is not yours to write: **the run's own evidence directory is excluded from the
+watched tree by the Supervisor**, from resolved paths, whenever `--docket-dir` lands inside it.
+Docket writes its ledger *during* the run, so watching it would record Docket's own writes as
+the agent's changes — and a rollback derived from that diff would contain an instruction to
+delete the record it was derived from. Adding `.docket/**` to `ignore` yourself is harmless but
+unnecessary; the exclusion is recorded as a `note` event and in the effective policy the receipt
+embeds, so it is visible in the evidence rather than implied by the code. It is *not* applied
+when `--docket-dir` is the working directory itself (there would be nothing left to watch): that
+run proceeds with no exclusion and says so on stderr.
 
 ## `[egress]`
 

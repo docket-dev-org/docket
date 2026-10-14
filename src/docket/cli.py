@@ -10,7 +10,7 @@ import shutil
 import sys
 import time
 from collections.abc import Sequence
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +27,73 @@ from .util import human_bytes
 from .verify import verify_receipt
 
 PROGRAM = "docket"
+
+#: The largest USD cap the CLI will accept. Not a technical limit — it is a sanity bound so a
+#: slipped keystroke (`1e300`) is refused where it was typed instead of becoming a number that
+#: the cost arithmetic then has to survive.
+MAX_CAP_USD = Decimal("1e12")
+
+
+def _cap_amount(text: str) -> str:
+    """An argparse ``type=`` for a USD cap: finite, non-negative, and not absurd.
+
+    The parsing happens here rather than at the four call sites, so a bad value is refused by
+    argparse — exit code ``2``, the same as any other bad flag, with the message naming the flag
+    and the value. Before this existed, `--max-usd nan` was accepted and *silently disabled the
+    cap* (NaN compares false against every threshold), while `--max-usd abc` printed
+    ``[<class 'decimal.ConversionSyntax'>]`` — the decimal exception's args, not a sentence.
+    """
+    value = str(text).strip()
+    try:
+        amount = Decimal(value)
+    except (DecimalException, ValueError) as exc:
+        raise argparse.ArgumentTypeError(f"must be a number, got {text!r}") from exc
+    if not amount.is_finite():
+        raise argparse.ArgumentTypeError(
+            f'must be a finite amount, got {text!r}; for "no cap" omit --max-usd, '
+            "which the receipt discloses as an unset cap rather than as a number"
+        )
+    if amount < 0:
+        raise argparse.ArgumentTypeError(f"must not be negative, got {text!r}")
+    if amount > MAX_CAP_USD:
+        raise argparse.ArgumentTypeError(f"must not exceed {MAX_CAP_USD:,.0f} USD, got {text!r}")
+    return value
+
+
+def _whole_number(text: str) -> int:
+    """An argparse ``type=`` for a count: a whole, non-negative number.
+
+    ``int()`` after argparse accepted anything meant `--max-calls abc` reached the coercion with
+    a bare ``ValueError`` (exit ``1``) or, for `--max-minutes -5`, produced a negative wall-clock
+    cap that no run could ever satisfy — a cap that stops the run before it starts, spelled as a
+    flag. Both are usage errors, so both are refused here, by argparse, with exit ``2``.
+    """
+    try:
+        number = int(str(text).strip())
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(f"must be a whole number, got {text!r}") from exc
+    if number < 0:
+        raise argparse.ArgumentTypeError(f"must not be negative, got {text!r}")
+    return number
+
+
+def _at_least_one(text: str) -> int:
+    """A whole number that has to be at least 1 — a rate or a count where 0 means "nothing"."""
+    number = _whole_number(text)
+    if number < 1:
+        raise argparse.ArgumentTypeError(f"must be at least 1, got {text!r}")
+    return number
+
+
+def _positive_minutes(text: str) -> int:
+    """Minutes to seconds, refusing zero and negatives: both mean "stop before the work"."""
+    try:
+        seconds = int(round(float(str(text).strip()) * 60))
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(f"must be a number of minutes, got {text!r}") from exc
+    if seconds <= 0:
+        raise argparse.ArgumentTypeError(f"must be more than zero minutes, got {text!r}")
+    return seconds
 
 
 def _color_enabled(stream: Any) -> bool:
@@ -56,26 +123,28 @@ def cmd_run(args: argparse.Namespace) -> int:
         return 43
     overrides: list[str] = []
     if args.max_usd is not None:
-        policy.caps.max_usd = Decimal(args.max_usd)
+        policy.caps.set_max_usd(Decimal(args.max_usd))
         overrides.append(f"max_usd={args.max_usd}")
     if args.max_tokens is not None:
-        policy.caps.max_tokens = int(args.max_tokens)
+        policy.caps.max_tokens = args.max_tokens
         overrides.append(f"max_tokens={args.max_tokens}")
     if args.max_calls is not None:
-        policy.caps.max_model_calls = int(args.max_calls)
+        policy.caps.max_model_calls = args.max_calls
         overrides.append(f"max_model_calls={args.max_calls}")
     if args.max_minutes is not None:
-        policy.caps.max_wall_seconds = int(float(args.max_minutes) * 60)
+        # Already seconds: `--max-minutes` is validated and converted by its argparse type, so a
+        # bad value is a usage error before anything is constructed.
+        policy.caps.max_wall_seconds = args.max_minutes
         overrides.append(f"max_wall_seconds={policy.caps.max_wall_seconds}")
     if args.on_breach:
         policy.caps.on_breach = args.on_breach
     if args.budget_mode:
         policy.budget_mode = args.budget_mode
     if args.max_calls_per_minute is not None:
-        policy.resilience.max_calls_per_minute = int(args.max_calls_per_minute)
+        policy.resilience.max_calls_per_minute = args.max_calls_per_minute
         overrides.append(f"max_calls_per_minute={args.max_calls_per_minute}")
     if args.max_events is not None:
-        policy.resilience.max_events = int(args.max_events)
+        policy.resilience.max_events = args.max_events
         overrides.append(f"max_events={args.max_events}")
     if args.fail_fast_evidence:
         policy.resilience.fail_fast_evidence = True
@@ -762,7 +831,7 @@ def cmd_chaos(args: argparse.Namespace) -> int:
 
     policy = Policy(name="chaos experiment", caps=Caps(max_usd=None))
     if args.max_usd:
-        policy.caps.max_usd = Decimal(args.max_usd)
+        policy.caps.set_max_usd(Decimal(args.max_usd))
     command = [c for c in (args.command or []) if c != "--"] or None
     if not command and not args.faults:
         _out(
@@ -794,7 +863,7 @@ def cmd_game_day(args: argparse.Namespace) -> int:
     out_dir = Path(args.out or f".docket/game-day-{stamp}")
     policy = Policy(name="game day", caps=Caps(max_usd=None))
     if args.max_usd:
-        policy.caps.max_usd = Decimal(args.max_usd)
+        policy.caps.set_max_usd(Decimal(args.max_usd))
     if args.online and not args.max_usd:
         # Refusing here is the whole point: a game day against a real provider without a
         # cap is an experiment with an unbounded bill.
@@ -968,14 +1037,18 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--sign", metavar="KEY_PATH", help="sign the receipt with an Ed25519 key (needs docket[sign])")
     run.add_argument("--label", help="a human label for this run")
     run.add_argument("--report", choices=["summary", "full"], default="summary")
-    run.add_argument("--max-usd", help="override the USD cap")
-    run.add_argument("--max-tokens", help="override the token cap")
-    run.add_argument("--max-calls", help="override the model-call cap")
-    run.add_argument("--max-minutes", help="override the wall-clock cap (minutes)")
+    run.add_argument("--max-usd", type=_cap_amount, help="override the USD cap")
+    run.add_argument("--max-tokens", type=_whole_number, help="override the token cap")
+    run.add_argument("--max-calls", type=_whole_number, help="override the model-call cap")
+    run.add_argument("--max-minutes", type=_positive_minutes, help="override the wall-clock cap (minutes)")
     run.add_argument("--on-breach", choices=["kill", "deny"], help="override breach behaviour")
     run.add_argument("--budget-mode", choices=["usd", "quota"], help="usd for metered APIs, quota for subscriptions")
-    run.add_argument("--max-calls-per-minute", help="throttle: refuse calls beyond this rate (recorded, HTTP 429)")
-    run.add_argument("--max-events", help="ceiling on this run's own ledger events")
+    run.add_argument(
+        "--max-calls-per-minute",
+        type=_at_least_one,
+        help="throttle: refuse calls beyond this rate (recorded, HTTP 429)",
+    )
+    run.add_argument("--max-events", type=_whole_number, help="ceiling on this run's own ledger events")
     run.add_argument("--fail-fast-evidence", action="store_true", help="stop the run if evidence cannot be written")
     run.add_argument(
         "--fault-inject",
@@ -1045,7 +1118,7 @@ def build_parser() -> argparse.ArgumentParser:
     diff.set_defaults(func=cmd_diff)
 
     demo = sub.add_parser("demo", help="watch a runaway agent get stopped, offline, no API key")
-    demo.add_argument("--max-usd", default="2.00")
+    demo.add_argument("--max-usd", type=_cap_amount, default="2.00")
     demo.add_argument("--tamper", action="store_true", help="also show tamper detection")
     demo.add_argument("--keep", action="store_true", help="keep the demo workspace")
     demo.add_argument("--json", action="store_true")
@@ -1054,7 +1127,7 @@ def build_parser() -> argparse.ArgumentParser:
     init = sub.add_parser("init", help="write a starter policy")
     init.add_argument("--path", default="docket.toml")
     init.add_argument("--name", default="default")
-    init.add_argument("--max-usd", default="5.00")
+    init.add_argument("--max-usd", type=_cap_amount, default="5.00")
     init.add_argument("--force", action="store_true")
     init.set_defaults(func=cmd_init)
 
@@ -1080,7 +1153,7 @@ def build_parser() -> argparse.ArgumentParser:
     chaos.add_argument("--seed", type=int, default=0)
     chaos.add_argument("--calls", type=int, default=8, help="calls for the bundled synthetic agent")
     chaos.add_argument("--mode", choices=["bounded", "retry"], default="retry")
-    chaos.add_argument("--max-usd", help="USD cap for the experiment")
+    chaos.add_argument("--max-usd", type=_cap_amount, help="USD cap for the experiment")
     chaos.add_argument("--json", action="store_true")
     chaos.add_argument("--keep", action="store_true")
     chaos.add_argument("command", nargs=argparse.REMAINDER, help="command to run (after --)")
@@ -1094,7 +1167,7 @@ def build_parser() -> argparse.ArgumentParser:
     game_day.add_argument(
         "--online", action="store_true", help="use your configured provider instead of a scripted one"
     )
-    game_day.add_argument("--max-usd", help="USD cap per phase (required with --online)")
+    game_day.add_argument("--max-usd", type=_cap_amount, help="USD cap per phase (required with --online)")
     game_day.add_argument("--json", action="store_true")
     game_day.set_defaults(func=cmd_game_day)
 
@@ -1129,8 +1202,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         return int(args.func(args))
     except KeyboardInterrupt:  # pragma: no cover - interactive path
         return 130
-    except (OSError, ValueError, InvalidOperation) as exc:
-        print(f"{PROGRAM}: {exc}", file=sys.stderr)
+    except (OSError, ValueError, InvalidOperation, DecimalException) as exc:
+        # A decimal exception's `args` is often just its class (that is where
+        # `[<class 'decimal.ConversionSyntax'>]` came from), so the message is built rather than
+        # printed raw: the type is always named, and the detail only when there is one.
+        detail = str(exc) or (exc.args[0] if exc.args and isinstance(exc.args[0], str) else "")
+        print(
+            f"{PROGRAM}: {type(exc).__name__}: {detail}" if detail else f"{PROGRAM}: {type(exc).__name__}",
+            file=sys.stderr,
+        )
         return 1
 
 

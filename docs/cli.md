@@ -10,6 +10,7 @@ Exit codes are part of the interface, because scripts and CI depend on them:
 | code | meaning |
 | --- | --- |
 | `0` | success (for `verify`: the receipt checks out) |
+| `2` | a flag could not be used as written (`--max-usd nan`, `--max-calls -3`): argparse's own usage error, raised before any run, no workspace touched |
 | `1` | not verified (`verify`), or a restore that refused or failed on a path (`restore`) |
 | `42` | the supervised run was stopped because a cap was crossed |
 | `43` | usage or policy error (bad policy file, nothing to run, missing receipt, a tree that does not fit the snapshot budget) |
@@ -25,7 +26,11 @@ Runs a command under a policy, records everything observable, and writes a recei
 | flag | default | meaning |
 | --- | --- | --- |
 | `-p, --policy PATH` | none | policy TOML. With no policy: no caps, everything observable recorded |
-| `--docket-dir DIR` | `.docket` | where `runs/`, `receipts/`, `latest` live |
+| `--max-usd AMOUNT` | off | override the policy's USD cap. Must be a finite, non-negative amount no larger than 1e12; for "no cap" omit the flag (the receipt discloses an unset cap as unset rather than as a number) |
+| `--max-tokens N` / `--max-calls N` / `--max-events N` | off | override the token, model-call and ledger-event caps. Whole numbers, not negative |
+| `--max-minutes M` | off | wall-clock cap, in minutes, more than zero |
+| `--max-calls-per-minute N` | off | rate limit at the boundary (recorded as HTTP 429); at least 1 |
+| `--docket-dir DIR` | `.docket` | where `runs/`, `receipts/`, `restores/` and `latest` live. If this directory is inside the watched tree it is excluded from the file diff *structurally* — Docket's own ledger, receipt and snapshot store are never reported as changes the agent made, and a rollback never plans to delete the record it came from. The exclusion is per-run and comes from the resolved paths, so it cannot be forgotten in a policy file; it is recorded as a `note` event and appears in the effective policy the receipt embeds. `--docket-dir .` puts the evidence in the watched tree itself: nothing is excluded, and the run says so on stderr|
 | `--cwd DIR` | current directory | working directory for the child |
 | `--profile {full,minimal}` | `full` | how many provider base-URL variables to inject (`minimal` sets only OpenAI/Anthropic) |
 | `--http-proxy` | off | also export `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`, so *all* HTTP traffic can be recorded and subject to `[egress]` |

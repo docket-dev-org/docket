@@ -357,8 +357,8 @@ tooling mostly is. The gap Docket fills is *before* (caps that bind outside the 
 
 ## Status
 
-Early. `0.1.0`, published 2026-10-13. The receipt format is versioned and frozen by a written
-spec with test vectors; the CLI may still move. One maintainer, no employer, no funding — see
+Early. `0.1.0`, dated 2026-10-13 (see [CHANGELOG.md](CHANGELOG.md)). The receipt format is
+versioned and frozen by a written spec with test vectors; the CLI may still move. One maintainer, no employer, no funding — see
 [SPONSORS.md](SPONSORS.md) for what funding would and would not buy.
 
 Nothing here is a security boundary you should rely on for isolation: Docket is an accounting

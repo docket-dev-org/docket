@@ -78,6 +78,38 @@ class Caps:
     on_breach: str = "kill"  # kill | deny
     grace_seconds: float = 5.0
 
+    def set_max_usd(self, amount: Decimal | int | str | None) -> None:
+        """Validate an amount and assign it — the one sanctioned way to change this cap.
+
+        ``max_usd`` is the guard the whole tool exists for, and a guard that can be *silently*
+        switched off is worse than no guard: ``Decimal("NaN")`` compares false against every
+        threshold, so a run with a NaN cap sails past every check and files a receipt that looks
+        ordinary. ``__post_init__`` catches it at construction, but a caller can assign the
+        field afterwards — the CLI did, from its own flag — and skip that entirely. So the
+        validation lives here, and the dataclass hook below calls the same code.
+        """
+        self.max_usd = self._validated_usd(amount)
+
+    @staticmethod
+    def _validated_usd(amount: Decimal | int | str | None) -> Decimal | None:
+        """A cap that is a real, non-negative, finite amount, or a ``ValueError`` naming it."""
+        if amount is None:
+            return None
+        value = amount
+        if not isinstance(value, Decimal):
+            try:
+                value = Decimal(str(value))
+            except (InvalidOperation, ValueError) as exc:
+                raise ValueError(f"caps.max_usd is not a valid amount: {amount!r}") from exc
+        if not value.is_finite():
+            # Covers both NaN and ±Infinity: neither is a budget. `inf` reads like "no limit",
+            # which is what `max_usd = None` is for, and it must be spelled that way because
+            # None is disclosed in the receipt as "no cap set" while `inf` would be a number.
+            raise ValueError(f"caps.max_usd must be a finite amount, not {value}")
+        if value < 0:
+            raise ValueError(f"caps.max_usd must be a non-negative amount, not {value}")
+        return value
+
     def __post_init__(self) -> None:
         """Accept ``"0.05"`` as well as ``Decimal("0.05")``, and reject nonsense early.
 
@@ -86,13 +118,7 @@ class Caps:
         thread — a crash in the boundary rather than an error at the call site. Coercing
         here makes the failure mode "clear exception where you wrote the mistake".
         """
-        if self.max_usd is not None and not isinstance(self.max_usd, Decimal):
-            try:
-                self.max_usd = Decimal(str(self.max_usd))
-            except (InvalidOperation, ValueError) as exc:
-                raise ValueError(f"caps.max_usd is not a valid amount: {self.max_usd!r}") from exc
-        if self.max_usd is not None and (self.max_usd.is_nan() or self.max_usd < 0):
-            raise ValueError(f"caps.max_usd must be a non-negative amount, not {self.max_usd}")
+        self.max_usd = self._validated_usd(self.max_usd)
         if self.max_tokens is not None and int(self.max_tokens) < 0:
             raise ValueError("caps.max_tokens must not be negative")
         if self.max_model_calls is not None and int(self.max_model_calls) < 0:

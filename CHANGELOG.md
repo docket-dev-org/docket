@@ -51,6 +51,19 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Fixed
 
+- **A bad `--max-usd` is a usage error, and `--max-usd nan` no longer disables the cap.**
+  `Decimal("NaN")` compares false against every threshold, so `docket run --max-usd nan`
+  completed with the cap silently switched off and filed an ordinary-looking receipt reading
+  `$0.00 of $NaN cap`; `--max-usd abc` printed `[<class 'decimal.ConversionSyntax'>]` and exited
+  `1`. Caps are now validated wherever they are set — an argparse `type=` for `--max-usd`,
+  `--max-tokens`, `--max-calls`, `--max-events`, `--max-calls-per-minute` and `--max-minutes`
+  (exit `2`, flag named, value quoted, nothing created) and `Caps.set_max_usd()` for code, which
+  is the one way to change the field after construction. `inf` is refused as a cap too: an unset
+  cap is spelled by omitting the flag, and the receipt discloses it as unset rather than as a
+  number.
+- **An unexpected exception is reported as a sentence.** The CLI's top-level handler printed the
+  exception's `args` raw, which for a decimal error is its class object. The type is always named
+  now, and the detail only when there is one.
 - **Restoring twice no longer blames the operator.** After a successful restore the file holds
   the snapshot's bytes rather than the digest the run ended with, so a second `docket restore`
   refused it as "changed after the run" — a false accusation, and a command that fails when a
