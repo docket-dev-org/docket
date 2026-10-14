@@ -50,10 +50,23 @@ def seal(receipt_core: dict[str, Any], key_hex: str) -> dict[str, Any]:
 
 
 def verify_seal(receipt_core: dict[str, Any], sealed: dict[str, Any], key_hex: str) -> bool:
-    expected = seal(receipt_core, key_hex)
-    return hmac.compare_digest(expected["value"], str(sealed.get("value", ""))) and expected["key_id"] == sealed.get(
-        "key_id"
-    )
+    """Check a receipt's HMAC seal against ``key_hex``.
+
+    Total by contract, for the same reason as :func:`verify_signature`: the sealed block comes
+    from whoever supplied the receipt, so anything that is not a ``{"key_id", "value"}`` object
+    is ``False`` rather than an ``AttributeError``. A *key* that is not hex is different — that
+    is the verifier's own input, and it is reported as ``ValueError`` naming the problem.
+    """
+    if not isinstance(sealed, dict):
+        return False
+    try:
+        expected = seal(receipt_core, key_hex)
+    except ValueError as exc:
+        raise ValueError(f"the seal key is not usable ({exc}); expected a hex string") from exc
+    value = sealed.get("value")
+    if not isinstance(value, str):
+        return False
+    return hmac.compare_digest(expected["value"], value) and expected["key_id"] == sealed.get("key_id")
 
 
 def load_or_create_seal_key(key_path: str | os.PathLike[str]) -> str:
@@ -136,7 +149,21 @@ def sign(receipt_core: dict[str, Any], private_path: str | os.PathLike[str]) -> 
 
 
 def verify_signature(receipt_core: dict[str, Any], signature: dict[str, Any]) -> bool:
+    """Check an Ed25519 signature over ``receipt_core``.
+
+    Total by contract: the signature block arrives inside the receipt, so a malformed one (a
+    number where the object belongs, a hex string of the wrong length, an algorithm this build
+    does not know) is ``False`` — a verdict — and never an exception. Only the *environment* can
+    raise, and that is a ``RuntimeError`` the caller turns into a ``skip``: a missing optional
+    dependency is not the receipt's fault.
+    """
+    if not isinstance(signature, dict):
+        return False
     if signature.get("alg") != ALG_SIGN:
+        return False
+    public_hex = signature.get("public_key")
+    value_hex = signature.get("value")
+    if not isinstance(public_hex, str) or not isinstance(value_hex, str):
         return False
     if not ed25519_available():  # pragma: no cover - environment dependent
         raise RuntimeError("verifying an Ed25519 signature needs the 'cryptography' package")
@@ -144,8 +171,8 @@ def verify_signature(receipt_core: dict[str, Any], signature: dict[str, Any]) ->
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
     try:
-        public = Ed25519PublicKey.from_public_bytes(bytes.fromhex(str(signature["public_key"])))
-        public.verify(bytes.fromhex(str(signature["value"])), canonical_bytes(receipt_core))
+        public = Ed25519PublicKey.from_public_bytes(bytes.fromhex(public_hex))
+        public.verify(bytes.fromhex(value_hex), canonical_bytes(receipt_core))
         return True
-    except (InvalidSignature, ValueError, KeyError):
+    except (InvalidSignature, ValueError, KeyError, TypeError):
         return False

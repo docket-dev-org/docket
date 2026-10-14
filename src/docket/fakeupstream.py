@@ -31,6 +31,11 @@ class Step:
     status: int = 200
     text: str = "ok"
     delay_seconds: float = 0.0
+    #: Return exactly this JSON body instead of a provider-shaped one. Used by the robustness
+    #: tests (and by anyone demonstrating what Docket does with a broken provider) to script a
+    #: hostile response: a usage block full of strings, a forty-digit token count, a body of
+    #: the wrong type entirely. Non-streaming responses only.
+    body_override: dict[str, Any] | None = None
 
 
 @dataclass
@@ -122,6 +127,8 @@ class FakeUpstream:
 
 
 def _response_payload(step: Step, model: str, anthropic: bool) -> dict[str, Any]:
+    if step.body_override is not None:
+        return dict(step.body_override)
     if anthropic:
         return {
             "id": "msg_fake",

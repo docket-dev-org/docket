@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Any
 
 from .explain import total_estimated_savings
-from .util import human_duration, human_int, human_usd
+from .util import human_bytes, human_duration, human_int, human_usd
 
 WIDTH = 78
 BOLD = "\033[1m"
@@ -106,6 +106,43 @@ def render_receipt(receipt: dict[str, Any], *, color: bool = True, show_findings
             color,
         )
     )
+    ops = receipt.get("ops") or {}
+    snapshot = ops.get("snapshot")
+    if snapshot and snapshot.get("taken"):
+        detail = (
+            f"snapshot: {snapshot.get('files', 0)} file(s), "
+            f"{human_bytes(snapshot.get('bytes_stored', 0))} stored"
+        )
+        if snapshot.get("not_covered"):
+            detail += _paint(
+                f"  {len(snapshot['not_covered'])} not covered", YELLOW, color
+            )
+        lines.append(_row("undo", detail, color))
+    rollback = ops.get("rollback")
+    if rollback:
+        counts = rollback.get("counts") or {}
+        if rollback.get("applied"):
+            summary = ", ".join(f"{value} {key}" for key, value in sorted(counts.items()) if value)
+            lines.append(
+                _row(
+                    "rollback",
+                    _paint(f"applied ({rollback.get('trigger')}): {summary or 'nothing to do'}", GREEN, color)
+                    + (
+                        _paint(f"  {len(rollback.get('refused') or [])} refused", RED, color)
+                        if rollback.get("refused")
+                        else ""
+                    ),
+                    color,
+                )
+            )
+        else:
+            lines.append(
+                _row(
+                    "rollback",
+                    _paint(f"not applied: {rollback.get('reason') or 'no snapshot'}", YELLOW, color),
+                    color,
+                )
+            )
     if receipt.get("tools", {}).get("calls"):
         lines.append(
             _row("tools", f"{receipt['tools']['calls']} ({', '.join(receipt['tools'].get('names', [])[:5])})", color)
@@ -206,6 +243,33 @@ def render_markdown(receipt: dict[str, Any]) -> str:
         f"| ledger | {receipt.get('ledger', {}).get('events', 0)} events · root `{str(receipt.get('ledger', {}).get('merkle_root'))[:16]}…` |",
         "",
     ]
+    ops = receipt.get("ops") or {}
+    snapshot = ops.get("snapshot")
+    rollback = ops.get("rollback")
+    if snapshot and snapshot.get("taken"):
+        lines += [
+            "## Undo",
+            "",
+            f"- snapshot: **{snapshot.get('files', 0)}** file(s), "
+            f"{human_bytes(snapshot.get('bytes_stored', 0))} stored of {human_bytes(snapshot.get('bytes_watched', 0))} watched "
+            f"(`{snapshot.get('manifest')}`)",
+        ]
+        if snapshot.get("not_covered"):
+            names = ", ".join(f"`{item.get('path')}`" for item in snapshot["not_covered"][:8])
+            lines.append(f"- **not covered by the snapshot** ({len(snapshot['not_covered'])}): {names}")
+        if rollback and rollback.get("applied"):
+            counts = rollback.get("counts") or {}
+            summary = ", ".join(f"{value} {key}" for key, value in sorted(counts.items()) if value)
+            lines.append(f"- rollback **applied** (trigger: {rollback.get('trigger')}): {summary or 'nothing to do'}")
+            if rollback.get("refused"):
+                for item in rollback["refused"][:8]:
+                    lines.append(f"  - not rolled back: `{item.get('path')}` — {item.get('reason')}")
+        elif rollback:
+            lines.append(f"- rollback **not applied**: {rollback.get('reason') or 'no snapshot'}")
+        else:
+            lines.append("- rollback not requested for this run (`--rollback-on-breach` was off)")
+        lines.append("")
+
     findings = receipt.get("findings") or []
     if findings:
         lines += ["## Findings", "", "| severity | finding | impact | confidence |", "| --- | --- | --- | --- |"]

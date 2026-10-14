@@ -81,7 +81,25 @@ Email, chat, ticket systems — the receipt travels. **Detected on verification:
 the inclusion proofs or the seal/signature. Signing is what makes this a defence rather than an
 inconvenience, because a signature travels with the receipt while a seal needs the key.
 
-### 7. A malicious actor who can run code as you
+### 7. A hostile receipt, ledger or snapshot manifest handed to `docket restore`
+
+A restore is the one Docket operation that writes and deletes, and its input is a document.
+Ledgers are verified to be internally consistent, not to have been written by Docket, and a
+manifest is just a JSON file. **Enforced:** the plan is derived from the record and printed
+before anything is written; paths are checked rather than trusted (no absolute paths, no `..`,
+no symlinked component), blobs are located by digest inside the store, digests must be 64
+lowercase hex digits, and modes are masked to permission bits, so a doctored manifest cannot
+make Docket restore a setuid binary or copy a file from outside the store. **Detected:** the
+three documents that record the run's tree must agree; if the receipt claims a different tree
+than the ledger or manifest, the restore stops and asks for `--root` instead of choosing.
+
+*Residual risk:* the destination is a directory on your machine, and a restore writes real
+files there. A convincing forged ledger can make a restore put an *old* file back over a newer
+one — which is why a path whose current digest does not match the run's record is refused
+without `--force`, and why the plan is printed first. Also: `--force` and `--root` are explicit
+operator statements, and both can be aimed at the wrong tree by a human in a hurry.
+
+### 8. A malicious actor who can run code as you
 
 Root, or an agent with your privileges, can kill Docket, edit the ledger, or read your keys.
 Docket's answer is not prevention (it cannot be) but *detectability by others*: signed receipts
@@ -102,6 +120,11 @@ discussion, this is exactly what the anchoring work in the roadmap is for.
 ## What is explicitly out of scope
 
 - **Prevention of filesystem writes** (`deny_write` is a tripwire).
+- **Restoring files that no snapshot covered.** `not_covered` says which ones; a rollback is
+  never a promise that the tree is exactly as it was.
+- **Defending the tree against a local attacker racing a restore** between the check and the
+  write. See ADR 0004 — the confinement rules are aimed at hostile *documents*, not at a
+  concurrent attacker with write access to the same directory.
 - **Observing anything that bypasses the boundary** (direct provider URLs, tunnels in
   `mode = "tunnel"`, other processes).
 - **Sandboxing** (containers, gVisor, seccomp, VMs — different tools, complementary).
@@ -117,6 +140,8 @@ discussion, this is exactly what the anchoring work in the roadmap is for.
 | ledger/receipt files | your filesystem | mode `0600`-friendly; no content by default; treat as sensitive metadata |
 | price table | a JSON file | a malicious table can skew `max_usd` enforcement downward (fails safe) or upward with a large cap (visible: it is embedded in the receipt) |
 | seal key | `~/.docket/seal.key` | an HMAC key: whoever has it can produce a seal. It is not a signature; do not present it as one |
+| snapshot store | `.docket/snapshots/` | a copy of watched file *contents* — the most sensitive thing Docket writes. It inherits the watched tree's sensitivity: ignore secrets in `[files] ignore`, keep `.docket/` out of the agent's write scope, and treat the store like the source it mirrors |
+| `docket restore` | your working tree, opt-in via `--apply` | dry run by default; refuses paths that changed after the run unless `--force`; refuses anything outside the run's tree. The blast radius is the watched tree, which is the point |
 
 Reporting: [`../SECURITY.md`](../SECURITY.md). Claims that can be broken are listed there as
 *in scope*, so there is no ambiguity about what a valid report looks like.

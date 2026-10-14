@@ -69,8 +69,8 @@ Refusing before forwarding is the cheapest possible enforcement: a denied call i
 
 | key | type | default | meaning |
 | --- | --- | --- | --- |
-| `watch` | list of globs | `["."]` | directories/files snapshotted before and after the run |
-| `ignore` | list of globs | `[]` | paths excluded from snapshots (use for `.git/**`, `.venv/**`, `node_modules/**`) |
+| `watch` | list of globs | `["."]` | directories/files snapshotted (digests always; contents too when `--snapshot` is on). Roots outside the working directory are disclosed as not covered — see [ADR 0004](adr/0004-content-snapshots-and-confinement.md) |
+| `ignore` | list of globs | `[]` | paths excluded from snapshots, digest and content alike (use for `.git/**`, `.venv/**`, `node_modules/**`). An ignored path is also one a rollback cannot restore |
 | `deny_write` | list of globs | `[]` | paths that must not change. Changes are **detected, hashed and reported as `fs.change` + `policy.violation` events** |
 
 Read this twice: `deny_write` is a **tripwire, not a lock**. Docket runs in user space next to

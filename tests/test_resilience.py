@@ -10,7 +10,6 @@ is one the receipt can carry.
 from __future__ import annotations
 
 import threading
-import time
 
 import pytest
 
@@ -18,14 +17,12 @@ from docket.canon import canonical_bytes
 from docket.resilience import (
     CircuitBreaker,
     EvidenceGuard,
-    EvidenceGaps,
     FaultInjector,
+    HealthState,
     LedgerWriteError,
     RateLimiter,
-    HealthState,
     parse_fault_spec,
 )
-
 
 # --------------------------------------------------------------------------- #
 # Circuit breaker

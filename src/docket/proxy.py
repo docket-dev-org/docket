@@ -108,6 +108,14 @@ MAX_REQUEST_BODY = 32 * 1024 * 1024
 #: handful of levels; 64 is generous.
 MAX_BODY_DEPTH = 64
 
+#: Largest per-response token count Docket will accept from a provider as *reported* usage.
+#: Usage is a measurement of what the provider says it did; one API response cannot plausibly
+#: contain a quadrillion tokens, and a count that large is either a broken upstream or a
+#: provider testing what the recorder does with absurd numbers. Past the ceiling the fields
+#: are treated as unreadable and the event says the tokens were estimated, so no invented
+#: measurement is ever filed as reported.
+MAX_REPORTED_TOKENS_PER_CALL = 10**15
+
 
 def _json_depth_exceeded(blob: bytes) -> bool:
     """True when the JSON nesting in ``blob`` is deeper than :data:`MAX_BODY_DEPTH`.
@@ -164,8 +172,57 @@ class ProxyStats:
         }
 
 
-def _extract_usage(provider: str, payload: dict[str, Any]) -> tuple[int, int, int] | None:
-    """Pull (input, cached_input, output) tokens out of a provider response."""
+def _token_field(usage: dict[str, Any], key: str, problems: list[str]) -> int:
+    """Read one token count from a provider's ``usage`` block; always a non-negative int.
+
+    A provider is not a trusted party here: it is a remote service whose numbers are being
+    recorded precisely so that they can be disputed later, and the recorder must not be
+    takeable down by the thing it records. ``int("abc")`` used to raise ``ValueError``
+    straight out of the request handler, and a forty-digit count used to raise
+    ``InvalidOperation`` inside the meter — either one turns a hostile or merely broken
+    upstream into an internal error in the run's own evidence.
+
+    A field that is not a whole number, is negative, or exceeds the plausibility ceiling
+    (``MAX_REPORTED_TOKENS_PER_CALL``) is recorded in ``problems`` and read as 0; the caller
+    then treats the whole usage block as unusable and *says so on the event*, so the tokens
+    are marked ``estimated`` instead of an invented measurement being passed off as reported.
+    """
+    value = usage.get(key)
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        problems.append(f"{key}={value!r} is not a token count")
+        return 0
+    if isinstance(value, float) and not value.is_integer():
+        problems.append(f"{key}={value!r} is not a whole number of tokens")
+        return 0
+    try:
+        count = int(str(value).strip())
+    except (TypeError, ValueError):
+        problems.append(f"{key}={value!r} is not a whole number of tokens")
+        return 0
+    if count < 0:
+        problems.append(f"{key}={count} is negative")
+        return 0
+    if count > MAX_REPORTED_TOKENS_PER_CALL:
+        problems.append(f"{key}={count} exceeds the plausible maximum {MAX_REPORTED_TOKENS_PER_CALL}")
+        return 0
+    return count
+
+
+def _extract_usage(
+    provider: str,
+    payload: dict[str, Any],
+    problems: list[str] | None = None,
+) -> tuple[int, int, int] | None:
+    """Pull (input, cached_input, output) tokens out of a provider response.
+
+    Total by construction: it returns a triple, or ``None`` when the response carries no
+    usable usage block, and never raises. ``problems`` (when supplied) collects a
+    human-readable reason for every unreadable field, which the caller discloses on the
+    event — an unusable number is reported, not silently dropped.
+    """
+    notes = problems if problems is not None else []
     if not isinstance(payload, dict):
         return None
     usage = payload.get("usage") or payload.get("usageMetadata")
@@ -174,31 +231,41 @@ def _extract_usage(provider: str, payload: dict[str, Any]) -> tuple[int, int, in
     if (provider == "anthropic" or {"input_tokens", "output_tokens"} & set(usage)) and (
         "input_tokens" in usage or "output_tokens" in usage
     ):
-        return (
-            int(usage.get("input_tokens") or 0),
-            int(usage.get("cache_read_input_tokens") or 0),
-            int(usage.get("output_tokens") or 0),
+        triple = (
+            _token_field(usage, "input_tokens", notes),
+            _token_field(usage, "cache_read_input_tokens", notes),
+            _token_field(usage, "output_tokens", notes),
         )
-    if {"prompt_tokens", "completion_tokens"} & set(usage):
-        cached = 0
+    elif {"prompt_tokens", "completion_tokens"} & set(usage):
         details = usage.get("prompt_tokens_details") or {}
-        if isinstance(details, dict):
-            cached = int(details.get("cached_tokens") or 0)
-        return (
-            int(usage.get("prompt_tokens") or 0),
+        cached = _token_field(details, "cached_tokens", notes) if isinstance(details, dict) else 0
+        if not isinstance(details, dict) and details:
+            notes.append(f"prompt_tokens_details={details!r} is not an object")
+        triple = (
+            _token_field(usage, "prompt_tokens", notes),
             cached,
-            int(usage.get("completion_tokens") or 0),
+            _token_field(usage, "completion_tokens", notes),
         )
-    if {"promptTokenCount", "candidatesTokenCount"} & set(usage):
-        return (
-            int(usage.get("promptTokenCount") or 0),
-            int(usage.get("cachedContentTokenCount") or 0),
-            int(usage.get("candidatesTokenCount") or 0),
+    elif {"promptTokenCount", "candidatesTokenCount"} & set(usage):
+        triple = (
+            _token_field(usage, "promptTokenCount", notes),
+            _token_field(usage, "cachedContentTokenCount", notes),
+            _token_field(usage, "candidatesTokenCount", notes),
         )
-    return None
+    else:
+        return None
+    if notes:
+        # All or nothing: one unreadable field makes the block a non-measurement, and a
+        # measurement that is half invented is worse than an estimate that is labelled.
+        return None
+    return triple
 
 
-def _parse_sse_usage(provider: str, text: str) -> tuple[int, int, int] | None:
+def _parse_sse_usage(
+    provider: str,
+    text: str,
+    problems: list[str] | None = None,
+) -> tuple[int, int, int] | None:
     """Merge usage across SSE events (OpenAI sends it last; Anthropic spreads it)."""
     totals: dict[str, int] = {}
     found = False
@@ -213,7 +280,7 @@ def _parse_sse_usage(provider: str, text: str) -> tuple[int, int, int] | None:
             payload = json.loads(body)
         except json.JSONDecodeError:
             continue
-        usage = _extract_usage(provider, payload)
+        usage = _extract_usage(provider, payload, problems)
         if usage is None:
             delta = payload.get("usage")
             if isinstance(delta, dict) and provider == "anthropic":
@@ -966,7 +1033,8 @@ class _Handler(BaseHTTPRequestHandler):
                         # accounting: a usage row is only provable against a successful
                         # response (spec §6), so counting it in totals would create a
                         # number the verifier cannot reproduce.
-                        found = _extract_usage(provider, parsed)
+                        error_usage_problems: list[str] = []
+                        found = _extract_usage(provider, parsed, error_usage_problems)
                         if found is not None:
                             reported_usage = {
                                 "input_tokens": found[0],
@@ -1002,9 +1070,10 @@ class _Handler(BaseHTTPRequestHandler):
 
         usage = None
         usage_source = "reported"
+        usage_problems: list[str] = []
         if streaming:
             text = payload.get("text", "")
-            usage = _parse_sse_usage(provider, text)
+            usage = _parse_sse_usage(provider, text, usage_problems)
             if usage is None:
                 usage = (
                     estimate_tokens_from_text(body_bytes.decode("utf-8", "replace")),
@@ -1018,7 +1087,7 @@ class _Handler(BaseHTTPRequestHandler):
             except (json.JSONDecodeError, UnicodeDecodeError):
                 parsed_response = None
             if isinstance(parsed_response, dict):
-                usage = _extract_usage(provider, parsed_response)
+                usage = _extract_usage(provider, parsed_response, usage_problems)
                 if usage is None:
                     usage_source = "estimated"
                     usage = (
@@ -1043,22 +1112,29 @@ class _Handler(BaseHTTPRequestHandler):
         cost = proxy.meter.record(model, inp, cached, out, usage_source)
         proxy.stats.model_calls += 1
 
-        proxy.record(
-            ev.MODEL_RESPONSE,
-            {
-                "provider": provider,
-                "model": model,
-                "status": status,
-                "latency_ms": latency_ms,
-                "usage": {"input_tokens": inp, "cached_input_tokens": cached, "output_tokens": out},
-                "usage_source": usage_source,
-                "cost_usd": usd(cost),
-                "cumulative_cost_usd": usd(proxy.meter.cost),
-                "streaming": streaming,
-                "response_bytes": len(payload.get("text", "")) if streaming else len(payload.get("bytes", b"")),
-                "injected_fault": injected,
-            },
-        )
+        response_data: dict[str, Any] = {
+            "provider": provider,
+            "model": model,
+            "status": status,
+            "latency_ms": latency_ms,
+            "usage": {"input_tokens": inp, "cached_input_tokens": cached, "output_tokens": out},
+            "usage_source": usage_source,
+            "cost_usd": usd(cost),
+            "cumulative_cost_usd": usd(proxy.meter.cost),
+            "streaming": streaming,
+            "response_bytes": len(payload.get("text", "")) if streaming else len(payload.get("bytes", b"")),
+            "injected_fault": injected,
+        }
+        if usage_problems:
+            # The provider's usage block was present but unreadable, and the tokens above are
+            # therefore an estimate. Say which numbers were refused, on the event itself: a
+            # silently substituted estimate would be indistinguishable from a measurement.
+            response_data["usage_note"] = (
+                "the provider's usage fields were unreadable ("
+                + "; ".join(usage_problems[:4])
+                + "); the token counts recorded here are estimated from the request and response text, not reported"
+            )
+        proxy.record(ev.MODEL_RESPONSE, response_data)
 
         proxy._check_warning()
         breach = proxy.cap_breach()
@@ -1398,8 +1474,11 @@ class RecordingProxy:
             if not self.ledger_full.is_set():
                 self.ledger_full.set()
                 self.health.counter("errors")
-                try:
-                    # The cause is always recordable (see ledger.ALWAYS_RECORDABLE).
+                with contextlib.suppress(LedgerFullError):  # pragma: no cover - reserves are bounded
+                    # The cause is always recordable (see ledger.ALWAYS_RECORDABLE). If even
+                    # that fails there is nothing left to say: the cap event is what could not
+                    # be written, and the caller learns about it from `ledger_full`. A silence
+                    # that is deliberate is still a silence, so it is written down here.
                     self.ledger.append(
                         ev.CAP_EXCEEDED,
                         {
@@ -1409,8 +1488,6 @@ class RecordingProxy:
                             "action": "refusing further model calls",
                         },
                     )
-                except LedgerFullError:  # pragma: no cover - reserves are bounded
-                    pass
             return None
 
     def _default_disk_free(self) -> int | None:

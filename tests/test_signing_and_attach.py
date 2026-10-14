@@ -143,10 +143,19 @@ def test_sdk_inside_a_supervised_run_writes_through_the_boundary(tmp_path, fake_
     verification = verify_receipt(result.receipt, ledger_path=result.ledger_path)
     assert verification.ok, verification.failures
 
-    # Agent-asserted events are labelled as claims, not observations.
-    for event in events:
-        if event.type in {"note", "tool.call"}:
-            assert event.data.get("reported_by") == "agent"
+    # Agent-asserted events are labelled as claims, not observations. The supervisor's own
+    # notes about the run are *not* labelled: `reported_by: "agent"` means "the supervised
+    # process said this", and a note Docket wrote about its own evidence directory is an
+    # observation, not a claim. Both cases are asserted, so neither can drift silently.
+    agent_asserted = [event for event in events if event.data.get("reported_by") == "agent"]
+    assert [event.type for event in agent_asserted].count("note") == 2
+    assert "tool.call" in [event.type for event in agent_asserted]
+    assert "model.response" in [event.type for event in agent_asserted]
+    supervisor_notes = [
+        event for event in events if event.type == "note" and "reported_by" not in event.data
+    ]
+    assert supervisor_notes, "the run's own note about the evidence directory is in the record"
+    assert all("excluded" in event.data for event in supervisor_notes)
 
 
 def test_sdk_standalone_still_writes_its_own_ledger_and_receipt(tmp_path):

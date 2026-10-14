@@ -9,6 +9,12 @@ The place where Docket sits between your agent and the outside world: a loopback
 that the supervised process is pointed at (provider base-URL variables, or `HTTP_PROXY` in
 `--http-proxy` mode), plus snapshot points on the filesystem before and after the run.
 
+There are two kinds of filesystem snapshot and the names are worth keeping apart. A **digest
+snapshot** (always taken) records the SHA-256, size and mode of every watched file before and
+after the run; the difference becomes `fs.change` events. A **content snapshot**
+(`run --snapshot`, opt-in) copies the bytes themselves into the run's evidence directory so the
+run can be undone. The first tells you what happened; only the second can put it back.
+
 Everything Docket claims rests on this sentence: **it can only bound and record what crosses
 the boundary.** An agent configured with a direct provider URL, a subprocess with its own
 network access, or traffic that never touches the filesystem it watches, is outside the

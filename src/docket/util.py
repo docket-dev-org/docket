@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import atexit
 import fnmatch
 import hashlib
 import os
 import secrets
+import shutil
 import tempfile
 import time
 from collections.abc import Iterable
@@ -32,6 +34,67 @@ def atomic_write(path: str | os.PathLike[str], data: str | bytes) -> None:
             os.unlink(tmp)
 
 
+#: Set this to keep every scratch workspace a run creates (``DOCKET_KEEP_SCRATCH=1``).
+KEEP_SCRATCH_ENV = "DOCKET_KEEP_SCRATCH"
+
+
+def keep_scratch_requested() -> bool:
+    return os.environ.get(KEEP_SCRATCH_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def scratch_workspace(
+    prefix: str,
+    *,
+    keep: bool = False,
+    path: str | os.PathLike[str] | None = None,
+) -> tuple[Path, bool]:
+    """Return ``(directory, kept)`` for a scratch workspace, and promise what happens to it.
+
+    A resilience tool that leaves a directory behind on every invocation is running its own slow
+    leak: a CI job that calls ``docket demo`` or ``docket chaos`` a hundred times a day fills the
+    container's tmpfs, and a full tmpfs fails somewhere unrelated with an unhelpful error. So the
+    rule is stated once, here:
+
+    * a directory the *caller* supplied is theirs — never removed, ``kept=True``;
+    * a directory this function creates is removed at interpreter exit unless ``keep=True`` or
+      ``DOCKET_KEEP_SCRATCH`` is set, and ``kept`` says which happened.
+
+    Callers that print a path for a human to open are expected to print it only when ``kept`` says
+    the path will still exist.
+    """
+    if path is not None:
+        return Path(path), True
+    directory = Path(tempfile.mkdtemp(prefix=prefix))
+    kept = bool(keep) or keep_scratch_requested()
+    if not kept:
+        atexit.register(shutil.rmtree, directory, True)
+    return directory, kept
+
+
+_LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "0.0.0.0"}
+
+
+def local_http_url(url: str) -> str:
+    """Return ``url`` if it is an HTTP URL pointing at this machine, else raise ``ValueError``.
+
+    Every ``urllib.request.urlopen`` in this package talks to a scripted provider or the
+    boundary on loopback; nothing else is ever intended. Asserting that here means a URL that
+    arrives from outside — a redirect, a crafted ``DOCKET_*`` environment variable, a receipt —
+    cannot steer the client at ``file://``, at a cloud metadata endpoint, or at somebody else's
+    host. (Static analysis flags every ``urlopen`` as a possible SSRF for exactly this reason;
+    this function is the answer to it, and the analysis suppressals point here.)
+    """
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(str(url))
+    if parts.scheme not in {"http", "https"}:
+        raise ValueError(f"refusing to fetch {url!r}: only http/https URLs are used by docket")
+    host = (parts.hostname or "").lower()
+    if host not in _LOOPBACK_HOSTS:
+        raise ValueError(f"refusing to fetch {url!r}: docket only fetches from local addresses, not {host!r}")
+    return str(url)
+
+
 def matches_any(path: str, patterns: Iterable[str]) -> bool:
     """Glob match with ``**`` support, tolerant of leading ``./``."""
     normalised = path[2:] if path.startswith("./") else path
@@ -54,6 +117,16 @@ def human_usd(amount: Decimal | str) -> str:
 
 def human_int(value: int) -> str:
     return f"{value:,}"
+
+
+def human_bytes(count: int | None) -> str:
+    """Format a byte count for humans (``1.5 MiB``). Binary units, because these are file sizes."""
+    size = float(max(0, int(count or 0)))
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if size < 1024 or unit == "TiB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TiB"
 
 
 def human_duration(seconds: float) -> str:

@@ -23,6 +23,8 @@ Docket makes narrow, checkable claims. Breaking one of them is a security issue:
 | limits are disclosed truthfully | a receipt that omits, weakens or contradicts `limits_disclosure` |
 | secrets are not recorded | an API key, authorization header, prompt or completion content appearing in a ledger or receipt when it was not explicitly requested |
 | the boundary is not a backdoor | the local proxy exposing an endpoint that lets a non-supervised process write arbitrary events into another session's ledger, or read another session's data |
+| a restore is confined | `docket restore` (or a rollback) writing or deleting anything outside the tree it was pointed at, choosing that tree from a forged receipt, following a symlink out of the tree, applying a setuid mode, or overwriting a file that changed after the run without `--force` |
+| a snapshot does not sweep up secrets | a watched symlink whose target is copied into the snapshot store, or a watched root outside the working directory captured under a path a restore could be aimed with |
 
 Ordinary bugs (wrong output, a crash, an unhelpful message) are normal issues, not advisories.
 
@@ -37,6 +39,15 @@ Ordinary bugs (wrong output, a crash, an unhelpful message) are normal issues, n
 - **Resource exhaustion of the recording process itself** by a supervised agent with the same
   privileges — an agent that can kill Docket can also edit its files; Docket's answer is
   verifiability, not tamper-proofness against root.
+- **A snapshot you asked for containing sensitive content.** `--snapshot` copies the *contents*
+  of the watched tree into `.docket/snapshots/`, by design: that is what makes a rollback
+  possible. What it excludes — symlinks, roots outside the working directory, anything matched
+  by `[files] ignore` — is recorded in `not_covered`. Everything else in the watched tree lands
+  in the store, so watch a directory that does not contain credentials you would not commit, and
+  use `ignore` for `.env`, key material and caches.
+- **An attacker racing a restore** between its confinement check and its write, on a directory
+  the operator has already handed to an autonomous process. The confinement rules are aimed at
+  hostile documents (see [ADR 0004](docs/adr/0004-content-snapshots-and-confinement.md)).
 - **Prompt-injection consequences inside an agent.** Docket records what an agent did; it does
   not judge whether it was wise.
 - Denial of service against a *consumer* of receipts (a 10 GB receipt is a bug report about

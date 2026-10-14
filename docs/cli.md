@@ -1,7 +1,8 @@
 # Command-line reference
 
 ```
-docket [--version] {run,verify,report,explain,diff,demo,init,prices,doctor} …
+docket [--version] {run,restore,verify,report,explain,diff,demo,init,prices,
+                    selftest,chaos,game-day,doctor} …
 ```
 
 Exit codes are part of the interface, because scripts and CI depend on them:
@@ -9,9 +10,9 @@ Exit codes are part of the interface, because scripts and CI depend on them:
 | code | meaning |
 | --- | --- |
 | `0` | success (for `verify`: the receipt checks out) |
-| `1` | not verified — `docket verify` only |
+| `1` | not verified (`verify`), or a restore that refused or failed on a path (`restore`) |
 | `42` | the supervised run was stopped because a cap was crossed |
-| `43` | usage or policy error (bad policy file, nothing to run, missing receipt) |
+| `43` | usage or policy error (bad policy file, nothing to run, missing receipt, a tree that does not fit the snapshot budget) |
 | `70` | internal error (a bug — please report it with the ledger) |
 | `130` | interrupted by `SIGINT` (Ctrl-C is forwarded to the supervised process) |
 
@@ -37,6 +38,14 @@ Runs a command under a policy, records everything observable, and writes a recei
 | `--max-usd`, `--max-tokens`, `--max-calls`, `--max-minutes` | policy | per-run overrides |
 | `--on-breach {kill,deny}` | policy | per-run override |
 | `--budget-mode {usd,quota}` | policy | per-run override |
+| `--max-calls-per-minute N` | policy | refuse calls beyond N per minute (recorded, answered `429`) |
+| `--max-events N` | policy | ceiling on this run's own ledger events; the run stops at the ceiling rather than losing the record |
+| `--fail-fast-evidence` | off | stop the run when an event cannot be written, instead of continuing with a disclosed gap |
+| `--fault-inject SPEC` | off | make the boundary misbehave on purpose (see `docket chaos`) |
+| `--fault-seed N` | random | seed for `--fault-inject`; the same seed reproduces the same faults |
+| `--snapshot` | off | copy the *contents* of watched files before the agent starts, so the run can be undone |
+| `--snapshot-max-bytes N` | `67108864` (64 MiB) | budget for that copy. Over it the run is refused before the agent starts (exit `43`) |
+| `--rollback-on-breach` | off | implies `--snapshot`: if the run breaches a cap, put the watched tree back from the snapshot and record what was restored |
 
 Environment injected into the child (in addition to provider base URLs):
 
@@ -61,6 +70,66 @@ Provider variables injected with `--profile full`: `OPENAI_BASE_URL`, `OPENAI_AP
 `--http-proxy`, or by calling `/docket/*` directly — and one that bypasses all of them is
 recorded as *missing*, not as *nothing happened*: the receipt's `limits_disclosure` states the
 boundary's scope, and the session event records which variables were set.
+
+### Rolling back a run
+
+`--snapshot` and `--rollback-on-breach` are the only Docket features that **write to your
+tree**. Everything else observes. Two consequences, both deliberate:
+
+* A snapshot that cannot cover the tree is refused *before the agent starts* — a partial
+  snapshot is worse than none, because it invites restoring over a file it never captured.
+  Files it declines (over the per-file ceiling, symlinks, roots outside the working
+  directory) are listed in `ops.snapshot.not_covered` in the receipt: the receipt says what
+  *cannot* be undone, not just what can.
+* The automatic rollback runs *after* the child exits, never during: killing an agent and then
+  fighting it for the same files leaves a tree that belongs to neither party.
+
+See `docket restore` below for the on-demand form, and
+[ADR 0004](adr/0004-content-snapshots-and-confinement.md) for why the store is
+content-addressed and why a restore will not take the tree from a document.
+
+## `docket restore <receipt.json> [flags]`
+
+Undoes the filesystem changes a recorded run made, from that run's own snapshot. Dry run by
+default: it prints what it would do and writes nothing until you pass `--apply`.
+
+| flag | meaning |
+| --- | --- |
+| `--apply` | actually restore (default: show the plan and exit) |
+| `--root DIR` | the tree to restore into. Defaults to the working directory the run recorded, and is required when the receipt, the ledger and the snapshot manifest disagree about it |
+| `--force` | restore even where a file changed after the run |
+| `--ledger PATH` | the run's ledger (default: beside the receipt) |
+| `--snapshot-store DIR` | the snapshot directory (default: beside the receipt) |
+| `--docket-dir DIR` | where the run kept its evidence |
+| `--json` | the plan, the applied records and the counts as data |
+
+```console
+$ docket restore .docket/latest.receipt.json
+  docket restore — run DKT-20261014-746EF4 into /home/you/project
+
+  would restore   src/agent.py -> 7ffd13fb0082
+  would recreate  config/.env
+  would remove    scratch/output.csv
+  would skip (not covered)      models/big.bin — 134217728 bytes is over the per-file snapshot ceiling of 10485760
+
+  dry run: nothing was written. Add --apply to restore these paths.
+```
+
+Four rules, all of them learned from what a rollback tool must not do:
+
+1. **The plan comes from the record, not from re-walking the tree.** It is derived from the
+   snapshot manifest and the run's own `fs.change` events, so it can be audited (and
+   re-derived) by anyone holding the same two files.
+2. **A file edited after the run is refused, not overwritten.** The restore compares each file
+   against the digest the run recorded for it; a mismatch means a colleague, a formatter or
+   you has touched it since. `--force` is how you say "yes, over that".
+3. **Nothing is written outside the run's tree.** Paths come from documents, so they are
+   checked rather than trusted: no absolute paths, no `..`, no component that is a symlink, no
+   blob outside the store, and no setuid bit. A path that fails appears as `REFUSE` with the
+   reason. See [ADR 0004](adr/0004-content-snapshots-and-confinement.md).
+4. **It never claims completeness.** Paths the snapshot could not cover are printed as exactly
+   that, and the exit code is `1` whenever any path was refused or failed — a partial restore
+   is not reported as success.
 
 ## `docket verify <receipt.json> [flags]`
 
@@ -115,6 +184,45 @@ Writes a commented starter policy. Refuses to overwrite unless `--force`.
 Prints the price table with its `as_of` date, per-family source notes and the table digest —
 the same digest that appears in every receipt produced with it. If your invoice disagrees with
 this table, you want `--prices` on `docket run`.
+
+## `docket selftest [--json] [--keep]`
+
+Exercises the boundary's own guarantees in a scratch workspace — request forwarding,
+per-run caps, the circuit breaker, fault injection, a ledger that cannot be written, and a
+child crash — and prints one line per probe: `PASS`, `FAIL` or `SKIP` with the reason. It is
+the first thing to run when you suspect the tool rather than the agent, and the fastest way to
+check a new machine. `--keep` leaves the scratch workspace in place for inspection; `--json`
+emits the probes as data. Exit code is `0` only when nothing failed.
+
+## `docket chaos [flags] -- <command> [args…]`
+
+Runs a command with the boundary deliberately misbehaving, then audits what happened: it
+cross-checks the ledger against the child's own count of the calls it saw on the wire, so the
+receipt cannot be a self-portrait. With no command it drives the bundled synthetic agent.
+
+```
+--faults delay=250ms:0.5,status=503:0.5,drop:0.1,reset:0.05,truncate=0.5:0.2,corrupt:0.2,slow=3s:0.1
+```
+
+Each fault takes an optional probability (`:0.5`) and, where it makes sense, a magnitude
+(`delay=250ms`, `slow=3s`, `truncate=0.5`, `corrupt=0.2`). `--seed` makes a run reproducible;
+`--calls` and `--mode {bounded,retry}` shape the synthetic agent; `--max-usd` caps the
+experiment. The result includes `ops.chaos_run` in the receipt and exit code `42` if the cap
+fired.
+
+## `docket game-day [--out DIR] [--phases …] [--online] [--max-usd N] [--json]`
+
+Runs the scripted failure phases end to end — baseline, upstream failure, circuit breaker,
+upstream latency, rate limit, ledger pressure, rollback, supervisor killed mid-run — and writes
+a post-mortem next to the evidence: what was injected, what the record shows, which phase failed
+its own audit, and the expected-vs-actual for each.
+
+The `rollback` phase is the disaster-recovery drill: the workspace is seeded with files, the
+agent modifies them and breaches its cap, and the phase then checks the disk — the seeded files
+byte for byte, the rollback declaration in the receipt, the `x-docket.rollback-applied` event in
+the ledger, and that the run's own ledger and receipt survived the restore that they paid for. Offline by default against a scripted
+provider (no API key, deterministic). `--phases` runs a subset (e.g. `--phases
+ledger-pressure`); `--online` uses your configured provider and requires `--max-usd`.
 
 ## `docket doctor [--docket-dir DIR]`
 

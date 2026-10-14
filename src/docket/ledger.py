@@ -32,6 +32,7 @@ Three properties beyond "append a JSON line" earn their complexity here:
 from __future__ import annotations
 
 import contextlib
+import errno
 import hashlib
 import json
 import os
@@ -294,9 +295,7 @@ class Ledger:
             return True
         if self.max_events is not None and len(self.events) >= self.max_events:
             return False
-        if self.max_bytes is not None and self.bytes_written >= self.max_bytes:
-            return False
-        return True
+        return not (self.max_bytes is not None and self.bytes_written >= self.max_bytes)
 
     @property
     def degraded(self) -> bool:
@@ -430,7 +429,19 @@ class Ledger:
                         "reason": f"broken link at seq {event.seq}: prev does not match the previous hash",
                     }
                     break
-                if event.compute_hash() != event.hash:
+                try:
+                    recomputed = event.compute_hash()
+                except (TypeError, ValueError) as exc:
+                    # A damaged line can carry a value the canonical form refuses (a float
+                    # where only integers and decimal strings are allowed, say). That is
+                    # damage, and it is reported as damage — the diagnostics reader exists
+                    # to classify broken files, so it must not raise on one.
+                    diagnostics["chain_error"] = {
+                        "seq": event.seq,
+                        "reason": f"the event's data cannot be canonicalised: {exc}",
+                    }
+                    break
+                if recomputed != event.hash:
                     diagnostics["chain_error"] = {
                         "seq": event.seq,
                         "reason": "content hash mismatch (the event was modified after it was written)",
@@ -481,7 +492,11 @@ class Ledger:
                 return expected_seq, f"sequence gap: expected seq {expected_seq}, found {ev.seq}"
             if ev.prev != prev:
                 return ev.seq, f"broken link: prev={ev.prev[:12]}… expected {prev[:12]}…"
-            if ev.compute_hash() != ev.hash:
+            try:
+                recomputed = ev.compute_hash()
+            except (TypeError, ValueError) as exc:
+                return ev.seq, f"the event's data cannot be canonicalised: {exc}"
+            if recomputed != ev.hash:
                 return ev.seq, "content hash mismatch (event was modified after it was written)"
             prev = ev.hash
         return None

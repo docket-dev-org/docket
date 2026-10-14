@@ -233,28 +233,131 @@ class Policy:
         raw = tomllib.loads(Path(path).read_text(encoding="utf-8"))
         return cls.from_dict(raw, source_path=str(path))
 
+    @staticmethod
+    def _string_list(section: str, key: str, value: Any, default: list[str] | None = None) -> list[str]:
+        """Coerce a list-typed policy key, refusing anything that is not a list of strings.
+
+        A policy file is written by a human under time pressure. `allow = false` must say
+        "egress.allow must be a list of host patterns, got bool", not raise TypeError from
+        somewhere deep inside a run — and it must never quietly become an empty list,
+        because an empty allow-list is a *stricter* policy than the author intended.
+        """
+        if value is None:
+            return list(default or [])
+        if isinstance(value, str):
+            raise ValueError(
+                f"{section}.{key} must be a list of strings, got the string {value!r} "
+                f'(write it as ["{value}"])'
+            )
+        if isinstance(value, (bool, int, float, dict)):
+            raise ValueError(f"{section}.{key} must be a list of strings, got {type(value).__name__}")
+        if not isinstance(value, (list, tuple)):
+            raise ValueError(f"{section}.{key} must be a list of strings, got {type(value).__name__}")
+        out: list[str] = []
+        for index, item in enumerate(value):
+            if isinstance(item, (dict, list, tuple)) or item is None:
+                raise ValueError(
+                    f"{section}.{key}[{index}] must be a string, got {type(item).__name__}"
+                )
+            out.append(str(item))
+        return out
+
+    @staticmethod
+    def _section(raw: dict[str, Any], name: str) -> dict[str, Any]:
+        """Return a policy section, refusing a section written as a scalar.
+
+        ``caps = 5`` at the top level of a TOML document is a typo with teeth: the old code
+        took it as a dict and raised ``AttributeError`` from inside the loader. Every section is
+        untrusted input, so every section gets a type check that names itself.
+        """
+        value = raw.get(name)
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError(f"[{name}] must be a table, got {type(value).__name__} ({value!r})")
+        return value
+
+    @staticmethod
+    def _name(policy_raw: dict[str, Any], raw: dict[str, Any]) -> str:
+        """Read the policy name from either shape, refusing anything that is not a string.
+
+        There are two shapes in the wild and they must agree on identity, because
+        ``digest()`` is computed over ``to_dict()`` and that digest is what a receipt
+        records:
+
+        * the TOML document people write — ``[policy] name = "prod"`` (``Policy.load``);
+        * the serialised form — a top-level ``"name"`` (``to_dict()``), which is what the
+          SDK writes into the ledger, so a policy can be reconstructed from its own record.
+
+        Previously ``from_dict`` only looked inside ``[policy]``, so reconstructing a policy
+        from ``to_dict()`` silently renamed it to ``"default"`` and changed its digest — the
+        reconstructed policy no longer matched the digest recorded beside it. A name given
+        twice *differently* is refused rather than resolved by precedence: an identity field
+        is the worst place to guess.
+        """
+        nested = policy_raw.get("name")
+        top = raw.get("name")
+        for where, value in (("policy.name", nested), ("name", top)):
+            if value is None or isinstance(value, str):
+                continue
+            raise ValueError(f"{where} must be a string, got {value!r} ({type(value).__name__})")
+        if nested and top and str(nested) != str(top):
+            raise ValueError(
+                f"the policy name is given twice and differently: policy.name={nested!r}, name={top!r}"
+            )
+        # Presence, not truthiness: an explicitly empty name is a mistake to report, not a
+        # silent fall back to the default (which would name the policy something nobody chose).
+        chosen = nested if nested is not None else top
+        if chosen is None:
+            return "default"
+        name = chosen.strip()
+        if not name:
+            raise ValueError("policy.name must not be empty")
+        return name
+
     @classmethod
     def from_dict(cls, raw: dict[str, Any], source_path: str | None = None) -> Policy:
-        caps_raw = raw.get("caps", {}) or {}
-        models_raw = raw.get("models", {}) or {}
-        egress_raw = raw.get("egress", {}) or {}
-        files_raw = raw.get("files", {}) or {}
-        budget_raw = raw.get("budget", {}) or {}
-        resilience_raw = raw.get("resilience", {}) or {}
-        policy_raw = raw.get("policy", {}) or {}
+        if not isinstance(raw, dict):
+            raise ValueError(f"a policy document must be a table, got {type(raw).__name__}")
+        caps_raw = cls._section(raw, "caps")
+        models_raw = cls._section(raw, "models")
+        egress_raw = cls._section(raw, "egress")
+        files_raw = cls._section(raw, "files")
+        budget_raw = cls._section(raw, "budget")
+        resilience_raw = cls._section(raw, "resilience")
+        policy_raw = cls._section(raw, "policy")
+
+        def _amount(key: str) -> Decimal | None:
+            # ``_amount_key`` refuses booleans, infinities (``1e999`` in TOML parses to ``inf``,
+            # which a naive coercion accepts as a cap that can never be breached) and negatives
+            # that cannot be amounts, naming ``caps.<key>`` and the offending value.
+            return _amount_key("caps", key, caps_raw.get(key), None)
+
+        def _whole(key: str) -> int | None:
+            return _whole_key("caps", key, caps_raw.get(key), None)
+
+        try:
+            warn_at = _ratio(caps_raw.get("warn_at", 0.8))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"caps.warn_at must be a fraction or percentage: {caps_raw.get('warn_at')!r}") from exc
+
+        try:
+            grace_seconds = _finite_number("caps", "grace_seconds", caps_raw.get("grace_seconds", 5.0))
+        except ValueError as exc:
+            raise ValueError(
+                f"caps.grace_seconds is not a number of seconds: {caps_raw.get('grace_seconds')!r}"
+            ) from exc
 
         caps = Caps(
-            max_usd=Decimal(str(caps_raw["max_usd"])) if caps_raw.get("max_usd") is not None else None,
-            max_tokens=int(caps_raw["max_tokens"]) if caps_raw.get("max_tokens") is not None else None,
-            max_model_calls=int(caps_raw["max_model_calls"]) if caps_raw.get("max_model_calls") is not None else None,
-            max_wall_seconds=int(caps_raw["max_wall_seconds"])
-            if caps_raw.get("max_wall_seconds") is not None
-            else None,
+            max_usd=_amount("max_usd"),
+            max_tokens=_whole("max_tokens"),
+            max_model_calls=_whole("max_model_calls"),
+            max_wall_seconds=_whole("max_wall_seconds"),
             # tolerate an 80 value meaning 80% as well as 0.8 meaning 0.8, and the
             # decimal strings the serialised form uses
-            warn_at=_ratio(caps_raw.get("warn_at", 0.8)),
+            warn_at=warn_at,
             on_breach=str(caps_raw.get("on_breach", "kill")),
-            grace_seconds=float(caps_raw.get("grace_seconds", 5.0)),
+            grace_seconds=grace_seconds,
         )
         if caps.on_breach not in {"kill", "deny"}:
             raise ValueError("caps.on_breach must be 'kill' or 'deny'")
@@ -263,7 +366,7 @@ class Policy:
 
         egress = Egress(
             mode=str(egress_raw.get("mode", "deny")),
-            allow=[str(h) for h in egress_raw.get("allow", DEFAULT_EGRESS_ALLOW)],
+            allow=cls._string_list("egress", "allow", egress_raw.get("allow"), DEFAULT_EGRESS_ALLOW),
         )
         if egress.mode not in {"deny", "tunnel"}:
             raise ValueError("egress.mode must be 'deny' or 'tunnel'")
@@ -271,18 +374,18 @@ class Policy:
         resilience = _resilience_from(resilience_raw)
 
         policy = cls(
-            name=str(policy_raw.get("name", "default")),
+            name=cls._name(policy_raw, raw),
             caps=caps,
             resilience=resilience,
             models=Models(
-                allow=[str(p) for p in models_raw.get("allow", [])],
-                deny=[str(p) for p in models_raw.get("deny", [])],
+                allow=cls._string_list("models", "allow", models_raw.get("allow")),
+                deny=cls._string_list("models", "deny", models_raw.get("deny")),
             ),
             egress=egress,
             files=Files(
-                watch=[str(p) for p in files_raw.get("watch", ["."])],
-                ignore=[str(p) for p in files_raw.get("ignore", [])],
-                deny_write=[str(p) for p in files_raw.get("deny_write", [])],
+                watch=cls._string_list("files", "watch", files_raw.get("watch"), ["."]),
+                ignore=cls._string_list("files", "ignore", files_raw.get("ignore")),
+                deny_write=cls._string_list("files", "deny_write", files_raw.get("deny_write")),
             ),
             budget_mode=str(budget_raw.get("mode", "usd")),
             source_path=source_path,
@@ -413,6 +516,53 @@ def DEFAULT_TOML(name: str = "default", max_usd: str = "5.00") -> str:
     return policy.to_toml()
 
 
+def _finite_number(section: str, key: str, value: Any) -> float:
+    """A finite number from a policy document, or a ``ValueError`` naming it.
+
+    Two failure modes are worth naming rather than defaulting. TOML parses ``1e999`` to
+    ``inf`` (and ``nan`` is reachable through arithmetic on it), which ``int()`` then refuses
+    with an unhelpful ``OverflowError``; and ``true`` is an ``int`` in Python, so a boolean
+    would otherwise sail through a numeric field. Both are refused by name.
+    """
+    where = f"{section}.{key}"
+    if isinstance(value, bool) or value is None:
+        raise ValueError(f"{where} must be a number, got {value!r}")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{where} must be a number, got {value!r}") from exc
+    if number != number or number in (float("inf"), float("-inf")):
+        raise ValueError(f"{where} must be a finite number, got {value!r}")
+    return number
+
+
+def _whole_key(section: str, key: str, value: Any, default: int | None) -> int | None:
+    """A whole number from a policy document, or the default when the key is absent."""
+    if value is None:
+        return default
+    number = _finite_number(section, key, value)
+    if number != int(number):
+        raise ValueError(f"{section}.{key} must be a whole number, got {value!r}")
+    return int(number)
+
+
+def _amount_key(section: str, key: str, value: Any, default: Decimal | None) -> Decimal | None:
+    if value is None:
+        return default
+    number = _finite_number(section, key, value)
+    if number < 0:
+        raise ValueError(f"{section}.{key} must not be negative, got {value!r}")
+    return Decimal(str(value).strip())
+
+
+def _bool_key(section: str, key: str, value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if not isinstance(value, bool):
+        raise ValueError(f"{section}.{key} must be true or false, got {value!r}")
+    return value
+
+
 def _resilience_from(raw: dict[str, Any]) -> Resilience:
     """Build the resilience section, rejecting values that cannot mean anything.
 
@@ -428,23 +578,30 @@ def _resilience_from(raw: dict[str, Any]) -> Resilience:
         )
     defaults = Resilience()
     resilience = Resilience(
-        breaker_threshold=int(raw.get("breaker_threshold", defaults.breaker_threshold)),
-        breaker_cooldown_seconds=int(raw.get("breaker_cooldown_seconds", defaults.breaker_cooldown_seconds)),
-        breaker_max_cooldown_seconds=int(
-            raw.get("breaker_max_cooldown_seconds", defaults.breaker_max_cooldown_seconds)
+        breaker_threshold=_whole_key(
+            "resilience", "breaker_threshold", raw.get("breaker_threshold"), defaults.breaker_threshold
         ),
-        max_calls_per_minute=(
-            int(raw["max_calls_per_minute"]) if raw.get("max_calls_per_minute") is not None else None
+        breaker_cooldown_seconds=_whole_key(
+            "resilience", "breaker_cooldown_seconds", raw.get("breaker_cooldown_seconds"), defaults.breaker_cooldown_seconds
         ),
-        max_calls_per_second=(
-            Decimal(str(raw["max_calls_per_second"])) if raw.get("max_calls_per_second") is not None else None
+        breaker_max_cooldown_seconds=_whole_key(
+            "resilience",
+            "breaker_max_cooldown_seconds",
+            raw.get("breaker_max_cooldown_seconds"),
+            defaults.breaker_max_cooldown_seconds,
         ),
-        max_events=int(raw["max_events"]) if raw.get("max_events") is not None else None,
-        max_ledger_bytes=(
-            int(raw["max_ledger_bytes"]) if raw.get("max_ledger_bytes") is not None else None
+        max_calls_per_minute=_whole_key(
+            "resilience", "max_calls_per_minute", raw.get("max_calls_per_minute"), None
         ),
-        fail_fast_evidence=bool(raw.get("fail_fast_evidence", defaults.fail_fast_evidence)),
-        min_free_bytes=int(raw.get("min_free_bytes", defaults.min_free_bytes)),
+        max_calls_per_second=_amount_key(
+            "resilience", "max_calls_per_second", raw.get("max_calls_per_second"), None
+        ),
+        max_events=_whole_key("resilience", "max_events", raw.get("max_events"), None),
+        max_ledger_bytes=_whole_key("resilience", "max_ledger_bytes", raw.get("max_ledger_bytes"), None),
+        fail_fast_evidence=_bool_key(
+            "resilience", "fail_fast_evidence", raw.get("fail_fast_evidence"), defaults.fail_fast_evidence
+        ),
+        min_free_bytes=_whole_key("resilience", "min_free_bytes", raw.get("min_free_bytes"), defaults.min_free_bytes),
     )
     if resilience.breaker_threshold < 1:
         raise ValueError("resilience.breaker_threshold must be at least 1")

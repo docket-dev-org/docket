@@ -254,18 +254,28 @@ function verifyReceipt(receipt, options = {}) {
     );
   }
 
+  // Two facts, reported together here and separately by the Python verifier: does the row
+  // prove membership in the claimed root (the inclusion proof), and is it the event the
+  // *recomputed* ledger holds at that sequence (the re-binding)? Both are counted so the
+  // detail line can say which one failed — "usage rows do not match the ledger" when the
+  // proofs were fine and the ledger was edited sends a reader looking in the wrong place.
   const rows = receipt.appendix?.usage ?? [];
   const rootValue = chain ? merkleRoot(chain.recomputed) : String(ledgerMeta.merkle_root ?? "");
   let proven = 0;
   let unproven = 0;
   let rebound = 0;
+  let proofBad = 0;
+  let rebindBad = 0;
   let firstBad = null;
   for (const row of rows) {
     let ok = Boolean(row.merkle_path) && verifyInclusion(row.event_hash, row.merkle_path, rootValue);
+    if (!ok) proofBad += 1;
     if (ok && events) {
       const bound = chain.recomputed[row.seq];
-      if (bound !== row.event_hash) ok = false;
-      else rebound += 1;
+      if (bound !== row.event_hash) {
+        ok = false;
+        rebindBad += 1;
+      } else rebound += 1;
     }
     if (ok) proven += 1;
     else {
@@ -280,7 +290,9 @@ function verifyReceipt(receipt, options = {}) {
       "usage-inclusion-proofs",
       "fail",
       events
-        ? `${unproven} of ${rows.length} usage rows do not match the recomputed ledger (first: seq ${firstBad})`
+        ? `${unproven} of ${rows.length} usage rows do not match the recomputed ledger ` +
+          `(first: seq ${firstBad}; ${proofBad} failed their inclusion proof, ` +
+          `${rebindBad} are not the event the recomputed ledger holds at that sequence)`
         : `${unproven} of ${rows.length} usage rows failed their inclusion proof`,
     );
   } else {

@@ -145,6 +145,8 @@ def build_receipt(
     duration_seconds: float,
     price_table: PriceTable,
     proxy_stats: Any | None = None,
+    snapshot: dict[str, Any] | None = None,
+    rollback: dict[str, Any] | None = None,
     seal_key: str | None = None,
     sign_key: str | Path | None = None,
     label: str | None = None,
@@ -228,6 +230,32 @@ def build_receipt(
         else None,
         "fault_injection": injector.snapshot() if injector is not None and injector.enabled else None,
         "chaos_run": bool(injector is not None and injector.enabled),
+        # Rollback is a claim about the working tree, so the receipt states it in full: what was
+        # captured, what was restored, and — most importantly — which changed paths the snapshot
+        # could not cover. A receipt that said only "rolled back: true" would be exactly the kind
+        # of unqualified assurance this format exists to avoid.
+        "snapshot": {
+            "taken": True,
+            "files": snapshot.get("files"),
+            "bytes_stored": snapshot.get("bytes_stored"),
+            "not_covered": snapshot.get("not_covered"),
+            "manifest": snapshot.get("manifest"),
+        }
+        if snapshot
+        else None,
+        "rollback": {
+            "applied": rollback.get("applied"),
+            "trigger": rollback.get("trigger"),
+            "counts": rollback.get("counts"),
+            "paths": [item["path"] for item in rollback.get("applied_paths", []) if item.get("status") in {"restored", "recreated", "removed"}],
+            "refused": [
+                {"path": item["path"], "reason": item.get("reason")}
+                for item in rollback.get("applied_paths", [])
+                if item.get("status") in {"refused", "failed", "skipped"}
+            ],
+        }
+        if rollback
+        else None,
     }
 
     receipt: dict[str, Any] = {

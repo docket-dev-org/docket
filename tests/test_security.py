@@ -36,7 +36,6 @@ from docket.policy import Caps, Egress, Policy
 from docket.pricing import CostMeter, PriceTable
 from docket.proxy import MAX_REQUEST_BODY, RecordingProxy, _unsafe_path
 
-
 # --------------------------------------------------------------------------- #
 # A raw socket client, because urllib refuses to send malformed requests
 # --------------------------------------------------------------------------- #
@@ -58,7 +57,7 @@ def raw_request(host: str, port: int, request: bytes, *, timeout: float = 5.0) -
                 if not chunk:
                     return buffer
                 buffer += chunk
-        except (TimeoutError, socket.timeout):  # pragma: no cover - surfaces a hang
+        except TimeoutError:  # pragma: no cover - surfaces a hang
             return buffer
         head, _, body = buffer.partition(b"\r\n\r\n")
         declared = 0
@@ -69,7 +68,7 @@ def raw_request(host: str, port: int, request: bytes, *, timeout: float = 5.0) -
         while len(body) < declared:
             try:
                 chunk = sock.recv(65536)
-            except (TimeoutError, socket.timeout):  # pragma: no cover
+            except TimeoutError:  # pragma: no cover
                 break
             if not chunk:
                 break

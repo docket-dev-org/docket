@@ -23,6 +23,7 @@ from .receipt import load_receipt
 from .report import diff_receipts, render_diff, render_findings, render_markdown, render_receipt
 from .resilience import parse_fault_spec
 from .supervisor import Supervisor
+from .util import human_bytes
 from .verify import verify_receipt
 
 PROGRAM = "docket"
@@ -46,6 +47,7 @@ def _out(stream: Any, text: str = "") -> None:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    from . import snapshot as snapshot_module
     try:
         policy = Policy.load(args.policy)
     except (OSError, ValueError) as exc:
@@ -87,8 +89,10 @@ def cmd_run(args: argparse.Namespace) -> int:
         if not faults:
             _out(sys.stderr, f"{PROGRAM}: --fault-inject did not describe any fault: {args.fault_inject!r}")
             return 43
-    if args.docket_dir:
-        policy.files.ignore = policy.files.ignore + [f"{args.docket_dir}/**"]
+    # The evidence directory is excluded from the watched tree by the Supervisor itself, from
+    # resolved paths (`_exclude_own_evidence`) rather than from the flag as typed: a rule that
+    # only works when the shell's directory happens to equal the child's is a rule that fails
+    # quietly on the day it matters.
 
     seal_key = None
     if args.seal:
@@ -117,6 +121,23 @@ def cmd_run(args: argparse.Namespace) -> int:
             _out(sys.stderr, f"{PROGRAM}: DOCKET_GAME_DAY_UPSTREAM must be a JSON object of provider→URL")
             return 43
 
+    from .supervisor import check_docket_dir
+
+    problem = check_docket_dir(args.docket_dir)
+    if problem:
+        _out(sys.stderr, f"{PROGRAM}: {problem}")
+        return 43
+    if args.policy:
+        policy_dir = Path(args.policy).resolve().parent
+        problem = check_docket_dir(policy_dir) if not os.access(policy_dir, os.W_OK | os.X_OK) else None
+        if problem:
+            _out(
+                sys.stderr,
+                f"{PROGRAM}: cannot write next to the policy at {args.policy}: {problem} "
+                "(the run keeps a copy of the policy it used beside the original)",
+            )
+            return 43
+
     supervisor = Supervisor(
         args.command,
         policy=policy,
@@ -132,6 +153,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         faults=faults,
         fault_seed=args.fault_seed,
         upstreams=upstreams,
+        snapshot_files=args.snapshot or args.rollback_on_breach,
+        snapshot_max_bytes=(
+            args.snapshot_max_bytes if args.snapshot_max_bytes is not None else snapshot_module.DEFAULT_MAX_BYTES
+        ),
+        rollback_on_breach=args.rollback_on_breach,
     )
     if faults:
         _out(
@@ -139,7 +165,13 @@ def cmd_run(args: argparse.Namespace) -> int:
             f"{PROGRAM}: FAULT INJECTION ACTIVE ({'; '.join(f.describe() for f in faults)}"
             f", seed {args.fault_seed}) — this receipt records a test, not production behaviour",
         )
-    result = supervisor.run()
+    try:
+        result = supervisor.run()
+    except snapshot_module.SnapshotTooLargeError as exc:
+        # Refused before the agent started: the alternative is discovering mid-run that the
+        # snapshot cannot cover what the agent is about to change.
+        _out(sys.stderr, f"{PROGRAM}: {exc}")
+        return 43
     color = _color_enabled(sys.stderr)
     receipt = result.receipt
     if args.report == "full":
@@ -166,6 +198,24 @@ def cmd_run(args: argparse.Namespace) -> int:
                 "The receipt declares this and verification will report it.",
             )
         ops = receipt.get("ops") or {}
+        snapshot = ops.get("snapshot") or {}
+        rollback = ops.get("rollback")
+        if snapshot.get("taken"):
+            line = (
+                f"{PROGRAM}: snapshot: {snapshot.get('files', 0)} file(s), "
+                f"{human_bytes(snapshot.get('bytes_stored', 0))} stored"
+            )
+            if snapshot.get("not_covered"):
+                line += f" · {len(snapshot['not_covered'])} file(s) it could not cover"
+            _out(sys.stderr, line)
+        if rollback and rollback.get("applied"):
+            counts = rollback.get("counts") or {}
+            summary = ", ".join(f"{value} {key}" for key, value in sorted(counts.items()) if value)
+            _out(sys.stderr, f"{PROGRAM}: rolled back after breach: {summary or 'nothing to do'}")
+            for item in rollback.get("refused") or []:
+                _out(sys.stderr, f"{PROGRAM}: NOT rolled back: {item['path']} — {item['reason']}")
+        elif rollback:
+            _out(sys.stderr, f"{PROGRAM}: no rollback: {rollback.get('reason') or 'no snapshot taken'}")
         breaker = ops.get("circuit_breaker") or {}
         opened = {name: state for name, state in breaker.items() if state.get("state") != "closed"}
         if opened:
@@ -185,6 +235,276 @@ def _load_receipt_arg(path: str | None) -> dict[str, Any] | None:
     if latest.exists():
         return load_receipt(latest)
     return None
+
+
+def _docket_dir_for(receipt_path: Path, override: str | None) -> Path:
+    """Where a run kept its evidence, inferred from the receipt that points at it.
+
+    A receipt lives at ``<docket-dir>/receipts/<number>.receipt.json`` and ``latest.receipt.json``
+    is a copy at the top of the docket directory, so the *parent* of a receipt is not always the
+    right answer — the parent of a ``receipts/`` directory is. Getting this wrong is the
+    difference between "this run has no snapshot" and the snapshot sitting two directories away.
+    """
+    if override:
+        return Path(override)
+    parent = receipt_path.parent
+    return parent.parent if parent.name == "receipts" else parent
+
+
+def _store_candidates(receipt: dict[str, Any], receipt_path: Path, docket_dir: Path) -> list[Path]:
+    """Every place the snapshot for this run could be, most specific first.
+
+    The receipt records the manifest path the run used (relative to the run's working directory,
+    which is itself recorded), so that is the first candidate; the conventional location inside
+    the docket directory is the second. Both are derived rather than guessed at random.
+    """
+    session = receipt.get("session") or {}
+    session_id = str(session.get("id") or "")
+    manifest = ((receipt.get("ops") or {}).get("snapshot") or {}).get("manifest")
+    candidates: list[Path] = []
+    if isinstance(manifest, str) and manifest:
+        recorded = Path(manifest)
+        if recorded.is_absolute():
+            candidates.append(recorded.parent)
+        else:
+            cwd = session.get("cwd")
+            if isinstance(cwd, str) and cwd:
+                candidates.append(Path(cwd) / recorded.parent)
+            candidates.append(receipt_path.parent / recorded.parent)
+            candidates.append(docket_dir / recorded.parent)
+    if session_id:
+        candidates.append(docket_dir / "snapshots" / session_id)
+        candidates.append(receipt_path.parent / "snapshots" / session_id)
+    seen: list[Path] = []
+    for candidate in candidates:
+        if candidate not in seen:
+            seen.append(candidate)
+    return seen
+
+
+def _find_snapshot_store(
+    receipt: dict[str, Any], receipt_path: Path, docket_dir: Path, override: str | None
+) -> Path | None:
+    if override:
+        return Path(override)
+    for candidate in _store_candidates(receipt, receipt_path, docket_dir):
+        if (candidate / "manifest.json").exists():
+            return candidate
+    return None
+
+
+def _ledger_candidates(store: Path, receipt_path: Path, docket_dir: Path) -> list[Path]:
+    """Where the run's ledger could be: beside the snapshot store it was found in, then by convention."""
+    session_id = store.name  # the store is <docket-dir>/snapshots/<session-id>
+    places = [store.parent.parent, docket_dir, receipt_path.parent, Path.cwd()]
+    seen: list[Path] = []
+    for place in places:
+        candidate = place / "runs" / f"{session_id}.jsonl"
+        if candidate not in seen:
+            seen.append(candidate)
+    # A session id that is not a directory name (a hand-built store) still has a ledger by name.
+    for place in places:
+        for name in sorted(place.glob(f"{session_id}*.jsonl")) if session_id else []:
+            if name not in seen:
+                seen.append(name)
+    return seen
+
+
+def _find_ledger(
+    receipt: dict[str, Any], store: Path, receipt_path: Path, docket_dir: Path, override: str | None
+) -> Path | None:
+    if override:
+        return Path(override)
+    for candidate in _ledger_candidates(store, receipt_path, docket_dir):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def cmd_restore(args: argparse.Namespace) -> int:
+    """Undo the filesystem changes a recorded run made, from its own snapshot.
+
+    Four questions are answered before anything is written: *can* this run be restored (is
+    there a snapshot?), *which tree* it is about (three different documents record it, and
+    they have to agree), *what* would change (derived from the ledger's own ``fs.change``
+    events, so it can be audited first), and *has anyone edited those files since* (in which
+    case the path is refused unless ``--force``). Restoring files is destructive; it is never
+    done quietly, and it is never claimed to be complete — paths the snapshot could not cover
+    are printed as exactly that.
+
+    The tree is the one thing a restore must not get from a document alone. A receipt is
+    evidence about a run, not proof of who wrote it: anyone who can hand you a receipt can
+    name a different tree in it. So the receipt, the ledger and the snapshot manifest all
+    record the run's working directory, and if they disagree Docket stops and shows you the
+    disagreement rather than picking one — ``--root`` is how an operator decides, out loud.
+    """
+    from . import snapshot as snapshot_module
+
+    receipt_path = Path(args.receipt)
+    if not receipt_path.exists():
+        _out(sys.stderr, f"{PROGRAM}: no such receipt: {receipt_path}")
+        return 1
+    receipt = load_receipt(receipt_path)
+    session_id = str((receipt.get("session") or {}).get("id") or "")
+    docket_dir = _docket_dir_for(receipt_path, args.docket_dir)
+    store = _find_snapshot_store(receipt, receipt_path, docket_dir, args.snapshot_store)
+    if store is None:
+        _out(
+            sys.stderr,
+            f"{PROGRAM}: this run has no snapshot, so nothing can be restored from it. "
+            "Snapshots are opt-in: run with --snapshot (or --rollback-on-breach) next time, "
+            "and `--snapshot-store DIR` names a store this command should look in.",
+        )
+        return 1
+    ledger_path = _find_ledger(receipt, store, receipt_path, docket_dir, args.ledger)
+    if ledger_path is None:
+        _out(
+            sys.stderr,
+            f"{PROGRAM}: the ledger for this run is missing (looked in "
+            f"{', '.join(str(item) for item in _ledger_candidates(store, receipt_path, docket_dir))}), so which "
+            "files changed cannot be re-derived. Restore needs both the snapshot and the record; "
+            "`--ledger PATH` names it if it moved.",
+        )
+        return 1
+    manifest = snapshot_module.read_manifest(store)
+    events = Ledger.read(ledger_path)
+    changes: list[dict[str, Any]] = []
+    started_cwd = None
+    for event in events:
+        if event.type == "fs.change":
+            changes.append(dict(event.data))
+        elif event.type == "session.start" and started_cwd is None:
+            started_cwd = event.data.get("cwd")
+    recorded = {
+        "the receipt": (receipt.get("session") or {}).get("cwd"),
+        "the ledger": started_cwd,
+        "the snapshot manifest": manifest.get("root"),
+    }
+
+    def _resolved(value: object) -> str | None:
+        if not isinstance(value, str) or not value:
+            return None
+        try:
+            return str(Path(value).resolve())
+        except OSError:  # a path that cannot be resolved is compared as written, and will differ
+            return value
+
+    named = {label: _resolved(value) for label, value in recorded.items()}
+    if args.root:
+        root = Path(args.root).resolve()
+        if not root.is_dir():
+            _out(sys.stderr, f"{PROGRAM}: --root {root} is not a directory")
+            return 1
+        others = {label: value for label, value in named.items() if value and value != str(root)}
+        header = f"  {PROGRAM} restore — run {session_id or 'unknown'} into {root}" + (
+            f"  (not the tree {', '.join(sorted(others))} recorded: {', '.join(sorted(set(others.values())))})"
+            if others
+            else ""
+        )
+    else:
+        distinct = {value for value in named.values() if value}
+        if not distinct:
+            _out(
+                sys.stderr,
+                f"{PROGRAM}: none of the receipt, the ledger or the snapshot records which tree this run "
+                "used, so there is nowhere to restore. Pass --root to name it.",
+            )
+            return 1
+        if len(distinct) > 1:
+            detail = "\n".join(f"    {label}: {value}" for label, value in recorded.items() if value)
+            _out(
+                sys.stderr,
+                f"{PROGRAM}: the records disagree about which tree this run used, so Docket will not "
+                f"choose for you:\n{detail}\n"
+                f"  Re-run with --root naming the tree you checked — the tree you want back.",
+            )
+            return 1
+        root = Path(next(iter(distinct)))
+        if not root.is_dir():
+            _out(
+                sys.stderr,
+                f"{PROGRAM}: the tree this run recorded ({root}) is not a directory here. "
+                "Pass --root to name where it is now, or where its copy is.",
+            )
+            return 1
+        header = f"  {PROGRAM} restore — run {session_id or 'unknown'} into {root}"
+
+    plan = snapshot_module.plan_restore(manifest, changes)
+    for item in plan:
+        change = next((c for c in changes if c.get("path") == item["path"]), {})
+        after = change.get("after")
+        item["post_sha256"] = after.get("sha256") if isinstance(after, dict) else None
+    if not plan:
+        _out(sys.stdout, f"  nothing to restore: the run changed none of the {len(manifest.get('entries', []))} snapshotted file(s)")
+        return 0
+    applied = (
+        snapshot_module.apply_restore(plan, root=root, store=store, force=args.force) if args.apply else None
+    )
+    verbs = {
+        "restore": "restore",
+        "recreate": "recreate",
+        "remove": "remove",
+        "not_covered": "skip (not covered)",
+        "refused": "REFUSE",
+    }
+    # After applying, each line reports what *happened* to the path rather than what was
+    # planned for it: a plan line reading "restore" next to a file that was refused is exactly
+    # the kind of half-truth a restore must not print.
+    done = {
+        "restored": "restored",
+        "recreated": "recreated",
+        "removed": "removed",
+        "refused": "REFUSED",
+        "failed": "FAILED",
+        "skipped": "skipped (not covered)",
+        "absent": "already gone",
+    }
+    lines = [header, ""]
+    rows = applied if applied is not None else plan
+    for item in rows:
+        after = f" -> {item['post_sha256'][:12]}" if item.get("post_sha256") else ""
+        if applied is not None:
+            verb = done.get(str(item.get("status")), str(item.get("status")))
+        else:
+            verb = "would " + verbs.get(str(item["action"]), str(item["action"]))
+        reason = ""
+        if item.get("reason") and (
+            item.get("status") in {"refused", "failed", "skipped"} or item.get("action") in {"refused", "not_covered"}
+        ):
+            reason = f" — {item['reason']}"
+        note = f" ({item['mode_note']})" if item.get("mode_note") else ""
+        lines.append(f"  {verb:<11} {item['path']}{after}{reason}{note}")
+    if applied is not None:
+        counts = snapshot_module.summarise(applied)
+        lines.append("")
+        lines.append(f"  applied: {counts}")
+    else:
+        lines.append("")
+        lines.append("  dry run: nothing was written. Add --apply to restore these paths.")
+    if manifest.get("not_covered"):
+        lines.append("")
+        lines.append(f"  the snapshot could not cover {len(manifest['not_covered'])} file(s):")
+        for item in manifest["not_covered"][:5]:
+            lines.append(f"    {item['path']} — {item['reason']}")
+    if args.json:
+        _out(
+            sys.stdout,
+            json.dumps(
+                {
+                    "root": str(root),
+                    "recorded": recorded,
+                    "plan": plan,
+                    "applied": applied,
+                    "counts": snapshot_module.summarise(applied) if applied else None,
+                    "not_covered": manifest.get("not_covered", []),
+                },
+                indent=2,
+            ),
+        )
+    else:
+        _out(sys.stdout, "\n".join(lines))
+    blocked = [item for item in (applied or []) if item["status"] in {"refused", "failed"}]
+    return 1 if blocked else 0
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
@@ -340,7 +660,10 @@ def cmd_selftest(args: argparse.Namespace) -> int:
                     "passed": sum(1 for p in probes if p.status == "pass"),
                     "failed": len(failed),
                     "skipped": sum(1 for p in probes if p.status == "skipped"),
+                    # The workspace is only reported as a place to look when it is still there:
+                    # `--keep` is what decides that, and the JSON says which way it went.
                     "workspace": str(workspace),
+                    "workspace_kept": bool(args.keep),
                 },
                 indent=2,
             ),
@@ -376,14 +699,12 @@ def cmd_chaos(args: argparse.Namespace) -> int:
         mode=args.mode,
         policy=policy,
         command=command,
+        keep=args.keep,
     )
     if args.json:
         _out(sys.stdout, json.dumps(outcome, indent=2))
     else:
         _out(sys.stdout, render_chaos(outcome))
-        if args.keep:
-            _out(sys.stdout)
-            _out(sys.stdout, f"  workspace kept at {outcome['ledger_path'].rsplit('/', 2)[0]}")
     return 1 if [c for c in outcome["checks"] if c["status"] == "fail"] else 0
 
 
@@ -443,7 +764,6 @@ def cmd_game_day(args: argparse.Namespace) -> int:
         )
     else:
         for record in report["phases"]:
-            marks = {"pass": "PASS", "fail": "FAIL", "skip": "SKIP"}
             counts: dict[str, int] = {}
             for check in record.get("checks", []):
                 counts[check["status"]] = counts.get(check["status"], 0) + 1
@@ -581,8 +901,41 @@ def build_parser() -> argparse.ArgumentParser:
         help="chaos testing: make the boundary misbehave (delay=250ms, status=503:0.5, drop, reset, truncate, corrupt, slow)",
     )
     run.add_argument("--fault-seed", type=int, default=0, help="seed for --fault-inject (same seed, same faults)")
+    run.add_argument(
+        "--snapshot",
+        action="store_true",
+        help="copy watched file contents before the run, so it can be undone (needs [files] watch)",
+    )
+    run.add_argument(
+        "--snapshot-max-bytes",
+        type=int,
+        default=None,
+        help="budget for --snapshot (default 64 MiB; the run is refused if the tree does not fit)",
+    )
+    run.add_argument(
+        "--rollback-on-breach",
+        action="store_true",
+        help="if a cap is breached, restore the watched tree from the snapshot and record it",
+    )
     run.add_argument("command", nargs=argparse.REMAINDER, help="command to run (after --)")
     run.set_defaults(func=cmd_run)
+
+    restore = sub.add_parser(
+        "restore", help="undo the file changes a recorded run made, from its --snapshot (dry run by default)"
+    )
+    restore.add_argument("receipt", help="the receipt of the run to undo")
+    restore.add_argument("--apply", action="store_true", help="actually restore (default: show the plan)")
+    restore.add_argument(
+        "--root",
+        help="the tree to restore into; defaults to the working directory the run recorded, "
+        "and is required when the receipt, ledger and manifest do not agree on one",
+    )
+    restore.add_argument("--force", action="store_true", help="restore even if a file changed after the run")
+    restore.add_argument("--ledger", help="the run's ledger file (default: beside the receipt)")
+    restore.add_argument("--snapshot-store", help="the snapshot directory (default: beside the receipt)")
+    restore.add_argument("--docket-dir", help="where the run kept its evidence (default: the receipt's parent)")
+    restore.add_argument("--json", action="store_true")
+    restore.set_defaults(func=cmd_restore)
 
     verify = sub.add_parser("verify", help="verify a receipt offline; exit 1 if it does not check out")
     verify.add_argument("receipt")

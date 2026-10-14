@@ -36,12 +36,21 @@ from typing import Any
 from . import events as ev
 from .canon import num
 from .fsdiff import deny_write_violations, diff, snapshot, tree_digest
-from .ledger import Ledger, LedgerFullError
+from .ledger import Ledger, LedgerFullError, _now_rfc3339
 from .policy import Policy
-from .resilience import CircuitBreaker, EvidenceGuard, FaultInjector, HealthState, RateLimiter
 from .pricing import CostMeter, PriceTable
 from .proxy import RecordingProxy
 from .receipt import build_receipt, write_receipt
+from .resilience import CircuitBreaker, EvidenceGuard, FaultInjector, HealthState, RateLimiter
+from .snapshot import (
+    DEFAULT_MAX_BYTES,
+    SnapshotTooLargeError,
+    apply_restore,
+    plan_restore,
+    read_manifest,
+    summarise,
+    take_snapshot,
+)
 from .util import atomic_write, docket_number
 
 EXIT_OK = 0
@@ -83,6 +92,37 @@ def _base_url_env(host: str, port: int, profile: str) -> dict[str, str]:
     return env
 
 
+def check_docket_dir(directory: str | os.PathLike[str]) -> str | None:
+    """A reason the evidence directory cannot be used, or ``None``.
+
+    Checked *before* the boundary starts, because every alternative is worse. Discovering
+    mid-run that the ledger cannot be written turns a recorded run into an unrecorded one while
+    the agent keeps spending, and a report that says "0 events" when it means "the directory was
+    read-only" is the exact failure this project exists to prevent. So a run that cannot keep the
+    record does not start, and the message names the fix.
+
+    The symlink case is not hypothetical: ``.docket`` in a shared checkout can be a link into a
+    directory the run's owner does not control, which would put another party's copy of the
+    evidence somewhere the owner never chose. Same class of problem as the ledger's own
+    ``O_NOFOLLOW`` rule.
+    """
+    path = Path(directory)
+    if path.is_symlink():
+        return (
+            f"refusing to use {path} as the docket directory: it is a symbolic link, so the run's "
+            "evidence would be written through it to a path you did not choose. Point --docket-dir "
+            "at a directory you control."
+        )
+    if path.exists() and not path.is_dir():
+        return f"refusing to use {path} as the docket directory: it exists and is not a directory."
+    probe = path
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    if not os.access(probe, os.W_OK | os.X_OK):
+        return f"cannot create {path}: {probe} is not writable by this user, so evidence cannot be recorded."
+    return None
+
+
 class Supervisor:
     """Runs a child process under a policy and produces a receipt."""
 
@@ -98,6 +138,9 @@ class Supervisor:
         record_bodies: bool = False,
         price_table: PriceTable | None = None,
         upstreams: dict[str, str] | None = None,
+        snapshot_files: bool = False,
+        snapshot_max_bytes: int = DEFAULT_MAX_BYTES,
+        rollback_on_breach: bool = False,
         clock: Callable[[], str] | None = None,
         monotonic: Callable[[], float] = time.monotonic,
         seal_key: str | None = None,
@@ -122,6 +165,16 @@ class Supervisor:
         self.record_bodies = record_bodies
         self.price_table = price_table or PriceTable.load()
         self.upstreams = upstreams or {}
+        # Rollback is opt-in for a reason: a snapshot stores file *contents*, and copying a
+        # working tree into .docket on every run is a surprise nobody asked for. --snapshot turns
+        # the copy on; --rollback-on-breach additionally restores it when a cap is breached.
+        self.snapshot_files = bool(snapshot_files) or bool(rollback_on_breach)
+        self.snapshot_max_bytes = int(snapshot_max_bytes)
+        self.rollback_on_breach = bool(rollback_on_breach)
+        #: Filled in by :meth:`run` so callers (and the receipt) can report what was captured
+        #: and whether anything was restored.
+        self.snapshot: dict[str, Any] | None = None
+        self.rollback: dict[str, Any] | None = None
         self.clock = clock
         self.monotonic = monotonic
         self.seal_key = seal_key
@@ -169,16 +222,56 @@ class Supervisor:
                 )
             return None
 
+    def _exclude_own_evidence(self) -> str | None:
+        """Keep Docket's own evidence directory out of the tree it watches.
+
+        The ledger is written *during* the run, so if it lives inside the watched tree it shows
+        up in the diff as something the agent created. Two consequences, both bad: the record
+        blames the agent for Docket's own writes, and — with `--snapshot` — a rollback plan
+        derived from that diff contains an instruction to delete the ledger. A recorder that
+        destroys its own evidence while reporting a tidy rollback is worse than no rollback.
+
+        So the exclusion is structural, not a policy the caller has to remember: the evidence
+        directory is stripped from the watched tree by construction, the effective policy in
+        the receipt carries the exclusion, and the ledger says so in a `note`.
+        """
+        try:
+            relative = self.docket_dir.resolve().relative_to(self.cwd.resolve())
+        except (OSError, ValueError):
+            return None  # outside the watched tree: nothing to exclude
+        if relative == Path("."):
+            # `--docket-dir .`: the evidence directory *is* the tree. Excluding "." would
+            # exclude everything, so this is disclosed instead of silently watched.
+            return "."
+        pattern = f"{relative.as_posix().rstrip('/')}/**"
+        if pattern not in self.policy.files.ignore:
+            self.policy.files.ignore = [*self.policy.files.ignore, pattern]
+        return pattern
+
+    def _say(self, message: str) -> None:
+        """One line to the operator, on stderr, at the moment it matters."""
+        print(f"docket: {message}", file=self.stderr, flush=True)
+
     def _warn_evidence(self, message: str) -> None:
         """One loud line the first time evidence cannot be written. Never silent."""
         if self.evidence_warn is not None:
             self.evidence_warn(message)
             return
-        print(f"docket: {message}", file=self.stderr, flush=True)
+        self._say(message)
 
     # -- public API -------------------------------------------------------- #
     def run(self) -> RunResult:
         started_mono = self.monotonic()
+        # Before the ledger exists, or the policy is recorded: excluding the evidence
+        # directory changes the effective policy, and the receipt has to carry the policy that
+        # was actually in force.
+        evidence_exclusion = self._exclude_own_evidence()
+        if evidence_exclusion == ".":
+            self._say(
+                "the evidence directory is the working directory, so this run's own ledger and "
+                "receipts are part of the tree it watches — point --docket-dir at a directory "
+                "you control if that is not what you meant"
+            )
         runs_dir = self.docket_dir / "runs"
         receipts_dir = self.docket_dir / "receipts"
         ledger_path = runs_dir / f"{self.session_id}.jsonl"
@@ -237,6 +330,19 @@ class Supervisor:
                 "source": self.policy.source_path,
             },
         )
+        if evidence_exclusion and evidence_exclusion != ".":
+            ledger.append(
+                ev.NOTE,
+                {
+                    "message": "the evidence directory is inside the watched tree and is excluded from it",
+                    "excluded": evidence_exclusion,
+                    "why": (
+                        "Docket writes its ledger during the run; watching it would record Docket's own "
+                        "writes as the agent's changes, and a rollback derived from that diff would "
+                        "delete the record it was derived from"
+                    ),
+                },
+            )
 
         proxy = RecordingProxy(
             ledger=ledger,
@@ -274,6 +380,51 @@ class Supervisor:
                     "files": len(before),
                     "tree_sha256": tree_digest(before),
                     "roots": self.policy.files.watch,
+                },
+            )
+        if self.snapshot_files and self.policy.files.watch:
+            # Contents, not digests: copied before the agent exists, so the only files in the
+            # store are ones the agent has not touched yet. A tree over the budget is refused
+            # here — before the agent runs — rather than discovered as unrestorable later.
+            store = self.docket_dir / "snapshots" / self.session_id
+            try:
+                taken = take_snapshot(
+                    roots=list(self.policy.files.watch),
+                    ignore=list(self.policy.files.ignore),
+                    root=self.cwd,
+                    store=store,
+                    max_bytes=self.snapshot_max_bytes,
+                    taken_at=(self.clock or _now_rfc3339)(),
+                )
+            except SnapshotTooLargeError as exc:
+                ledger.append(
+                    ev.NOTE,
+                    {"message": f"snapshot refused: {exc}", "watched_bytes": exc.watched, "budget": exc.budget},
+                    control=True,
+                )
+                ledger.append(
+                    ev.SESSION_END,
+                    {
+                        "exit_code": EXIT_INTERNAL,
+                        "duration_seconds": "0.000",
+                        "breached": None,
+                        "interrupted": False,
+                        "note": "the run did not start: its file snapshot did not fit the budget",
+                    },
+                )
+                ledger.close()
+                raise
+            self.snapshot = taken.to_dict()
+            ledger.append(
+                ev.FS_SNAPSHOT,
+                {
+                    "phase": "contents",
+                    "format": "docket/snapshot/v1",
+                    "files": len(taken.entries),
+                    "bytes_stored": taken.bytes_stored,
+                    "bytes_watched": taken.bytes_watched,
+                    "not_covered": len(taken.not_covered),
+                    "store": str(store),
                 },
             )
 
@@ -344,6 +495,19 @@ class Supervisor:
                     breach_state,
                 )
 
+        if self.snapshot_files and self.rollback_on_breach and breach_state["cap"] and changes:
+            self.rollback = self._rollback(ledger, changes)
+            if self.rollback.get("applied"):
+                counts = self.rollback.get("counts") or {}
+                summary = ", ".join(f"{value} {key}" for key, value in sorted(counts.items()) if value) or "nothing to do"
+                self._say(
+                    f"the run breached {breach_state['cap']} and {len(changes)} file(s) changed: "
+                    f"the watched tree has been put back from the snapshot ({summary}). "
+                    f"`docket restore --help` shows the same restore done by hand."
+                )
+                for item in self.rollback.get("refused") or []:
+                    self._say(f"NOT rolled back: {item['path']} — {item['reason']}")
+
         duration = self.monotonic() - started_mono
         if breach_state["cap"]:
             exit_code = EXIT_CAP_EXCEEDED
@@ -387,6 +551,8 @@ class Supervisor:
             duration_seconds=duration,
             price_table=self.price_table,
             proxy_stats=proxy.stats,
+            snapshot=self.snapshot,
+            rollback=self.rollback,
             seal_key=self.seal_key,
             sign_key=self.sign_key,
             label=self.label,
@@ -440,6 +606,75 @@ class Supervisor:
         )
         env.update(self.env_extra)
         return env
+
+    def _rollback(self, ledger: Ledger, changes: list[dict[str, Any]]) -> dict[str, Any]:
+        """Restore the watched tree from the run's snapshot after a breach.
+
+        Deliberately after the run, not during it: killing the agent and then fighting it for
+        the same files would leave a tree that is neither the agent's nor the operator's. The
+        restore is recorded as evidence — what was planned, what was applied, and what could
+        not be covered — because "we rolled it back" is a claim like any other.
+
+        ``force`` is on here and off in `docket restore`: this happens milliseconds after the
+        child exited, so the tree is still the run's, whereas an on-demand restore happens
+        whenever the operator gets round to it and may well meet their own later edits.
+        """
+        store = self.docket_dir / "snapshots" / self.session_id
+        if not (self.snapshot or {}).get("manifest"):
+            return {"applied": False, "reason": "the run took no snapshot"}
+        document = read_manifest(store)
+        plan = plan_restore(document, changes)
+        for item in plan:
+            change = next((c for c in changes if c.get("path") == item["path"]), None)
+            after = (change or {}).get("after")
+            # What the file looks like now, according to the run's own record. `removed` needs
+            # no protection: there is nothing left to overwrite.
+            item["post_sha256"] = after.get("sha256") if isinstance(after, dict) else None
+        applied = apply_restore(plan, root=self.cwd, store=store, force=True)
+        counts = summarise(applied)
+        undone = [item["path"] for item in applied if item["status"] in {"restored", "recreated", "removed"}]
+        # `applied_paths` carries every path, including the ones that refused: the receipt
+        # reduces it to summary lists, and anything reading the record directly sees the detail.
+        record: dict[str, Any] = {
+            "applied": True,
+            "trigger": "cap breached",
+            "counts": counts,
+            "applied_paths": applied,
+            "not_covered": document.get("not_covered") or [],
+        }
+        self._record_control(
+            ledger,
+            # Namespaced, as spec §4.4 requires of an implementation's own extensions: the v1
+            # vocabulary is closed, so a Docket-specific event has to be recognisable as such
+            # by a verifier that has never heard of it.
+            "x-docket.rollback-applied",
+            {
+                "trigger": record["trigger"],
+                "restored": counts.get("restored", 0),
+                "recreated": counts.get("recreated", 0),
+                "removed": counts.get("removed", 0),
+                "refused": counts.get("refused", 0),
+                "failed": counts.get("failed", 0),
+                "skipped": counts.get("skipped", 0),
+                "paths": undone,
+            },
+        )
+        return record
+
+    def _record_control(
+        self, ledger: Ledger, event_type: str, data: dict[str, Any]
+    ) -> None:
+        """Append an event that describes the record itself, whatever the ledger's state.
+
+        Control-plane facts (a rollback happened, evidence was lost) are the ones a reader most
+        needs, so they go through the always-recordable path and never raise: a run that cannot
+        write them says so in the receipt instead of dying at the last step.
+        """
+        try:
+            ledger.append(event_type, data, control=True)
+        except Exception as exc:  # noqa: BLE001 - the receipt carries the gap when this fails
+            with contextlib.suppress(Exception):
+                self._warn_evidence(f"{event_type} could not be recorded: {exc}")
 
     def _supervise(
         self,

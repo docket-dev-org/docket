@@ -8,7 +8,43 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Snapshots and rollback** (`--snapshot`, `--rollback-on-breach`, `docket restore`): a
+  content-addressed copy of the watched tree's *contents*, taken before the agent starts, with
+  a manifest of path, digest, size, mode and mtime (`docket/snapshot/v1`). A breached run
+  restores the tree automatically and records what it restored as `x-docket.rollback-applied`;
+  `docket restore <receipt>` performs the same restore on demand, dry-run by default. Paths the
+  snapshot could not cover are named in `ops.snapshot.not_covered`; a tree that does not fit the
+  budget is refused *before* the agent starts (exit `43`); a file edited after the run is
+  refused unless `--force`. See [ADR 0004](docs/adr/0004-content-snapshots-and-confinement.md).
+- **Restore confinement**: a restore only ever touches files inside the tree it was pointed at.
+  Paths from a ledger or manifest are checked, not trusted — no absolute paths, no `..`, no
+  symlinked component, blobs located by digest inside the store, digests required to be 64 hex
+  digits, modes masked to permission bits — and the receipt, ledger and manifest must agree on
+  the tree, with `--root` when they do not.
+- **The evidence directory is excluded from the watched tree** by the Supervisor itself, from
+  resolved paths, and the exclusion is recorded (a `note` event and the effective policy in the
+  receipt). Previously a programmatic run whose docket directory sat inside the working
+  directory recorded its own ledger as a file *the agent* changed, and a rollback plan derived
+  from that diff contained an instruction to delete the record it came from.
+- **`docket game-day` gains a `rollback` phase** (`--phases rollback`): seeded files, an agent
+  that damages them, a cap breach, then automated restore — audited against the disk (files
+  byte for byte), the receipt and the ledger, including that the run's own evidence survived.
+
+### Fixed
+
+- **Verification no longer reports two verdicts under one check name.** The Merkle-path verdict
+  and the ledger re-binding verdict were both reported as `usage-inclusion-proofs`, so a
+  doctored ledger produced `FAIL usage-inclusion-proofs` and `PASS usage-inclusion-proofs`
+  a few lines apart. Re-binding is now `usage-rows-rebound`; a test
+  (`test_no_check_reports_two_verdicts`) keeps one name to one verdict. The Node verifier's
+  detail line now distinguishes the two causes as well.
+- **`docket demo --tamper` no longer crashes** when the event it picks is not a
+  `model.response`: it edited whichever line happened to be fifth and, for any other event,
+  assigned `data["model"] = data` — a self-referencing dict that made `json.dumps` raise. It
+  now tampers with the first `model.response` and reports nothing to tamper with if there is
+  none.
 
 ## [0.1.0] — 2026-10-13
 

@@ -27,6 +27,7 @@ Both are written to be honest about the partial-failure case: a probe that canno
 
 from __future__ import annotations
 
+import contextlib
 import gzip
 import io
 import json
@@ -142,10 +143,11 @@ def collect_diagnostics(docket_dir: Path) -> dict[str, Any]:
     )
     torn = sorted((docket_dir / "runs").glob("*.torn-*")) if (docket_dir / "runs").exists() else []
     free = None
-    try:
+    # A free-space figure is nice to have; an unreadable filesystem is not a reason to
+    # withhold the rest of the report. `None` says "not known", which the renderer prints.
+    free: int | None = None
+    with contextlib.suppress(OSError):  # pragma: no cover - platform dependent
         free = shutil.disk_usage(docket_dir if docket_dir.exists() else Path.cwd()).free
-    except OSError:  # pragma: no cover - platform dependent
-        pass
     return {
         "collected_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "docket": {
@@ -521,7 +523,11 @@ def self_test(*, keep_workspace: bool = False) -> tuple[list[Probe], Path]:
         hearse_path = workspace / "runs" / "closed.jsonl"
         reopened = Ledger.open(hearse_path, max_bytes=None)
         reopened.append("note", {"before": "the handle is closed"})
-        assert reopened._handle is not None
+        if not (reopened._handle is not None):
+            raise RuntimeError(
+                "internal invariant broken: reopened._handle is not None — this is a bug in docket; "
+                "please report it with the command that reproduced it"
+            )
         reopened._handle.close()  # a reclaimed descriptor, an operator's stray close()
         healed = reopened.append("note", {"after": "writing resumes"})
         on_disk = hearse_path.read_text(encoding="utf-8").count("\n")

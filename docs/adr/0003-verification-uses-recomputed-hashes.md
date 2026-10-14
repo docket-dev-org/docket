@@ -33,7 +33,10 @@ hurried reader could conclude that only one line had a cosmetic problem.
 2. **Usage rows are re-bound to the ledger**: besides verifying each row's Merkle path, the
    verifier checks that the row's `event_hash` equals the recomputed hash of the event at its
    `seq`. A row that proves membership in the *claimed* root but not in the *recomputed* record
-   is reported as a failure with the offending row and sequence number.
+   is reported as a failure with the offending row and sequence number — under its own check
+   name, `usage-rows-rebound`, so that the two facts stay separable in the output (amended
+   2026-10-14; asking one check name to carry both verdicts produced a report containing
+   `FAIL usage-inclusion-proofs` and `PASS usage-inclusion-proofs` at once).
 3. When the chain is broken, checks that depend on it report **`SKIP` with the reason**
    ("not checked: the chain is broken at event #5") rather than passing. A check whose
    precondition has failed is not a pass.
@@ -43,7 +46,7 @@ hurried reader could conclude that only one line had a cosmetic problem.
 ## Consequences
 
 - The tamper demo now reports `FAIL ledger-chain`, `SKIP head`, `FAIL merkle-root`,
-  `FAIL usage-inclusion-proofs` — accurate, specific, and impossible to misread.
+  `FAIL usage-rows-rebound` — accurate, specific, and impossible to misread.
 - Cost-recomputation checks still pass on a tampered ledger when the *appendix* was untouched.
   That is intentional: it tells a reader precisely where the modification was, which is more
   useful in an argument than "everything failed".

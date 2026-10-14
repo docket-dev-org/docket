@@ -9,7 +9,8 @@ docket run -- <agent>
 │
 ├── supervisor.py      owns the run: spawn, caps, snapshots, receipt, exit code
 │   ├── proxy.py       the boundary: policy checks, usage→cost, event recording
-│   ├── fsdiff.py      before/after filesystem snapshots and diffs
+│   ├── fsdiff.py      before/after filesystem digest snapshots and diffs
+│   ├── snapshot.py    content snapshots and confined restore (opt-in rollback)
 │   └── receipt.py     assembles the receipt from the ledger
 │
 ├── ledger.py          append-only hash-chained event log (the source of truth)
@@ -40,6 +41,9 @@ docket run -- <agent>
 | Verify fails if `limits_disclosure` is absent | `verify.py` | `test_receipt_verify.py` |
 | The effective policy (after flags) is what the receipt embeds | `supervisor.py`, `receipt.py` | `test_supervisor.py` |
 | Usage marked `estimated` is never presented as metered | `pricing.py`, `receipt.py`, `report.py` | `test_pricing.py`, `test_receipt_verify.py` |
+| A restore writes only inside the tree it was pointed at, and only where the record says | `snapshot.py` | `test_snapshot_confinement.py` |
+| A file changed after the run is refused, not overwritten | `snapshot.py` | `test_snapshot_restore.py` |
+| A snapshot that cannot cover the tree is refused before the agent starts | `supervisor.py`, `snapshot.py` | `test_snapshot_restore.py` |
 
 Each of those has a test because each of them is a sentence in the README that would otherwise
 be marketing.
@@ -51,8 +55,10 @@ be marketing.
    document and its digest).
 2. It starts the boundary proxy on an ephemeral loopback port and computes the environment for
    the child: provider base-URL variables, `DOCKET_PROXY_URL`, session metadata.
-3. It snapshots the watched filesystem, writes `proc.spawn`, and launches the child in its own
-   process group (`start_new_session=True`) so a breach can terminate the whole subtree.
+3. It snapshots the watched filesystem — digests always, *contents* too when `--snapshot` is
+   on, refusing the run up front if the tree does not fit the budget — writes `proc.spawn`, and
+   launches the child in its own process group (`start_new_session=True`) so a breach can
+   terminate the whole subtree.
 4. While the child runs, the supervisor polls for exit, watches the wall-clock cap, and checks
    a breach signal set by the proxy. On breach: ask the boundary to refuse further calls,
    `SIGTERM` the group, wait `grace_seconds`, `SIGKILL`.
@@ -68,6 +74,11 @@ be marketing.
 8. The receipt is written atomically to `.docket/receipts/<number>.receipt.json`; `.docket/latest`
    and `.docket/latest.receipt.json` point at the newest run. The CLI prints a summary and
    exits `0`, or `42` if a cap fired.
+9. If the run breached a cap and `--rollback-on-breach` was given, the watched tree is restored
+   from the content snapshot *after* the child has exited, and the outcome — counts, paths,
+   refusals — is written to the ledger as `x-docket.rollback-applied` and folded into
+   `ops.rollback` in the receipt. `docket restore` performs the same restore on demand, months
+   later, from the receipt and ledger alone.
 
 ## Why the ledger is the source of truth
 

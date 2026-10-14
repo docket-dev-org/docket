@@ -91,7 +91,7 @@ def test_undeclared_fault_injection_is_caught(tmp_path: Path):
     checks, _ = audit_run(tmp_path / "chaos.jsonl", receipt)
     verdict = _status(checks, "fault injection is declared in the receipt")
     assert verdict["status"] == "fail"
-    assert "1 injection(s) recorded; receipt ops.chaos_run=False" == verdict["detail"]
+    assert verdict["detail"] == "1 injection(s) recorded; receipt ops.chaos_run=False"
 
 
 def test_a_receipt_whose_totals_disagree_with_its_ledger_is_caught(tmp_path: Path):
@@ -163,8 +163,8 @@ def test_the_cross_check_uses_the_agents_counts_to_explain_the_ledger(tmp_path: 
 # --------------------------------------------------------------------------- #
 
 
-def test_run_chaos_injects_faults_and_records_the_experiment():
-    outcome = run_chaos(faults_spec="status=503:1.0", seed=4, calls=3)
+def test_run_chaos_injects_faults_and_records_the_experiment(tmp_path: Path):
+    outcome = run_chaos(faults_spec="status=503:1.0", seed=4, calls=3, workspace=tmp_path / "chaos")
     assert outcome["exit_code"] == 0
     facts = outcome["facts"]
     assert len(facts["faults"]) == 3, "every injected fault is in the ledger"
@@ -181,21 +181,59 @@ def test_run_chaos_injects_faults_and_records_the_experiment():
     assert chaos_check and chaos_check[0].status == "skip", "a chaos receipt must say so at verification time"
 
 
-def test_run_chaos_against_a_local_provider_never_reaches_the_network():
+def test_run_chaos_against_a_local_provider_never_reaches_the_network(tmp_path: Path):
     """The experiment is deterministic and offline: no key, no spend, same result."""
-    first = run_chaos(faults_spec="drop:1.0", seed=9, calls=2)
-    second = run_chaos(faults_spec="drop:1.0", seed=9, calls=2)
+    first = run_chaos(faults_spec="drop:1.0", seed=9, calls=2, workspace=tmp_path / "a")
+    second = run_chaos(faults_spec="drop:1.0", seed=9, calls=2, workspace=tmp_path / "b")
     assert first["facts"]["denial_codes"] or first["facts"]["errors"]
     assert len(first["facts"]["faults"]) == len(second["facts"]["faults"]) == 2
     assert first["facts"]["counts"].get("model.denied") == second["facts"]["counts"].get("model.denied")
 
 
-def test_chaos_reports_reads_as_a_verdict_not_a_log():
-    outcome = run_chaos(faults_spec="status=500:1.0", seed=2, calls=2)
+def test_chaos_reports_reads_as_a_verdict_not_a_log(tmp_path: Path):
+    outcome = run_chaos(faults_spec="status=500:1.0", seed=2, calls=2, workspace=tmp_path / "chaos")
     text = render_chaos(outcome)
     assert "PASS  no failed call was recorded as a successful one" in text
     assert "receipt:" in text
     assert "passed," in text and "failed," in text and "skipped" in text
+
+
+def test_a_scratch_workspace_is_removed_unless_it_is_kept(tmp_path: Path, monkeypatch):
+    """A tool that runs a hundred times a day must not leave a hundred directories behind.
+
+    The rule is stated in one place (``docket.util.scratch_workspace``) and both entry points
+    obey it: a directory the caller supplied is kept, a scratch one is removed at exit — and the
+    report says which, so nothing prints a path that will not be there.
+    """
+    from docket.util import scratch_workspace
+
+    monkeypatch.delenv("DOCKET_KEEP_SCRATCH", raising=False)
+    supplied = tmp_path / "mine"
+    path, kept = scratch_workspace("docket-test-", path=supplied)
+    assert (path, kept) == (supplied, True)
+
+    auto, kept = scratch_workspace("docket-test-")
+    assert kept is False and Path(auto).is_dir()
+    scratch, kept = scratch_workspace("docket-test-", keep=True)
+    assert kept is True and Path(scratch).is_dir()
+    Path(scratch).rmdir()
+
+    monkeypatch.setenv("DOCKET_KEEP_SCRATCH", "1")
+    env_kept, kept = scratch_workspace("docket-test-")
+    assert kept is True
+    Path(env_kept).rmdir()
+
+
+def test_a_chaos_run_says_whether_its_evidence_survives(tmp_path: Path):
+    outcome = run_chaos(faults_spec="status=503:1.0", seed=1, calls=1, workspace=tmp_path / "kept")
+    assert outcome["workspace_kept"] is True
+    text = render_chaos(outcome)
+    assert "workspace kept at" in text and str(tmp_path / "kept") in text
+
+
+def test_a_game_day_says_whether_its_evidence_survives(tmp_path: Path):
+    report = run_game_day(root=tmp_path / "day", phases=[p for p in GAME_DAY_PHASES if p.name == "baseline"])
+    assert report["root_kept"] is True
 
 
 # --------------------------------------------------------------------------- #
@@ -276,6 +314,30 @@ def test_ledger_facts_re_derives_counts_from_the_file(tmp_path: Path):
     assert facts["denials"] == 1 and facts["denial_codes"] == ["model_policy"]
     assert facts["error_statuses"] == [503]
     assert len(facts["rate_limited"]) == 1 and len(facts["faults"]) == 1
+
+
+def test_the_rollback_phase_really_puts_the_seeded_files_back(tmp_path):
+    """The disaster-recovery drill, end to end: damage, breach, restore, and the evidence intact.
+
+    The unit tests cover the restore function; this covers the *drill* — a real phase in the
+    standing game day, run against a real synthetic agent, audited from the disk.
+    """
+    phase = next(p for p in GAME_DAY_PHASES if p.name == "rollback")
+    record = run_phase(phase, root=tmp_path / "day")
+    workspace = tmp_path / "day" / "rollback"
+
+    assert record["exit_code"] == 42 and record["breached"] == "max_usd"
+    for relative, content in phase.seed_files.items():
+        assert (workspace / relative).read_text(encoding="utf-8") == content
+    assert record["receipt_ops"]["snapshot"]["taken"] is True
+    assert record["receipt_ops"]["rollback"]["applied"] is True
+    assert record["facts"]["rollbacks"], "the rollback is a ledger event"
+    assert record["verification"]["ok"], record["verification"]["failures"]
+    failures = [check for check in record["checks"] if check["status"] == "fail"]
+    assert not failures, failures
+    # The evidence the rollback was derived from is still there to be re-checked.
+    ledger_path = Path(record["ledger_path"])
+    assert ledger_path.exists() and Path(record["receipt_path"]).exists()
 
 
 @pytest.mark.parametrize("phase_name", [p.name for p in GAME_DAY_PHASES])

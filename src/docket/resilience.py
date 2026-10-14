@@ -50,8 +50,9 @@ import random
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 # --------------------------------------------------------------------------- #
 # Circuit breaker
@@ -118,7 +119,11 @@ class CircuitBreaker:
             state = self._state(key)
             now = self.clock()
             if state.state == OPEN:
-                assert state.opened_at is not None
+                if not (state.opened_at is not None):
+                    raise RuntimeError(
+                        "internal invariant broken: state.opened_at is not None — this is a bug in docket; "
+                        "please report it with the command that reproduced it"
+                    )
                 elapsed = now - state.opened_at
                 if elapsed < state.cooldown:
                     wait = state.cooldown - elapsed

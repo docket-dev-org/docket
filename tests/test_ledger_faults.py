@@ -8,15 +8,14 @@ and assert that each failure is either repaired without loss or reported loudly.
 
 from __future__ import annotations
 
+import errno
 import json
-import os
 from pathlib import Path
 
 import pytest
 
 from docket.canon import canonical_bytes
 from docket.ledger import (
-    GENESIS,
     Ledger,
     LedgerDamagedError,
     LedgerFullError,
@@ -349,3 +348,23 @@ def test_canonical_lines_mean_another_implementation_can_hash_them(tmp_path: Pat
     line = path.read_text(encoding="utf-8").strip()
     assert line == canonical_bytes(json.loads(line)).decode("utf-8"), "lines are canonical, not merely valid JSON"
     assert line.index('"a"') < line.index('"message"') < line.index('"z"'), "keys are sorted"
+
+
+def test_an_os_error_while_opening_surfaces_as_that_error(tmp_path: Path):
+    """The error path must not raise a *different* error than the one that happened.
+
+    `_open_ledger_handle` names ELOOP/EMLINK to explain a refused symlink. It did so through
+    `errno`, which was never imported — so every *other* `os.open` failure (a path that cannot
+    be opened, a full disk, a permissions problem) raised `NameError: name 'errno' is not
+    defined` instead of the real cause, in the one place whose whole job is to say what went
+    wrong. `Ledger.open` refuses a directory before this point, so the opener is called directly
+    with one: EISDIR is the cheapest portable OSError to produce.
+    """
+    from docket.ledger import _open_ledger_handle
+
+    directory = tmp_path / "not-a-ledger"
+    directory.mkdir()
+    with pytest.raises(OSError) as caught:
+        _open_ledger_handle(directory)
+    assert not isinstance(caught.value, NameError)
+    assert caught.value.errno == errno.EISDIR

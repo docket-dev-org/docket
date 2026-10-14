@@ -175,11 +175,38 @@ def merkle_proof(hexdigests: list[str], index: int) -> list[dict[str, str]]:
 
 
 def verify_merkle_proof(hexdigest: str, path: list[dict[str, str]], root: str) -> bool:
-    """Verify an inclusion proof produced by :func:`merkle_proof`."""
+    """Verify an inclusion proof produced by :func:`merkle_proof`.
+
+    A proof travels *inside* a receipt, so every part of it is supplied by whoever handed the
+    receipt over: the leaf, the path and the root. The contract is therefore the same one the
+    rest of the verifier keeps — a well-formed proof returns ``True`` or ``False``; a malformed
+    one raises ``ValueError`` naming the offending step. It must never raise ``TypeError`` or
+    ``IndexError`` from inside the walk, because "the checker crashed" is not a verification
+    result and a checker an attacker can crash is a checker they can switch off.
+    """
+    if not isinstance(path, list):
+        raise ValueError(f"a merkle path must be a list of steps, got {type(path).__name__}")
+    if not isinstance(root, str) or not root:
+        raise ValueError(f"a merkle root must be a hex string, got {root!r}")
+    if not isinstance(hexdigest, str):
+        raise ValueError(f"a merkle leaf must be a hex string, got {hexdigest!r}")
     node = _leaf_hash(hexdigest)
-    for step in path:
-        sibling = bytes.fromhex(step["hash"])
-        node = _node_hash(node, sibling) if step["side"] == "right" else _node_hash(sibling, node)
+    for position, step in enumerate(path):
+        if not isinstance(step, dict):
+            raise ValueError(f"merkle step {position} is not an object: {step!r}")
+        side = step.get("side")
+        if side not in ("left", "right"):
+            raise ValueError(f"merkle step {position} has side {side!r}; expected 'left' or 'right'")
+        digest = step.get("hash")
+        if not isinstance(digest, str):
+            raise ValueError(f"merkle step {position} has hash {digest!r}; expected a hex string")
+        try:
+            sibling = bytes.fromhex(digest)
+        except ValueError as exc:
+            raise ValueError(f"merkle step {position} hash is not hex: {digest!r}") from exc
+        if len(sibling) != 32:
+            raise ValueError(f"merkle step {position} hash is {len(sibling)} bytes; expected 32")
+        node = _node_hash(node, sibling) if side == "right" else _node_hash(sibling, node)
     return node.hex() == root.lower()
 
 

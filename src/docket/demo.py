@@ -238,14 +238,34 @@ def run_demo(
         print(file=stream)
         print("  Now tampering with one byte of the ledger and verifying again:", file=stream)
         lines = Path(result.ledger_path).read_text(encoding="utf-8").splitlines()
-        target = min(5, len(lines) - 1)
-        payload = json.loads(lines[target])
-        payload["data"]["model"] = "claude-haiku-forged" if payload.get("type") == "model.response" else payload["data"]
-        lines[target] = json.dumps(payload)
-        Path(result.ledger_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        # Tamper with the first model.response: that is the event a cost figure is re-derived
+        # from, so the damage shows up in the checks a reader actually cares about. The earlier
+        # version edited whichever line happened to be fifth and, for a non-response event,
+        # assigned `data["model"] = data` — a self-referencing dict that made `json.dumps`
+        # raise. A demo that crashes when the event order shifts is not a demo, it is a trap.
+        target = next(
+            (
+                index
+                for index, line in enumerate(lines)
+                if isinstance(json.loads(line).get("data"), dict)
+                and json.loads(line).get("type") == "model.response"
+            ),
+            None,
+        )
+        if target is None:
+            print("  (no model.response event to tamper with — skipping)", file=stream)
+        else:
+            payload = json.loads(lines[target])
+            payload["data"]["model"] = "claude-haiku-forged"
+            lines[target] = json.dumps(payload)
+        if target is not None:
+            Path(result.ledger_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
         broken = verify_receipt(receipt, ledger_events=Ledger.read(result.ledger_path))
         print(broken.render(color=color), file=stream)
-        outcome["tamper_detected"] = not broken.ok
+        outcome["tamper_detected"] = (not broken.ok) if target is not None else False
+        outcome["tamper_target_seq"] = None
+        if target is not None:
+            outcome["tamper_target_seq"] = json.loads(lines[target]).get("seq")
         outcome["tamper_failures"] = broken.failures
 
     if keep:

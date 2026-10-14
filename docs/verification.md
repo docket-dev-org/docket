@@ -35,7 +35,8 @@ as data:
 | `event-count` | the count matches | no events were dropped or appended | —  |
 | `merkle-root` | the root recomputed over event hashes matches | the receipt's commitment covers exactly these events | — |
 | `ledger-file-digest` | the file's SHA-256 matches | the bytes you have are the bytes that were receipted | — |
-| `usage-inclusion-proofs` | each usage row's Merkle path verifies **and** the row re-binds to the recomputed event at its sequence number | the cost you are looking at came from that specific call in this specific record | that the tokens counted were well spent |
+| `usage-rows-rebound` | each usage row's `event_hash` equals the **recomputed** hash of the event at its `seq` (only when a ledger is supplied) | the rows belong to *this* ledger, not merely to some ledger with the same claimed root | that the recomputed ledger is the whole story (see `limits-disclosure`) |
+| `usage-inclusion-proofs` | each usage row's Merkle path verifies against the receipt's claimed root | the cost you are looking at came from a call that is in the record the receipt commits to | that the record is the one you were handed — see the next row |
 | `cost-recomputation` | every row's cost equals `f(input, cached_input, output)` under the embedded price table | the arithmetic is transparent and reproducible | that the *prices* are right — compare `price_table.digest` against a copy you trust |
 | `totals` | the receipt's totals equal the sum of recomputed rows | internal consistency | — |
 | `token-totals` | token sums match the appendix | nothing was quietly excluded from the sums | that the provider's counts are honest |
@@ -46,6 +47,13 @@ as data:
 `SKIP` is a first-class outcome with a printed reason ("no ledger supplied", "receipt is not
 sealed", "chain broken, head not checked"). A verifier that reports coverage it does not have
 is worse than no verifier, so skipped is never silently turned into passed.
+
+**One name, one verdict.** `docket verify` never emits the same check name with two different
+statuses: an earlier version reported the Merkle-path verdict and the re-binding verdict under
+one name, so a doctored ledger produced `FAIL usage-inclusion-proofs` and
+`PASS usage-inclusion-proofs` a few lines apart. A reader skimming that sees whichever verdict
+they expected, which is precisely the failure mode a verifier exists to prevent — hence two
+names, and a test (`test_no_check_reports_two_verdicts`) that keeps it that way.
 
 ## Worked example: one byte
 
@@ -58,13 +66,25 @@ VERIFIED  DKT-20261013-746EF4
   ...
 
   Now tampering with one byte of the ledger and verifying again:
-NOT VERIFIED  DKT-20261013-746EF4
+NOT VERIFIED  DKT-20261014-746EF4
   PASS  format: docket/receipt/v1
-  FAIL  ledger-chain: broken at event #5: content hash mismatch (event was modified after it was written)
-  SKIP  head: not checked: the chain is broken at event #5
-  FAIL  merkle-root: recomputed cb646a39ed3fe6f3… != receipt a7c03d9ae872c2cb…
-  FAIL  usage-inclusion-proofs: usage row 0 (seq 5) does not match the recomputed ledger event
+  FAIL  ledger-chain: broken at event #6: content hash mismatch (event was modified after it was written)
+  SKIP  head: not checked: the chain is broken at event #6
+  PASS  event-count: 62 events
+  FAIL  merkle-root: recomputed 8ea3a22368ffe0f6… != receipt 87799e8e5a1ea1a5…
+  FAIL  usage-rows-rebound: usage row 0 (seq 6) does not match the recomputed ledger event
+  PASS  usage-inclusion-proofs: 15 usage rows proven against the receipt's claimed Merkle root
+  FAIL  usage-rows-rebound: 1 of 15 usage rows are not the events the recomputed ledger has at
+        those sequence numbers (14 re-bound)
+  PASS  cost-recomputation: 15 calls recomputed from token counts
+  SKIP  seal: receipt is not sealed
+  SKIP  signature: receipt is not signed
 ```
+
+(One real capture, lightly trimmed. The docket number is reproducible — `docket demo` seeds its
+own random source — but the Merkle roots are not: they cover the session's own fields, including
+the temporary workspace path, which differs per run. Treat the shape as the contract and the
+digests as an example. Two lines above are wrapped for print width; the tool emits one per check.)
 
 Note what failed and what did not: the *cost* checks still pass, because the receipt's appendix
 was not touched — and that is correct and informative. The chain, the root and the binding fail,

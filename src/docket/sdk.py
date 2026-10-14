@@ -180,7 +180,11 @@ class Session:
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
         try:
-            assert self.recorder is not None
+            if not (self.recorder is not None):
+                raise RuntimeError(
+                    "internal invariant broken: self.recorder is not None — this is a bug in docket; "
+                    "please report it with the command that reproduced it"
+                )
             exit_code = 0 if exc_type is None else 1
             self.recorder.append(
                 ev.SESSION_END,
@@ -240,7 +244,11 @@ class Session:
         **extra: Any,
     ) -> Any:
         """Record one model call made outside the boundary (e.g. inside a notebook)."""
-        assert self.recorder is not None
+        if not (self.recorder is not None):
+            raise RuntimeError(
+                "internal invariant broken: self.recorder is not None — this is a bug in docket; "
+                "please report it with the command that reproduced it"
+            )
         digest = request_digest or fingerprint or digest_of({"model": model, "in": input_tokens, "out": output_tokens})
         self.recorder.append(
             ev.MODEL_REQUEST,
@@ -302,7 +310,11 @@ class Session:
         arguments themselves, so a receipt can prove a tool was called with specific
         inputs without leaking them into a file you might share.
         """
-        assert self.recorder is not None
+        if not (self.recorder is not None):
+            raise RuntimeError(
+                "internal invariant broken: self.recorder is not None — this is a bug in docket; "
+                "please report it with the command that reproduced it"
+            )
         args_digest = digest_of(args) if args is not None else None
         payload: dict[str, Any] = {
             "name": name,
@@ -320,7 +332,11 @@ class Session:
         return self.recorder.append(ev.TOOL_CALL if ok else ev.TOOL_RESULT, payload)
 
     def record_note(self, message: str, **data: Any) -> Any:
-        assert self.recorder is not None
+        if not (self.recorder is not None):
+            raise RuntimeError(
+                "internal invariant broken: self.recorder is not None — this is a bug in docket; "
+                "please report it with the command that reproduced it"
+            )
         return self.recorder.append(ev.NOTE, {"message": message, "reported_by": "agent", **data})
 
     # -- introspection ----------------------------------------------------- #

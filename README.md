@@ -106,23 +106,31 @@ Then break it on purpose — one byte, in the middle of the ledger:
 ```console
 $ docket demo --tamper
 …
+  Now tampering with one byte of the ledger and verifying again:
 NOT VERIFIED  DKT-20261014-746EF4
   PASS  format: docket/receipt/v1
-  FAIL  ledger-chain: broken at event #5: content hash mismatch (event was modified after it was written)
-  SKIP  head: not checked: the chain is broken at event #5
+  FAIL  ledger-chain: broken at event #6: content hash mismatch (event was modified after it was written)
+  SKIP  head: not checked: the chain is broken at event #6
   PASS  event-count: 62 events
-  FAIL  merkle-root: recomputed 12a3b2bc9358f08e… != receipt a0da61f8ee504000…
-  FAIL  usage-inclusion-proofs: usage row 0 (seq 5) does not match the recomputed ledger event
+  FAIL  merkle-root: recomputed 8ea3a22368ffe0f6… != receipt 87799e8e5a1ea1a5…
+  FAIL  usage-rows-rebound: usage row 0 (seq 6) does not match the recomputed ledger event
+  PASS  usage-inclusion-proofs: 15 usage rows proven against the receipt's claimed Merkle root
+  FAIL  usage-rows-rebound: 1 of 15 usage rows are not the events the recomputed ledger has at those
+        sequence numbers (14 re-bound)
   PASS  cost-recomputation: 15 calls recomputed from token counts
   PASS  totals: total 2.000500 agrees with recomputation
   PASS  token-totals: 647,420 tokens
   SKIP  seal: receipt is not sealed
   SKIP  signature: receipt is not signed
   PASS  limits-disclosure: receipt states what Docket could and could not observe
+  PASS  evidence-completeness: every event reached the ledger file
 
   Try it on your own agent:
     docket run --max-usd 5 -- my-agent --flag
 ```
+
+One real capture. The docket number reproduces (the demo seeds its own RNG); the Merkle roots do
+not, because they cover the session's own fields including a per-run temporary path.
 
 ## Use it on your own agent
 
@@ -164,6 +172,11 @@ before it started, `70` internal error, `130` interrupted. `42` means the bounda
 5. **Findings** that explain the bill: runaway loops, repeat context, oversized tool output,
    retry storms, premium models on trivial calls, blocked egress — each with the rule that
    produced it, its evidence, and `deterministic` vs `heuristic` stated plainly.
+6. **Rollback, when you ask for it** (`--snapshot`, `--rollback-on-breach`): a content snapshot
+   of the watched tree taken before the agent starts, restored automatically when a cap fires —
+   and restorable later by hand with `docket restore`, which refuses to overwrite anything that
+   changed after the run. It is off by default, it prints what it cannot cover, and it will not
+   write outside the tree it was pointed at.
 
 ## What it proves, and what it does not
 
@@ -179,6 +192,9 @@ A receipt proves **what crossed the Docket boundary**, and nothing else. Specifi
 - **Does not prevent:** filesystem writes outside the boundary (`deny_write` is detection and
   evidence, not a veto — user space cannot intercept another process's syscalls without
   `ptrace` or a container). Use a sandbox for prevention; use Docket for the record.
+- **Does not undo what it never copied:** a rollback restores the files the snapshot covered.
+  Anything created during the run is removed; anything the snapshot skipped is listed as not
+  covered, because "the tree is exactly as it was" is a claim a snapshot cannot always support.
 - **Does not sign by default:** sealing is an HMAC with your own key (proves integrity to
   yourself), signing is Ed25519 (proves integrity to someone who has your public key).
   Without either, a receipt is still tamper-evident against the ledger, but anyone who can
@@ -204,6 +220,67 @@ client deliverable, or an incident ticket. `docket explain <receipt>` re-derives
 from the ledger; `docket diff <a> <b>` shows what changed between two runs (cost, calls,
 models, tools, files) — useful as a regression check for agents, the way a golden test is for
 code.
+
+## Undoing what a run did
+
+Every other feature here observes. `--snapshot` and `--rollback-on-breach` are the two that
+write to your tree, and they are opt-in for that reason: a tool that silently copies your
+working directory into `.docket/` on every run is not a tool you leave installed.
+
+Cap the agent below what it will spend and it gets stopped; ask for the tree back and it comes
+back:
+
+```console
+$ docket run --snapshot --rollback-on-breach --max-usd 0.35 --report full -- python agent.py
+…
+  files      1 changed (+0 ~1 -0)
+  undo       snapshot: 3 file(s), 1.5 KiB stored
+  rollback   applied (cap breached): 1 restored
+…
+docket: the run breached max_usd and 1 file(s) changed: the watched tree has been put back
+        from the snapshot (1 restored).
+```
+
+The same restore, by hand, months later — dry run first, then applied:
+
+```console
+$ docket restore .docket/latest.receipt.json
+  docket restore — run 816045d5d7b8 into /home/you/project
+
+  would restore notes.txt -> 559c6bf64599
+
+  dry run: nothing was written. Add --apply to restore these paths.
+
+$ docket restore .docket/latest.receipt.json --apply
+  REFUSED     notes.txt -> 559c6bf64599 — the file changed after the run (expected
+              559c6bf64599…, found f4a867bb9e58…); re-run with --force to overwrite it
+
+  applied: {'refused': 1}
+$ echo $?
+1
+
+$ docket restore .docket/latest.receipt.json --apply --force
+  restored    notes.txt -> 559c6bf64599
+
+  applied: {'restored': 1}
+```
+
+(Two lines wrapped for print width; the tool emits one line per path.)
+
+That middle refusal is the point. Somebody edited `notes.txt` after the run — often to fix what
+the agent broke — and a restore that silently discards it is a worse bug than the overspend.
+Four rules follow from the same reasoning:
+
+| rule | why |
+| --- | --- |
+| The plan comes from the receipt, the ledger and the manifest — never from re-walking the tree | so anyone holding the same two files can audit (and re-derive) what a restore will do before it runs |
+| A file edited after the run is refused unless `--force` | the fix for an agent's mess is usually a human edit; overwriting it is data loss dressed up as recovery |
+| Only paths inside the run's tree are ever touched | the path list comes from documents, so it is checked, not trusted: no absolute paths, no `..`, no symlinked components, blobs located by digest, modes masked to permission bits ([ADR 0004](docs/adr/0004-content-snapshots-and-confinement.md)) |
+| It never claims completeness | files the snapshot could not cover (too large, symlinked, outside the tree) are named in `ops.snapshot.not_covered`, and `restore` exits `1` if any path was refused |
+
+A tree that does not fit the snapshot budget is refused **before the agent starts** — a partial
+snapshot invites restoring over a file it never captured, which is the one failure mode a
+rollback tool cannot recover from.
 
 ## Install
 

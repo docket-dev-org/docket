@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import pathlib
 
 from docket.ledger import Ledger
 from docket.receipt import load_receipt, receipt_core, receipt_digest, write_receipt
@@ -42,6 +43,54 @@ def test_receipt_alone_verifies_without_the_ledger(make_receipt):
     assert statuses["ledger-chain"] == "skip"
     assert statuses["cost-recomputation"] == "pass"
     assert statuses["usage-inclusion-proofs"] == "pass"
+
+
+def test_no_check_reports_two_verdicts(make_receipt):
+    """One check name, one verdict.
+
+    The verifier used to report the Merkle-path verdict and the ledger re-binding verdict under
+    the same name, so a doctored ledger produced `FAIL usage-inclusion-proofs` and
+    `PASS usage-inclusion-proofs` a few lines apart — and a reader skimming sees whichever one
+    they expected. Two facts, two names; this test is what keeps them apart, including for
+    receipts where one of the two is clean and the other is not.
+    """
+    receipt, path, ledger_path = make_receipt()
+    clean = verify_receipt(load_receipt(path), ledger_path=ledger_path)
+    assert clean.ok, clean.failures
+    lines = [
+        line
+        for line in pathlib.Path(ledger_path).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    # Forge a *response*: that is the event the appendix rows are bound to, so the two facts
+    # come apart — the proofs still verify against the receipt's claimed root, and the rows no
+    # longer match the ledger as it now reads.
+    target = next(
+        index
+        for index, line in enumerate(lines)
+        if json.loads(line).get("type") == "model.response"
+    )
+    payload = json.loads(lines[target])
+    payload["data"]["model"] = "claude-haiku-forged"
+    lines[target] = json.dumps(payload)
+    pathlib.Path(ledger_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    edited = verify_receipt(load_receipt(path), ledger_path=ledger_path)
+    assert not edited.ok
+    for result in (clean, edited):
+        by_name: dict[str, set[str]] = {}
+        for check in result.checks:
+            by_name.setdefault(check.name, set()).add(check.status)
+        conflicting = {name: statuses for name, statuses in by_name.items() if len(statuses) > 1}
+        assert not conflicting, f"{conflicting} reports more than one verdict"
+    # And the two facts are separately readable: the appendix is untouched, the ledger is not.
+    statuses = {check.name: check.status for check in edited.checks}
+    assert statuses["usage-inclusion-proofs"] == "pass"
+    assert statuses["usage-rows-rebound"] == "fail"
+    detail = next(
+        check.detail for check in edited.checks if check.name == "usage-rows-rebound" and check.status == "fail"
+    )
+    assert "does not match the recomputed ledger event" in detail
 
 
 def test_receipt_with_ledger_verifies_fully(make_receipt):

@@ -31,13 +31,12 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +44,7 @@ from . import events as ev
 from .ledger import Ledger
 from .policy import Caps, Policy
 from .resilience import parse_fault_spec
-from .util import atomic_write
+from .util import atomic_write, scratch_workspace
 
 # Event types the audit looks for, grouped by what they mean for failure behaviour.
 REFUSAL_EVENTS = (ev.MODEL_DENIED,)
@@ -84,6 +83,7 @@ def ledger_facts(ledger_path: Path) -> dict[str, Any]:
         "model_responses": counts.get(ev.MODEL_RESPONSE, 0),
         "model_requests": counts.get(ev.MODEL_REQUEST, 0),
         "evidence_gaps": [e.data for e in events if e.type == "x-docket.evidence-gap"],
+        "rollbacks": [e.data for e in events if e.type == "x-docket.rollback-applied"],
         "tool_calls": counts.get(ev.TOOL_CALL, 0),
         "notes": [e.data.get("message") for e in events if e.type == ev.NOTE and e.data.get("message")],
     }
@@ -336,11 +336,18 @@ def run_chaos(
     workspace: Path | None = None,
     docket_dir: Path | None = None,
     extra_env: dict[str, str] | None = None,
+    keep: bool = False,
 ) -> dict[str, Any]:
     """Run one supervised experiment with faults armed, then audit it.
 
     ``command`` defaults to the bundled synthetic agent: a real process, real HTTP, real
     boundary. With a command of your own, the faults land on your agent instead.
+
+    ``workspace`` is where the run's ledger and receipts are written. Supply one to keep them
+    (a caller's directory is never removed); leave it out and a scratch workspace is created and
+    removed when the process exits, unless ``keep`` or ``DOCKET_KEEP_SCRATCH`` says otherwise.
+    The outcome reports which happened, so a caller can tell a human where the evidence is —
+    and only when it is still there.
     """
     from .fakeupstream import FakeUpstream, Step
     from .supervisor import Supervisor
@@ -352,7 +359,7 @@ def run_chaos(
     upstream = FakeUpstream(steps=[Step(model="claude-sonnet-5", input_tokens=9_000, output_tokens=250)])
     upstream_host, upstream_port = upstream.start()
     upstream_url = f"http://{upstream_host}:{upstream_port}"
-    workspace = workspace or Path(tempfile.mkdtemp(prefix="docket-chaos-"))
+    workspace, workspace_kept = scratch_workspace("docket-chaos-", keep=keep, path=workspace)
     docket_dir = docket_dir or workspace / ".docket"
     env = chaos_environment(DOCKET_AGENT_CALLS=str(calls), DOCKET_AGENT_MODE=mode)
     if extra_env:
@@ -384,6 +391,8 @@ def run_chaos(
     return {
         "faults": [f.describe() for f in faults],
         "seed": seed,
+        "workspace": str(workspace),
+        "workspace_kept": workspace_kept,
         "duration_seconds": duration,
         "exit_code": result.exit_code,
         "breached": result.breached,
@@ -436,6 +445,13 @@ def render_chaos(outcome: dict[str, Any]) -> str:
         lines.append(f"  verify it: docket verify {outcome['receipt_path']}")
     else:
         lines.append("  no receipt: the run did not reach the point where one is written")
+    if outcome.get("workspace_kept"):
+        lines.append(f"  workspace kept at {outcome.get('workspace')}")
+    else:
+        lines.append(
+            "  the scratch workspace is removed when this command exits "
+            "(--keep, or DOCKET_KEEP_SCRATCH=1, to inspect the ledger)"
+        )
     return "\n".join(lines)
 
 
@@ -455,6 +471,10 @@ class Phase:
     faults: str = ""
     policy_mutator: str = ""
     kill_after: float | None = None
+    #: Turn on the content snapshot and automatic rollback for this phase, and write these
+    #: files into the workspace before the agent starts — the state a restore has to put back.
+    snapshot: bool = False
+    seed_files: dict[str, str] = field(default_factory=dict)
 
 
 GAME_DAY_PHASES: list[Phase] = [
@@ -522,6 +542,31 @@ GAME_DAY_PHASES: list[Phase] = [
         policy_mutator="max_events",
     ),
     Phase(
+        name="rollback",
+        description=(
+            "The agent damages the working tree and then breaches its cap: does the automatic "
+            "rollback put the tree back, and does the record say what it could not put back?"
+        ),
+        expect=[
+            "a content snapshot is taken before the agent starts and is declared in the receipt",
+            "the breach triggers a restore, recorded as a ledger event as well as in the receipt",
+            "the seeded file is byte-for-byte what it was before the run",
+            "the run's own ledger and receipt survive the rollback (the evidence is not collateral)",
+            "anything the snapshot could not cover is named, never implied to be restored",
+        ],
+        env={
+            "DOCKET_AGENT_CALLS": "6",
+            "DOCKET_AGENT_MODE": "bounded",
+            "DOCKET_AGENT_WRITE": "notes.txt",
+        },
+        policy_mutator="tight_cap",
+        snapshot=True,
+        seed_files={
+            "notes.txt": "the agent should not touch this\n",
+            "src/app.py": "print('hello')\n",
+        },
+    ),
+    Phase(
         name="supervisor-killed",
         description="SIGKILL the supervisor mid-run: what survives, what is lost, what recovery looks like.",
         expect=[
@@ -549,6 +594,11 @@ def _phase_policy(phase: Phase, base: Policy) -> Policy:
         policy.resilience.max_calls_per_second = 2
     elif phase.policy_mutator == "max_events":
         policy.resilience.max_events = 8
+    elif phase.policy_mutator == "tight_cap":
+        # A cap a single scripted call crosses, so the breach (and therefore the rollback)
+        # happens on a schedule rather than by luck. Copied, not mutated: `Caps` is shared
+        # with the base policy, and a phase that edited it in place would change the next phase.
+        policy.caps = replace(policy.caps, max_usd=Decimal("0.01"))
     return policy
 
 
@@ -593,6 +643,12 @@ def run_phase(
 
     workspace = root / phase.name
     workspace.mkdir(parents=True, exist_ok=True)
+    # The state a rollback is supposed to put back, written before anything runs: a phase
+    # that only ever modified files the agent itself created would test nothing.
+    for relative, content in phase.seed_files.items():
+        seeded = workspace / relative
+        seeded.parent.mkdir(parents=True, exist_ok=True)
+        seeded.write_text(content, encoding="utf-8")
     docket_dir = workspace / ".docket"
     env = dict(phase.env)
     if command is None:
@@ -622,6 +678,8 @@ def run_phase(
             faults=faults,
             fault_seed=7,
             env_extra=env,
+            snapshot_files=phase.snapshot,
+            rollback_on_breach=phase.snapshot,
         )
         started = time.monotonic()
         try:
@@ -645,6 +703,10 @@ def run_phase(
             from .verify import verify_receipt
 
             receipt = load_receipt(result.receipt_path)
+            # The ops block, kept in the phase record: snapshot and rollback declarations are
+            # facts about the run that the post-mortem has to be able to show, and the record
+            # is read by people who will not open a 14 kB receipt to find them.
+            record["receipt_ops"] = receipt.get("ops")
             verification = verify_receipt(receipt, ledger_path=result.ledger_path)
             record["verification"] = {
                 "ok": verification.ok,
@@ -653,10 +715,86 @@ def run_phase(
                 "skipped": sum(1 for c in verification.checks if c.status == "skip"),
                 "failures": verification.failures,
             }
+    # A rollback phase is checked against the disk as well as the record: the claim being
+    # tested is "the tree is back", and only the tree can settle that. The pre-run contents
+    # are known here (this phase seeded them), so the comparison is byte-for-byte rather than
+    # a digest of a digest.
+    if phase.snapshot:
+        record.setdefault("checks", []).extend(_rollback_checks(phase, workspace, docket_dir, record))
     # A phase "passes" when nothing failed. Skips do not count as failures — but they
     # are also never reported as passes, and the post-mortem lists them.
     record["phase_ok"] = not [c for c in record.get("checks", []) if c["status"] == "fail"]
     return record
+
+
+def _rollback_checks(
+    phase: Phase, workspace: Path, docket_dir: Path, record: dict[str, Any]
+) -> list[dict[str, str]]:
+    """Did the tree come back, and does the record say what came back?"""
+    checks: list[dict[str, str]] = []
+    operations = record.get("receipt_ops") or {}
+    snapshot = operations.get("snapshot") or {}
+    rollback = operations.get("rollback") or {}
+
+    changed = [path for path, content in phase.seed_files.items() if (workspace / path).read_text(encoding="utf-8") != content]
+    checks.append(
+        {
+            "name": "the seeded files are byte-for-byte what they were before the run",
+            "status": "pass" if not changed else "fail",
+            "detail": f"{len(phase.seed_files)} seeded file(s) checked on disk; "
+            + ("all restored" if not changed else f"still different: {changed}"),
+        }
+    )
+    checks.append(
+        {
+            "name": "the rollback is declared in the receipt",
+            "status": "pass" if rollback.get("applied") else "fail",
+            "detail": f"ops.rollback.applied={rollback.get('applied')}, trigger={rollback.get('trigger')!r}, "
+            f"counts={rollback.get('counts')}",
+        }
+    )
+    rollbacks = record.get("facts", {}).get("rollbacks")
+    # `facts` is trimmed of notes and stored in the record; the rollback events are kept.
+    checks.append(
+        {
+            "name": "the rollback is a ledger event, not just a receipt field",
+            "status": "pass" if rollbacks else "fail",
+            "detail": f"{len(rollbacks or [])} x-docket.rollback-applied event(s) in the ledger",
+        }
+    )
+    runs = sorted((docket_dir / "runs").glob("*.jsonl"))
+    receipts = sorted((docket_dir / "receipts").glob("*.json"))
+    survived = bool(runs) and (bool(receipts) or record.get("receipt_path") is None)
+    checks.append(
+        {
+            "name": "the run's own evidence survived the rollback",
+            "status": "pass" if survived else "fail",
+            "detail": f"{len(runs)} ledger file(s) and {len(receipts)} receipt(s) still present under "
+            f"{docket_dir}; a rollback that deleted its own record would be worse than no rollback",
+        }
+    )
+    if snapshot.get("taken"):
+        not_covered = snapshot.get("not_covered") or []
+        checks.append(
+            {
+                "name": "the receipt names what the snapshot could not cover",
+                "status": "pass" if not_covered else "skip",
+                "detail": (
+                    f"not covered: {[item.get('path') for item in not_covered]}"
+                    if not_covered
+                    else "every watched file was covered, so there is nothing to disclose here"
+                ),
+            }
+        )
+    else:
+        checks.append(
+            {
+                "name": "the receipt declares the snapshot it took",
+                "status": "fail",
+                "detail": f"ops.snapshot={snapshot or None}: the phase asked for --snapshot",
+            }
+        )
+    return checks
 
 
 def _killed_phase(
@@ -832,15 +970,23 @@ def run_game_day(
     phases: list[Phase] | None = None,
     command: list[str] | None = None,
     policy: Policy | None = None,
+    keep: bool = False,
 ) -> dict[str, Any]:
-    """Run the whole series and return the post-mortem record."""
-    root = root or Path(tempfile.mkdtemp(prefix="docket-game-day-"))
+    """Run the whole series and return the post-mortem record.
+
+    ``root`` is where every phase's ledger, receipt and the post-mortem are written; supply one
+    (as ``docket game-day --out`` does) and it is kept. Left out, a scratch root is created and
+    removed at exit unless ``keep`` or ``DOCKET_KEEP_SCRATCH`` says otherwise — and ``root_kept``
+    in the returned record says which.
+    """
+    root, root_kept = scratch_workspace("docket-game-day-", keep=keep, path=root)
     phases = phases if phases is not None else GAME_DAY_PHASES
     started = time.monotonic()
     records = [run_phase(phase, root=root, command=command, base_policy=policy) for phase in phases]
     report = {
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "root": str(root),
+        "root_kept": root_kept,
         "duration_seconds": round(time.monotonic() - started, 3),
         "phases": records,
         "phases_ok": sum(1 for r in records if r.get("phase_ok")),
