@@ -51,7 +51,15 @@ def snapshot(
     max_files: int = 20000,
 ) -> dict[str, FileState]:
     """Hash the watched tree. Returns a mapping of relative path to state."""
-    base = Path(cwd or os.getcwd())
+    # `base` is resolved, and that is load-bearing rather than tidy: every path below is
+    # relativised against it, and a *relative* base can never be a prefix of the resolved
+    # absolute paths the walk produces. Without this, running with a relative cwd (which is
+    # what `docket game-day` and `docket run --root .` do) made every path come out absolute —
+    # so no ignore pattern matched, Docket's own ledger and snapshot store were recorded as the
+    # agent's changes, and a breach-triggered restore then refused its own change list as
+    # out-of-tree while reporting the rollback as applied. The game day caught it; the failure
+    # is silent, which is why the fix and the test for it are both explicit.
+    base = Path(cwd or os.getcwd()).resolve()
     result: dict[str, FileState] = {}
     count = 0
     for root in roots:

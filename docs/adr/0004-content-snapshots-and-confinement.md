@@ -65,7 +65,11 @@ questions that the code could not answer for us:
 7. **Restore is reported, never asserted.** Per-path statuses (`restored`, `recreated`,
    `removed`, `refused`, `failed`, `absent`, `skipped`) are returned as records; the CLI prints
    each one, exits `1` if any path was refused or failed, and the automatic rollback writes an
-   `x-docket.rollback-applied` event with the counts and the paths.
+   `x-docket.rollback-applied` event with the counts and the paths. `applied` is the *count of
+   files that went back*, not the fact that a restore was attempted: a plan that was declined in
+   full is recorded as `x-docket.rollback-refused`, with the reason, and the run says so on the
+   console. `applied: true` over a tree that did not change is the one outcome this record must
+   never produce.
 
 ## Consequences
 

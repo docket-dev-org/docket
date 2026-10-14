@@ -174,7 +174,9 @@ def test_pricing_never_raises_a_decimal_exception():
     ``InvalidOperation`` escaping there would take the recorder down with the run it exists to
     record.
     """
-    price = Price(pattern="*", input=Decimal("15.00"), cached_input=Decimal("1.50"), output=Decimal("75.00"), source="t")
+    price = Price(
+        pattern="*", input=Decimal("15.00"), cached_input=Decimal("1.50"), output=Decimal("75.00"), source="t"
+    )
     # Absurd but arithmetically representable: computed, not crashed.
     assert price.cost(MAX_CLAIMED_TOKENS_PER_CALL, 0, 0) > 0
     # A price whose exponent cannot be represented is a named refusal.
@@ -242,7 +244,9 @@ def test_a_provider_cannot_crash_the_recorder_with_absurd_usage(tmp_path, usage)
     ``estimated`` and the event says which numbers were refused, so an invented measurement is
     never filed as ``reported``.
     """
-    upstream = FakeUpstream(steps=[Step(body_override={"id": "x", "model": "claude-sonnet-5", "usage": usage, "choices": []})])
+    upstream = FakeUpstream(
+        steps=[Step(body_override={"id": "x", "model": "claude-sonnet-5", "usage": usage, "choices": []})]
+    )
     host, port = upstream.start()
     ledger = Ledger.open(tmp_path / "l.jsonl")
     meter = CostMeter(price_table=PriceTable.load())
@@ -364,7 +368,9 @@ def test_a_doctored_row_binding_is_counted(make_receipt):
         receipt["appendix"]["usage"][1]["merkle_path"][0]["hash"]
     )
     result = verify_receipt(receipt, ledger_path=ledger_path)
-    details = [check.detail for check in result.checks if check.name == "usage-inclusion-proofs" and check.status == "fail"]
+    details = [
+        check.detail for check in result.checks if check.name == "usage-inclusion-proofs" and check.status == "fail"
+    ]
     assert any("of 3 usage rows" in detail for detail in details), details
     assert any("does not prove against" in detail for detail in details), details
 
@@ -460,7 +466,9 @@ def test_a_hostile_price_table_is_refused_by_name(make_receipt, document):
     result = verify_receipt(receipt, ledger_path=ledger_path)
     detail = " | ".join(check.detail for check in result.checks if check.status == "fail")
     assert result.ok is False, detail
-    assert any(check.name in {"cost-recomputation", "receipt-shape"} for check in result.checks if check.status == "fail")
+    assert any(
+        check.name in {"cost-recomputation", "receipt-shape"} for check in result.checks if check.status == "fail"
+    )
 
 
 @pytest.mark.parametrize(

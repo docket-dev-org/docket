@@ -497,16 +497,27 @@ class Supervisor:
 
         if self.snapshot_files and self.rollback_on_breach and breach_state["cap"] and changes:
             self.rollback = self._rollback(ledger, changes)
+            counts = self.rollback.get("counts") or {}
             if self.rollback.get("applied"):
-                counts = self.rollback.get("counts") or {}
-                summary = ", ".join(f"{value} {key}" for key, value in sorted(counts.items()) if value) or "nothing to do"
+                summary = (
+                    ", ".join(f"{value} {key}" for key, value in sorted(counts.items()) if value) or "nothing to do"
+                )
                 self._say(
                     f"the run breached {breach_state['cap']} and {len(changes)} file(s) changed: "
                     f"the watched tree has been put back from the snapshot ({summary}). "
                     f"`docket restore --help` shows the same restore done by hand."
                 )
-                for item in self.rollback.get("refused") or []:
-                    self._say(f"NOT rolled back: {item['path']} — {item['reason']}")
+            elif self.rollback.get("refused"):
+                # Refused, not silent: an operator whose tree is still damaged has to hear it
+                # from the run, in the same breath as the breach that caused it.
+                self._say(
+                    f"the run breached {breach_state['cap']} and {len(changes)} file(s) changed, and NOTHING "
+                    f"was put back: the snapshot could not restore {len(self.rollback['refused'])} path(s). "
+                    f"The receipt's ops.rollback.refused names each one and why, and this run's own record "
+                    f"lists the same in `docket report`."
+                )
+            for item in self.rollback.get("refused") or []:
+                self._say(f"NOT rolled back: {item['path']} — {item['reason']}")
 
         duration = self.monotonic() - started_mono
         if breach_state["cap"]:
@@ -621,6 +632,14 @@ class Supervisor:
         """
         store = self.docket_dir / "snapshots" / self.session_id
         if not (self.snapshot or {}).get("manifest"):
+            # A breach that wanted a rollback and could not have one is still an outcome of the
+            # run, and the record says so under the same event name as a declined restore —
+            # with the reason, so the two cases are never confused.
+            self._record_control(
+                ledger,
+                "x-docket.rollback-refused",
+                {"trigger": "cap breached", "reason": "the run took no snapshot", "counts": {}, "paths": []},
+            )
             return {"applied": False, "reason": "the run took no snapshot"}
         document = read_manifest(store)
         plan = plan_restore(document, changes)
@@ -633,37 +652,59 @@ class Supervisor:
         applied = apply_restore(plan, root=self.cwd, store=store, force=True)
         counts = summarise(applied)
         undone = [item["path"] for item in applied if item["status"] in {"restored", "recreated", "removed"}]
+        # The same three outcomes the receipt reports as "not put back": refused, failed, and
+        # skipped (a change the snapshot has no copy of). `absent` means the file already is
+        # what the restore wanted, so it is not a complaint.
+        refused = [
+            {"path": item["path"], "reason": item.get("reason") or item["status"]}
+            for item in applied
+            if item["status"] in {"refused", "failed", "skipped"}
+        ]
+        # "Was this rollback applied?" is one of the load-bearing claims a receipt makes, so it
+        # is answered by the only evidence that counts — how many files actually went back. A
+        # plan whose every item was refused is not a rollback that happened; it is a rollback
+        # that was *attempted and declined*, and saying otherwise is exactly the kind of claim
+        # the record exists to make checkable.
+        did_something = bool(undone)
         # `applied_paths` carries every path, including the ones that refused: the receipt
         # reduces it to summary lists, and anything reading the record directly sees the detail.
         record: dict[str, Any] = {
-            "applied": True,
+            "applied": did_something,
             "trigger": "cap breached",
             "counts": counts,
             "applied_paths": applied,
+            "refused": refused,
             "not_covered": document.get("not_covered") or [],
         }
+        if not did_something:
+            record["reason"] = (
+                f"the restore was refused for every changed path ({len(refused)} of "
+                f"{len(applied)}); the receipt's ops.rollback.refused names each one and why"
+            )
+        event: dict[str, Any] = {
+            "trigger": record["trigger"],
+            "restored": counts.get("restored", 0),
+            "recreated": counts.get("recreated", 0),
+            "removed": counts.get("removed", 0),
+            "refused": counts.get("refused", 0),
+            "failed": counts.get("failed", 0),
+            "skipped": counts.get("skipped", 0),
+            "paths": undone,
+        }
+        if not did_something:
+            event["reason"] = record["reason"]
         self._record_control(
             ledger,
             # Namespaced, as spec §4.4 requires of an implementation's own extensions: the v1
             # vocabulary is closed, so a Docket-specific event has to be recognisable as such
-            # by a verifier that has never heard of it.
-            "x-docket.rollback-applied",
-            {
-                "trigger": record["trigger"],
-                "restored": counts.get("restored", 0),
-                "recreated": counts.get("recreated", 0),
-                "removed": counts.get("removed", 0),
-                "refused": counts.get("refused", 0),
-                "failed": counts.get("failed", 0),
-                "skipped": counts.get("skipped", 0),
-                "paths": undone,
-            },
+            # by a verifier that has never heard of it. Two names, because "applied" and
+            # "refused" are two outcomes and one name carrying both would be unreadable.
+            "x-docket.rollback-applied" if did_something else "x-docket.rollback-refused",
+            event,
         )
         return record
 
-    def _record_control(
-        self, ledger: Ledger, event_type: str, data: dict[str, Any]
-    ) -> None:
+    def _record_control(self, ledger: Ledger, event_type: str, data: dict[str, Any]) -> None:
         """Append an event that describes the record itself, whatever the ledger's state.
 
         Control-plane facts (a rollback happened, evidence was lost) are the ones a reader most
@@ -694,8 +735,14 @@ class Supervisor:
             # boundary has already told the agent (in HTTP words) and recorded why. The
             # run stops here so that "the tool could not keep its promise to record"
             # cannot be mistaken for a normal completion.
-            if getattr(proxy, "ledger_full", None) is not None and proxy.ledger_full.is_set() and breach_state["cap"] is None:
-                breach_state["cap"] = "max_events" if getattr(ledger, "max_events", None) is not None else "max_ledger_bytes"
+            if (
+                getattr(proxy, "ledger_full", None) is not None
+                and proxy.ledger_full.is_set()
+                and breach_state["cap"] is None
+            ):
+                breach_state["cap"] = (
+                    "max_events" if getattr(ledger, "max_events", None) is not None else "max_ledger_bytes"
+                )
             elapsed = self.monotonic() - started_mono
             if wall_limit is not None and elapsed >= wall_limit and breach_state["cap"] is None:
                 breach_state["cap"] = "max_wall_seconds"

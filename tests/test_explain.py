@@ -186,6 +186,21 @@ def test_attributed_impact_sums_dollar_impacts():
     assert total_estimated_savings(findings).startswith("$")
 
 
+def test_an_unreadable_attributed_impact_is_named_not_dropped():
+    """Docket writes those strings itself, so an unparseable one is a bug — and a sum that
+    quietly omitted it would understate the savings in a document people act on."""
+    findings = [
+        {"title": "a", "usd_impact": "$1.62"},
+        {"title": "b", "usd_impact": "$not-a-number"},
+        {"title": "c", "usd_impact": None},  # no attributed cost: not part of the sum, fine
+    ]
+    rendered = total_estimated_savings(findings)
+    assert rendered.startswith("$1.62")
+    assert "1 unreadable impact value(s) omitted" in rendered
+
+    assert total_estimated_savings(findings[:1] + findings[2:]) == "$1.62"
+
+
 def test_oversized_payload_helper():
     ledger = Ledger.in_memory()
     ledger.append("model.request", {"body_bytes": 40_000})

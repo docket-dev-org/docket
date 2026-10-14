@@ -32,7 +32,7 @@ from .ledger import Ledger
 from .policy import Policy
 from .pricing import CostMeter, PriceTable
 from .receipt import build_receipt, write_receipt
-from .util import atomic_write, docket_number
+from .util import atomic_write, docket_number, local_http_url
 
 _state = threading.local()
 
@@ -67,14 +67,22 @@ class _BoundaryRecorder:
     """
 
     def __init__(self, base_url: str, timeout: float = 5.0) -> None:
-        self.base_url = base_url.rstrip("/")
+        # Checked here rather than on the first event: a wrong address should be a clear
+        # exception at setup, not events quietly missing from a receipt hours later. The
+        # boundary is loopback by contract, so a non-local URL is a misconfiguration or an
+        # attempt to divert the agent's event stream somewhere else.
+        validated = local_http_url(base_url)
+        self.base_url = validated.rstrip("/")
         self.timeout = timeout
         self.errors: list[str] = []
 
     def append(self, event_type: str, data: dict[str, Any]) -> _AppendResult:
         payload = json.dumps({"type": event_type, "data": data}).encode("utf-8")
         request = urllib.request.Request(
-            f"{self.base_url}/docket/event",
+            # Guarded here as well as in the constructor: the constructor refuses a boundary
+            # that is not local when the recorder is built, and this keeps the invariant true
+            # at the call site, where a reader (and `tests/test_url_guards.py`) looks for it.
+            local_http_url(f"{self.base_url}/docket/event"),
             data=payload,
             headers={"content-type": "application/json"},
             method="POST",

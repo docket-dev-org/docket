@@ -43,9 +43,7 @@ def test_breaker_opens_at_the_threshold_and_refuses_with_an_increasing_cooldown(
     # The clock is injectable, so this asserts real timing behaviour without sleeping:
     # a test that sleeps for its own cooldown is a test that hides a regression in slow CI.
     now = {"t": 1000.0}
-    breaker = CircuitBreaker(
-        threshold=2, cooldown_seconds=10, max_cooldown_seconds=25, clock=lambda: now["t"]
-    )
+    breaker = CircuitBreaker(threshold=2, cooldown_seconds=10, max_cooldown_seconds=25, clock=lambda: now["t"])
     breaker.record_failure("openai")
     breaker.record_failure("openai")
     assert breaker.state_of("openai") == "open"

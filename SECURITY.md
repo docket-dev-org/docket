@@ -25,6 +25,8 @@ Docket makes narrow, checkable claims. Breaking one of them is a security issue:
 | the boundary is not a backdoor | the local proxy exposing an endpoint that lets a non-supervised process write arbitrary events into another session's ledger, or read another session's data |
 | a restore is confined | `docket restore` (or a rollback) writing or deleting anything outside the tree it was pointed at, choosing that tree from a forged receipt, following a symlink out of the tree, applying a setuid mode, or overwriting a file that changed after the run without `--force` |
 | a snapshot does not sweep up secrets | a watched symlink whose target is copied into the snapshot store, or a watched root outside the working directory captured under a path a restore could be aimed with |
+| Docket's own fetches stay local | a `urlopen` in the package reaching `file://`, a cloud metadata address, or any host that is not this machine when the address came from the environment (`DOCKET_PROXY_URL`, the self-test probes) |
+| an agent-side URL is never a file read | an `urlopen` handed a scheme other than http/https in code that stands in for an agent (`demo.py`, `scriptagent.py`) |
 
 Ordinary bugs (wrong output, a crash, an unhelpful message) are normal issues, not advisories.
 
@@ -63,9 +65,22 @@ Ordinary bugs (wrong output, a crash, an unhelpful message) are normal issues, n
 - Releases are built from a tag in CI; the sdist and wheel are attached to the GitHub release
   with a signed `SHA256SUMS`. The repository is expected to be protected with required
   reviews and signed commits.
-- `docket` never phones home. There is no telemetry, no update check, no analytics — grep the
-  source; the tests assert that the only network client the core can construct points at
-  loopback.
+- `docket` never phones home. There is no telemetry, no update check, no analytics, no account.
+  The only addresses Docket itself dials are loopback (its own boundary, its probes) and the
+  provider URLs the *user* configured — because a supervised agent asked it to.
+- Every `urllib.request.urlopen` in the repository passes its URL through one of two guards
+  before the call, and that is checked rather than promised: `tests/test_url_guards.py` walks
+  the package's syntax tree and fails if any `urlopen` argument cannot be resolved back to a
+  guard, so a call site added later without one breaks the build. The guards are
+  `util.local_http_url` (scheme http/https, a host must be present, and the host must be this
+  machine — `127.0.0.0/8`, `::1`, `localhost`; `0.0.0.0` is a bind address and is refused as a
+  destination) for Docket's own clients, and `util.http_url` (scheme only) for code that stands
+  in for an agent and may legitimately be pointed at a remote provider. The test covers both,
+  including the hostnames that are designed to look local and are not: `localhost.evil.example`,
+  `localhost@evil.example`, `127.0.0.1.evil.example`, `2130706433`, `0x7f000001`.
+- Static analysis runs in CI: `bandit -q -c pyproject.toml -r src tools`. Suppressions are
+  class-by-class with a written reason in `[tool.bandit]`, never blanket; the URL rule (`B310`)
+  is not suppressed at the call sites — it is answered by the guards above.
 
 ## Supported versions
 

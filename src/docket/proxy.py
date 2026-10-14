@@ -147,6 +147,8 @@ def _json_depth_exceeded(blob: bytes) -> bool:
             depth = max(0, depth - 1)
     del _json
     return False
+
+
 DENIAL_TYPE = "docket_policy_denied"
 
 
@@ -352,9 +354,7 @@ class _Handler(BaseHTTPRequestHandler):
             super().log_message(fmt, *args)
 
     # -- helpers ---------------------------------------------------------- #
-    def _refuse_and_close(
-        self, status: int, payload: dict[str, Any], *, reason: str, **detail: Any
-    ) -> None:
+    def _refuse_and_close(self, status: int, payload: dict[str, Any], *, reason: str, **detail: Any) -> None:
         """Answer a request whose body was *not* consumed, then hang up.
 
         This is not cosmetic. A server reuses a keep-alive connection by parsing whatever
@@ -507,9 +507,7 @@ class _Handler(BaseHTTPRequestHandler):
         clean_name = name.strip()
         clean_value = value.strip()
         if not clean_name or any(char in clean_name for char in "\r\n: \t"):
-            self.proxy.record(
-                "note", {"message": f"dropped an invalid response header name: {clean_name[:40]!r}"}
-            )
+            self.proxy.record("note", {"message": f"dropped an invalid response header name: {clean_name[:40]!r}"})
             return
         if any(char in clean_value for char in "\r\n\x00"):
             self.proxy.record(
@@ -600,7 +598,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _respond_error(self, status: int, payload: dict[str, Any]) -> None:
         """Relay an upstream failure faithfully, including its body."""
         blob = payload.get("bytes", b"")
-        if not isinstance(blob, (bytes, bytearray)) or not blob:
+        if not isinstance(blob, bytes | bytearray) or not blob:
             blob = json.dumps(
                 {"error": {"type": "docket_upstream_error", "message": payload.get("error") or "no response body"}}
             ).encode()
@@ -744,9 +742,7 @@ class _Handler(BaseHTTPRequestHandler):
             # prompt-injected agent aim the boundary at endpoints the operator never
             # intended, and control characters would be headers in a body's clothing.
             self.proxy.stats.denied += 1
-            self.proxy.record(
-                "net.denied", {"reason": unsafe, "path": self.path[:200], "code": "unsafe_path"}
-            )
+            self.proxy.record("net.denied", {"reason": unsafe, "path": self.path[:200], "code": "unsafe_path"})
             self._send_json(
                 400,
                 {
@@ -1347,10 +1343,14 @@ class _Handler(BaseHTTPRequestHandler):
                     # bytes received so far are still evidence, and losing them would
                     # hide the fact that the provider cut the response short.
                     truncated = True
-                return status, resp_headers, {
-                    "text": b"".join(chunks).decode("utf-8", "replace"),
-                    "truncated": truncated,
-                }
+                return (
+                    status,
+                    resp_headers,
+                    {
+                        "text": b"".join(chunks).decode("utf-8", "replace"),
+                        "truncated": truncated,
+                    },
+                )
             data = resp.read()
         except (OSError, http.client.HTTPException) as exc:
             # Named for what it is: a slow or malformed *provider*, answered in the

@@ -31,7 +31,7 @@
       "type": "policy.applied",
       "data": {
         "name": "vector",
-        "digest": "fa2fe24519ebe475cccab02437c2e3edb07be9ff57030ff4927673e52e731df7",
+        "digest": "4bf46ae751e5d7a9c3f29f2fd054a5e6626b6672b8c4fd0f2c399b4d834b3b7c",
         "document": {
           "name": "vector",
           "caps": {
@@ -70,11 +70,22 @@
           },
           "budget": {
             "mode": "usd"
+          },
+          "resilience": {
+            "breaker_threshold": 5,
+            "breaker_cooldown_seconds": 30,
+            "breaker_max_cooldown_seconds": 300,
+            "max_calls_per_minute": null,
+            "max_calls_per_second": null,
+            "max_events": null,
+            "max_ledger_bytes": 268435456,
+            "fail_fast_evidence": false,
+            "min_free_bytes": 16777216
           }
         }
       },
       "prev": "5c9e8b68b42a8f76c0455fd5e3b936f90f6d720d2a0efe02892b76a44a0a184c",
-      "hash": "cfaefb838e4caed3026bb1bb27a3a7b5ab169c76627498402644c55f5265bc8e"
+      "hash": "979d6e9984a4c292df17994d6fa09207319b3964cf7d48392a0a2056f894a165"
     },
     {
       "seq": 2,
@@ -88,8 +99,8 @@
         "streaming": false,
         "body_bytes": 512
       },
-      "prev": "cfaefb838e4caed3026bb1bb27a3a7b5ab169c76627498402644c55f5265bc8e",
-      "hash": "1e8a3e21876c24e151e17a6be99d4fecc5c0a0f2f6ea759608df3880781c4019"
+      "prev": "979d6e9984a4c292df17994d6fa09207319b3964cf7d48392a0a2056f894a165",
+      "hash": "2d4e8cef857075e553b912ff483179d536c434f26642a2faead103293355bcaf"
     },
     {
       "seq": 3,
@@ -109,8 +120,8 @@
         "cost_usd": "0.006000",
         "cumulative_cost_usd": "0.006000"
       },
-      "prev": "1e8a3e21876c24e151e17a6be99d4fecc5c0a0f2f6ea759608df3880781c4019",
-      "hash": "75ec8f4dd2acd804736e03a0b7607aa8e8ceda7022c61c53a4c2ef79284cb83d"
+      "prev": "2d4e8cef857075e553b912ff483179d536c434f26642a2faead103293355bcaf",
+      "hash": "5d555ba9e8852a118d2eaeca8b5bbf315cced81b939f7db8f05b0d03ceec6bef"
     },
     {
       "seq": 4,
@@ -124,8 +135,8 @@
         "streaming": false,
         "body_bytes": 512
       },
-      "prev": "75ec8f4dd2acd804736e03a0b7607aa8e8ceda7022c61c53a4c2ef79284cb83d",
-      "hash": "b7ef11c06ca2270473a56c96ef7d55b0f3e02aa08422a11f20571f414b25c6a5"
+      "prev": "5d555ba9e8852a118d2eaeca8b5bbf315cced81b939f7db8f05b0d03ceec6bef",
+      "hash": "51c5abd2ccc17ce010f9ecf7f53a4e796a0d49c92584527153205fe66afa4441"
     },
     {
       "seq": 5,
@@ -145,8 +156,8 @@
         "cost_usd": "0.003300",
         "cumulative_cost_usd": "0.009300"
       },
-      "prev": "b7ef11c06ca2270473a56c96ef7d55b0f3e02aa08422a11f20571f414b25c6a5",
-      "hash": "744513f0b60f9446dcfda399093353c9290390147c8cd789a916c414178d55c1"
+      "prev": "51c5abd2ccc17ce010f9ecf7f53a4e796a0d49c92584527153205fe66afa4441",
+      "hash": "58b972d528f9743bf97b1c19c91b88e8878770307a14397d1491da1f14784a3e"
     },
     {
       "seq": 6,
@@ -160,8 +171,8 @@
         "streaming": false,
         "body_bytes": 512
       },
-      "prev": "744513f0b60f9446dcfda399093353c9290390147c8cd789a916c414178d55c1",
-      "hash": "49c9d8c103ae9153a96d0237fbfa0a7ef0023a1e63020f6a85d96fbab1b2668b"
+      "prev": "58b972d528f9743bf97b1c19c91b88e8878770307a14397d1491da1f14784a3e",
+      "hash": "4ea8c0ebf50edbe2ae2ce1dfe1950c788d10d3f391d027a95717859313ceeba6"
     },
     {
       "seq": 7,
@@ -181,8 +192,8 @@
         "cost_usd": "0.000700",
         "cumulative_cost_usd": "0.010000"
       },
-      "prev": "49c9d8c103ae9153a96d0237fbfa0a7ef0023a1e63020f6a85d96fbab1b2668b",
-      "hash": "e2827c3efc6521c096912e23afabb9dda98898c500bb53ca5e3acc5663168877"
+      "prev": "4ea8c0ebf50edbe2ae2ce1dfe1950c788d10d3f391d027a95717859313ceeba6",
+      "hash": "226f14969563f84e2aa2148e5ccba5442ff3939ae83b3194afde22dd59ac10d4"
     },
     {
       "seq": 8,
@@ -196,8 +207,8 @@
         "streaming": false,
         "body_bytes": 512
       },
-      "prev": "e2827c3efc6521c096912e23afabb9dda98898c500bb53ca5e3acc5663168877",
-      "hash": "8c8cb8ffd036f49be47ecf68b9fc658ad4f07689118138f5ae6a9f6f1c2a0819"
+      "prev": "226f14969563f84e2aa2148e5ccba5442ff3939ae83b3194afde22dd59ac10d4",
+      "hash": "afb34ba6364e6c24fd02863cd03570f8c6cd797dc0ad46ca5c5fe8e98cdb9fd2"
     },
     {
       "seq": 9,
@@ -217,8 +228,8 @@
         "cost_usd": "0.003500",
         "cumulative_cost_usd": "0.013500"
       },
-      "prev": "8c8cb8ffd036f49be47ecf68b9fc658ad4f07689118138f5ae6a9f6f1c2a0819",
-      "hash": "0eb14359b0fbb5172c30872ce1ee066fdb836dc35c9a3966c0a82a831db10d88"
+      "prev": "afb34ba6364e6c24fd02863cd03570f8c6cd797dc0ad46ca5c5fe8e98cdb9fd2",
+      "hash": "4f08e6e5c56bf255d49a11da51f9cf6b6cd85a339df94aa5e0764f41150e1696"
     },
     {
       "seq": 10,
@@ -229,8 +240,8 @@
         "args_digest": "090772cf4068973daad3f715eb788d39fe2c02be42efd86de81f0e59198d6237",
         "result_bytes": 4096
       },
-      "prev": "0eb14359b0fbb5172c30872ce1ee066fdb836dc35c9a3966c0a82a831db10d88",
-      "hash": "bcea2ef88ab6b0bcd9fbfd4f55a058080df400663033b4a3ab0096125947b7d0"
+      "prev": "4f08e6e5c56bf255d49a11da51f9cf6b6cd85a339df94aa5e0764f41150e1696",
+      "hash": "f711f0e5bec3171e3fff959d3ef808d539a8864b2bed7f315261295ef97f85cf"
     },
     {
       "seq": 11,
@@ -242,13 +253,13 @@
         "breached": null,
         "interrupted": false
       },
-      "prev": "bcea2ef88ab6b0bcd9fbfd4f55a058080df400663033b4a3ab0096125947b7d0",
-      "hash": "676381c513abe9cfcd54b8df9b8d7ee7de74ae1f7b140bd8bb619a77d0a31b74"
+      "prev": "f711f0e5bec3171e3fff959d3ef808d539a8864b2bed7f315261295ef97f85cf",
+      "hash": "2e3750114a9bf2dcb5584024648c1af639b81b12350043236406c97be7e3e7eb"
     }
   ],
-  "head": "676381c513abe9cfcd54b8df9b8d7ee7de74ae1f7b140bd8bb619a77d0a31b74",
-  "merkle_root": "ac25baab32787ae72e90f526927c28e5588c591a6500adb75ba62918ab89990f",
-  "file_sha256": "361a6ee79a26d5516ac9d5af7d45618b5aa57b98d648bdea3e5e48fb530c00bf",
+  "head": "2e3750114a9bf2dcb5584024648c1af639b81b12350043236406c97be7e3e7eb",
+  "merkle_root": "1539f98b9a9187be1c23ba905d5a7c25977c66c631b0ec6003c5533d3b81d52d",
+  "file_sha256": "b1e77cb8825476d25652da952515b16dd340b164f47ebf114cd3a813b8162fd9",
   "counts": {
     "session.start": 1,
     "policy.applied": 1,

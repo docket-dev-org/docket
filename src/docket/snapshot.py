@@ -460,7 +460,11 @@ def apply_restore(
                 continue
             if not expected:
                 applied.append(
-                    {**item, "status": "refused", "reason": "the plan carries no digest, so the bytes cannot be checked"}
+                    {
+                        **item,
+                        "status": "refused",
+                        "reason": "the plan carries no digest, so the bytes cannot be checked",
+                    }
                 )
                 continue
             blob, why = _blob_for(store_path, expected)
@@ -484,7 +488,11 @@ def apply_restore(
                 descriptor = os.open(blob, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
             except OSError as exc:
                 applied.append(
-                    {**item, "status": "failed", "reason": f"snapshot blob {blob.relative_to(store_path)} is unreadable: {exc}"}
+                    {
+                        **item,
+                        "status": "failed",
+                        "reason": f"snapshot blob {blob.relative_to(store_path)} is unreadable: {exc}",
+                    }
                 )
                 continue
             try:

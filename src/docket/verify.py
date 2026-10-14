@@ -379,11 +379,7 @@ def verify_receipt(
                 "usage-inclusion-proofs",
                 "pass",
                 f"{proven} usage rows proven against the receipt's claimed Merkle root"
-                + (
-                    " and re-bound to the recomputed ledger"
-                    if events is not None and not rebind_failures
-                    else ""
-                ),
+                + (" and re-bound to the recomputed ledger" if events is not None and not rebind_failures else ""),
             )
         elif without_proof == len(rows):
             # A large session ships a summary without per-row proofs by design (spec §6): say so,
@@ -546,7 +542,11 @@ def verify_receipt(
     elif disclosure is None:
         add("limits-disclosure", "fail", "receipt does not disclose the scope of its evidence")
     else:
-        add("limits-disclosure", "fail", f"the receipt's limits_disclosure is not an object: {type(disclosure).__name__}")
+        add(
+            "limits-disclosure",
+            "fail",
+            f"the receipt's limits_disclosure is not an object: {type(disclosure).__name__}",
+        )
 
     # -- 9. did the record itself survive the run? ------------------------- #
     # A receipt that quietly carries an incomplete ledger would be the tool lying about
@@ -579,7 +579,11 @@ def verify_receipt(
     if ops.get("chaos_run"):
         fault_block = ops.get("fault_injection")
         faults = fault_block.get("injections", 0) if isinstance(fault_block, dict) else 0
-        add("chaos-run", "skip", f"fault injection was active: {faults} injected fault(s) — this receipt records a test, not production behaviour")
+        add(
+            "chaos-run",
+            "skip",
+            f"fault injection was active: {faults} injected fault(s) — this receipt records a test, not production behaviour",
+        )
 
     number = receipt.get("docket_number")
     return VerifyResult(

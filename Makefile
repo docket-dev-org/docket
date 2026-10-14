@@ -1,4 +1,4 @@
-.PHONY: help test demo lint fmt verify-js vectors wheel clean check site site-check
+.PHONY: help test demo lint fmt audit verify-js vectors wheel clean check site site-check
 
 help:
 	@echo "make test       run the full test suite (offline, no API keys)"
@@ -7,7 +7,8 @@ help:
 	@echo "make vectors    regenerate spec/vectors (only for a deliberate format change)"
 	@echo "make wheel      build sdist + wheel into dist/"
 	@echo "make lint fmt   ruff check / ruff format"
-	@echo "make check      lint + tests + verify-js"
+	@echo "make audit      bandit static analysis (suppressions documented in pyproject.toml)"
+	@echo "make check      lint + audit + tests + verify-js"
 	@echo "make site       build the docs site (needs mkdocs-material)"
 	@echo "make site-check build the docs site to a temp dir, strict: catches broken links"
 
@@ -34,13 +35,16 @@ fmt:
 	ruff check --fix src tests spec examples tools assets
 	ruff format src tests spec examples tools assets
 
+audit:
+	bandit -q -c pyproject.toml -r src tools
+
 site:
 	python3 tools/build_docs_site.py
 
 site-check:
 	python3 tools/build_docs_site.py --check
 
-check: lint test verify-js
+check: lint audit test verify-js
 
 clean:
 	rm -rf dist build *.egg-info .pytest_cache .ruff_cache

@@ -110,13 +110,10 @@ def render_receipt(receipt: dict[str, Any], *, color: bool = True, show_findings
     snapshot = ops.get("snapshot")
     if snapshot and snapshot.get("taken"):
         detail = (
-            f"snapshot: {snapshot.get('files', 0)} file(s), "
-            f"{human_bytes(snapshot.get('bytes_stored', 0))} stored"
+            f"snapshot: {snapshot.get('files', 0)} file(s), " f"{human_bytes(snapshot.get('bytes_stored', 0))} stored"
         )
         if snapshot.get("not_covered"):
-            detail += _paint(
-                f"  {len(snapshot['not_covered'])} not covered", YELLOW, color
-            )
+            detail += _paint(f"  {len(snapshot['not_covered'])} not covered", YELLOW, color)
         lines.append(_row("undo", detail, color))
     rollback = ops.get("rollback")
     if rollback:
@@ -139,7 +136,16 @@ def render_receipt(receipt: dict[str, Any], *, color: bool = True, show_findings
             lines.append(
                 _row(
                     "rollback",
-                    _paint(f"not applied: {rollback.get('reason') or 'no snapshot'}", YELLOW, color),
+                    _paint(
+                        f"not applied: {rollback.get('reason') or 'no snapshot'}"
+                        + (
+                            f" ({len(rollback.get('refused') or [])} path(s) named in the receipt)"
+                            if rollback.get("refused")
+                            else ""
+                        ),
+                        YELLOW,
+                        color,
+                    ),
                     color,
                 )
             )

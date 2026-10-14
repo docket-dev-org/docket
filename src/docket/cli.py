@@ -48,6 +48,7 @@ def _out(stream: Any, text: str = "") -> None:
 
 def cmd_run(args: argparse.Namespace) -> int:
     from . import snapshot as snapshot_module
+
     try:
         policy = Policy.load(args.policy)
     except (OSError, ValueError) as exc:
@@ -216,6 +217,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                 _out(sys.stderr, f"{PROGRAM}: NOT rolled back: {item['path']} — {item['reason']}")
         elif rollback:
             _out(sys.stderr, f"{PROGRAM}: no rollback: {rollback.get('reason') or 'no snapshot taken'}")
+            for item in rollback.get("refused") or []:
+                _out(sys.stderr, f"{PROGRAM}: NOT rolled back: {item.get('path')} — {item.get('reason')}")
         breaker = ops.get("circuit_breaker") or {}
         opened = {name: state for name, state in breaker.items() if state.get("state") != "closed"}
         if opened:
@@ -435,11 +438,12 @@ def cmd_restore(args: argparse.Namespace) -> int:
         after = change.get("after")
         item["post_sha256"] = after.get("sha256") if isinstance(after, dict) else None
     if not plan:
-        _out(sys.stdout, f"  nothing to restore: the run changed none of the {len(manifest.get('entries', []))} snapshotted file(s)")
+        _out(
+            sys.stdout,
+            f"  nothing to restore: the run changed none of the {len(manifest.get('entries', []))} snapshotted file(s)",
+        )
         return 0
-    applied = (
-        snapshot_module.apply_restore(plan, root=root, store=store, force=args.force) if args.apply else None
-    )
+    applied = snapshot_module.apply_restore(plan, root=root, store=store, force=args.force) if args.apply else None
     verbs = {
         "restore": "restore",
         "recreate": "recreate",
@@ -799,7 +803,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     if args.bundle:
         path = write_diagnostic_bundle(Path(args.docket_dir).resolve(), Path(args.bundle))
         _out(sys.stdout, f"{PROGRAM}: wrote diagnostic bundle {path}")
-        _out(sys.stdout, "  contents: environment, ledger diagnostics, receipts summary, doctor output (no ledger bodies)")
+        _out(
+            sys.stdout,
+            "  contents: environment, ledger diagnostics, receipts summary, doctor output (no ledger bodies)",
+        )
         return 0
 
     table = PriceTable.load()
@@ -1009,7 +1016,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     game_day.add_argument("--out", help="where to write the record (default .docket/game-day-<stamp>)")
     game_day.add_argument("--phases", help="comma-separated subset of phases to run")
-    game_day.add_argument("--online", action="store_true", help="use your configured provider instead of a scripted one")
+    game_day.add_argument(
+        "--online", action="store_true", help="use your configured provider instead of a scripted one"
+    )
     game_day.add_argument("--max-usd", help="USD cap per phase (required with --online)")
     game_day.add_argument("--json", action="store_true")
     game_day.set_defaults(func=cmd_game_day)

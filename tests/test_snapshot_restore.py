@@ -30,7 +30,7 @@ from docket.snapshot import (
 from docket.supervisor import Supervisor
 from docket.verify import verify_receipt
 
-AGENT = '''
+AGENT = """
 import json, os, sys, urllib.request
 
 cwd = os.getcwd()
@@ -51,7 +51,7 @@ for index in range(3):
     except Exception as exc:  # the boundary may refuse once the cap is hit; that is the point
         print(f"call {index}: {type(exc).__name__}", file=sys.stderr)
         break
-'''
+"""
 
 
 @pytest.fixture()
@@ -102,9 +102,7 @@ def test_a_tree_over_the_budget_is_refused_before_anything_is_written(workspace:
 
 def test_a_file_over_the_per_file_ceiling_is_named_not_silently_skipped(workspace: Path, tmp_path: Path):
     (workspace / "big.bin").write_bytes(b"x" * 64)
-    taken = take_snapshot(
-        roots=["."], ignore=[], root=workspace, store=tmp_path / "store", max_file_bytes=16
-    )
+    taken = take_snapshot(roots=["."], ignore=[], root=workspace, store=tmp_path / "store", max_file_bytes=16)
     reasons = {item["path"]: item["reason"] for item in taken.not_covered}
     assert "big.bin" in reasons and "ceiling" in reasons["big.bin"]
     assert all(entry["path"] != "big.bin" for entry in taken.entries)
@@ -294,6 +292,56 @@ def test_a_breached_run_really_puts_the_tree_back(workspace: Path, tmp_path: Pat
     assert verify_receipt(receipt, ledger_path=result.ledger_path).ok, "a rolled-back run must still verify"
 
 
+def test_a_rollback_that_restores_nothing_is_not_recorded_as_applied(workspace: Path, tmp_path: Path):
+    """The claim `ops.rollback.applied` has to be checkable, so it is answered by the number of
+    files that actually went back — not by "a restore was attempted".
+
+    This is the shape the eight-phase game day hit: the diff's paths came out absolute, the
+    confined restore refused every one of them as out-of-tree, and the run still reported
+    `applied: true` with a console line saying the tree had been put back. Both halves are
+    asserted here: the receipt says not-applied, and the refusal is named.
+    """
+    from docket.supervisor import Supervisor
+
+    cwd = workspace
+    docket_dir = tmp_path / ".docket"
+    supervisor = Supervisor(
+        [sys.executable, "-c", "pass"],
+        policy=Policy(name="declined", caps=Caps(max_usd=Decimal("1")), files=Files(watch=["."])),
+        docket_dir=docket_dir,
+        cwd=cwd,
+        snapshot_files=True,
+        session_id="declined-session",
+    )
+    taken = take_snapshot(roots=["."], ignore=[], root=cwd, store=docket_dir / "snapshots" / "declined-session")
+    supervisor.snapshot = taken.to_dict()
+
+    # A change list shaped like the one the fsdiff defect produced: absolute paths, which no
+    # confined restore will touch because the record is supposed to name the tree's own files.
+    changes = [
+        {
+            "path": str(cwd / "notes.txt"),
+            "change": "modified",
+            "before": {"size": 9, "sha256": "0" * 64},
+            "after": {"size": 21, "sha256": "1" * 64},
+        }
+    ]
+    ledger = Ledger.open(docket_dir / "runs" / "declined.jsonl", max_bytes=None)
+    try:
+        record = supervisor._rollback(ledger, changes)
+    finally:
+        ledger.close()
+
+    assert record["applied"] is False, record
+    assert record["counts"]["refused"] == 1
+    assert "refused" in (record.get("reason") or ""), record
+    assert record["refused"] and record["refused"][0]["reason"]
+
+    types = [event.type for event in Ledger.read(docket_dir / "runs" / "declined.jsonl")]
+    assert "x-docket.rollback-refused" in types
+    assert "x-docket.rollback-applied" not in types, "one name, one verdict: nothing was applied"
+
+
 def test_a_breached_run_without_rollback_leaves_the_tree_alone(workspace: Path, tmp_path: Path):
     """Snapshot yes, rollback no: the evidence is captured but nothing is undone behind the user."""
     result, _ = _run_with_rollback(workspace, tmp_path, rollback_on_breach=False)
@@ -337,9 +385,7 @@ def test_a_deleted_file_is_recovered_from_the_snapshot_alone(workspace: Path, tm
     store = docket_dir / "snapshots" / session_id
     assert (store / "manifest.json").exists()
     # Now do it by hand, exactly as `docket restore` does: read the record, plan, apply.
-    changes = [
-        dict(event.data) for event in Ledger.read(result.ledger_path) if event.type == "fs.change"
-    ]
+    changes = [dict(event.data) for event in Ledger.read(result.ledger_path) if event.type == "fs.change"]
     plan = plan_restore(read_manifest(store), changes)
     for item in plan:
         change = next((c for c in changes if c.get("path") == item["path"]), {})
@@ -362,9 +408,9 @@ def test_a_run_never_records_its_own_evidence_as_the_agents_work(workspace: Path
     notes = [event.data for event in events if event.type == "note" and event.data.get("excluded")]
     assert notes, "the exclusion has to be in the record, not just in the code"
     assert notes[0]["excluded"] == ".docket/**"
-    assert ".docket/**" in result.receipt["policy"]["document"]["files"]["ignore"], (
-        "the receipt embeds the policy that was in force, exclusion included"
-    )
+    assert (
+        ".docket/**" in result.receipt["policy"]["document"]["files"]["ignore"]
+    ), "the receipt embeds the policy that was in force, exclusion included"
     assert set(result.receipt["ops"]["rollback"]["paths"]) == set(changed)
     assert (docket_dir / "runs").exists(), "the ledger survived the rollback"
     assert (docket_dir / "receipts").exists()
@@ -425,9 +471,7 @@ def test_the_restore_command_dry_runs_then_applies(workspace: Path, tmp_path: Pa
     assert (workspace / "gone.txt").read_text(encoding="utf-8") == "delete me\n"
 
 
-def test_the_restore_command_finds_the_store_from_latest_receipt(
-    workspace: Path, tmp_path: Path, monkeypatch, capsys
-):
+def test_the_restore_command_finds_the_store_from_latest_receipt(workspace: Path, tmp_path: Path, monkeypatch, capsys):
     """`latest.receipt.json` sits at the top of the docket directory, not in `receipts/`.
 
     The store and the ledger are found from what the receipt records — the manifest path and the

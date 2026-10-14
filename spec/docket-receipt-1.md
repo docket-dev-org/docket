@@ -258,5 +258,10 @@ timestamp.
 The `format` tag changes only for incompatible changes. Compatible additions (new event
 types, new receipt members) keep `v1`; consumers MUST ignore members they do not know and
 MUST NOT treat an unknown member as corruption. Conformance vectors are the normative
-examples; when they change, versions change. Immutable tags are recommended, and where a
-writer runs from a git checkout the commit in `tool.version` SHOULD identify it.
+examples: a change to a vector that changes the *shape* of the format is an incompatible change
+and is made under a new `format` tag, deliberately and in one commit, while a vector whose
+*example values* changed — a different policy document inside the example, say — leaves the tag
+alone. Either way the vectors move with the implementation, in the same commit; a committed
+vector the implementation no longer reproduces is a defect, not a version. Immutable tags are
+recommended, and where a writer runs from a git checkout the commit in `tool.version` SHOULD
+identify it.

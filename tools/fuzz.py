@@ -90,7 +90,7 @@ def rand_json(rng: random.Random, depth: int = 0) -> Any:
     if kind == "str":
         return rand_string(rng)
     if kind == "int":
-        return rng.choice([0, 1, -1, 2**53, -(2**53), 10**18, rng.randint(-10**6, 10**6)])
+        return rng.choice([0, 1, -1, 2**53, -(2**53), 10**18, rng.randint(-(10**6), 10**6)])
     if kind == "bool":
         return rng.choice([True, False])
     if kind == "none":
@@ -134,6 +134,7 @@ def fuzz_canon(rng: random.Random) -> None:
         shuffled = dict(items)
     if canonical_bytes(shuffled) != blob:
         raise FuzzFailure("canon", "key insertion order changed the canonical bytes", value)
+
     # 3. no floats survive into a hashed structure: an integral float normalises to an
     #    integer, and a non-integral one is refused outright (checked below). Scanning the
     #    decoded value rather than the bytes, because a string may legitimately contain a
@@ -165,11 +166,46 @@ def fuzz_canon(rng: random.Random) -> None:
 
 def fuzz_faultspec(rng: random.Random) -> None:
     grammar = [
-        "delay", "status", "drop", "reset", "truncate", "corrupt", "slow", "seed",
-        "=", ":", ",", "", " ", "\t",
-        "0", "1", "0.5", "-1", "2", "nan", "inf", "1e999", "99999999999999999999",
-        "250ms", "2s", "1h", "abc", "banana", "503", "999", "0.0", "1.0", "1.5",
-        "\n", "\u0000", "漢", "٩", "0x10", "+1", ".5",
+        "delay",
+        "status",
+        "drop",
+        "reset",
+        "truncate",
+        "corrupt",
+        "slow",
+        "seed",
+        "=",
+        ":",
+        ",",
+        "",
+        " ",
+        "\t",
+        "0",
+        "1",
+        "0.5",
+        "-1",
+        "2",
+        "nan",
+        "inf",
+        "1e999",
+        "99999999999999999999",
+        "250ms",
+        "2s",
+        "1h",
+        "abc",
+        "banana",
+        "503",
+        "999",
+        "0.0",
+        "1.0",
+        "1.5",
+        "\n",
+        "\u0000",
+        "漢",
+        "٩",
+        "0x10",
+        "+1",
+        ".5",
     ]
     spec = "".join(rng.choice(grammar) for _ in range(rng.randint(1, 12)))
     try:
@@ -367,7 +403,7 @@ def _mutate_receipt(rng: random.Random, receipt: dict[str, Any]) -> dict[str, An
         elif op == "corrupt_type":
             container[key] = rng.choice([None, True, 0, "", [], {}, "0.0", -1, 2**64])
         elif op == "huge_number":
-            container[key] = rng.choice([10**30, "9" * 40, -10**30, 1e308 if rng.random() < 0.5 else "0.1"])
+            container[key] = rng.choice([10**30, "9" * 40, -(10**30), 1e308 if rng.random() < 0.5 else "0.1"])
         elif op == "shuffle_list" and isinstance(container, list):
             rng.shuffle(container)
         elif op == "swap_siblings" and isinstance(container, dict):
@@ -400,7 +436,9 @@ def fuzz_receipt(rng: random.Random) -> None:
     try:
         result = verify_receipt(mutated, ledger_path=ledger_path)
     except Exception as exc:  # noqa: BLE001 - a verifier that raises on hostile input is broken
-        raise FuzzFailure("receipt", f"the verifier raised {type(exc).__name__}: {exc}", json.dumps(mutated)[:400]) from exc
+        raise FuzzFailure(
+            "receipt", f"the verifier raised {type(exc).__name__}: {exc}", json.dumps(mutated)[:400]
+        ) from exc
     # A verifier must always give a verdict with the checks it performed.
     if not hasattr(result, "ok") or not result.checks:
         raise FuzzFailure("receipt", "the verifier returned no verdict", json.dumps(mutated)[:200])
@@ -471,7 +509,6 @@ def fuzz_policy(rng: random.Random) -> None:
             raise FuzzFailure("policy", "max_usd is not a Decimal", text)
 
 
-
 def fuzz_proof(rng: random.Random) -> None:
     """A doctored inclusion proof must never verify — the claim the whole project rests on.
 
@@ -536,7 +573,6 @@ def _flip_hex(value: str, rng: random.Random) -> str:
     return value[:index] + replacement + value[index + 1 :]
 
 
-
 TARGETS: dict[str, Callable[[random.Random], None]] = {
     "canon": fuzz_canon,
     "faultspec": fuzz_faultspec,
@@ -590,11 +626,15 @@ def main(argv: list[str] | None = None) -> int:
         elapsed = time.monotonic() - started
         rate = iterations / elapsed if elapsed else 0
         status = "fail" if failures and failures[-1].target == name else "ok"
-        print(f"  {status:4}  {name:10} {iterations:6d} iterations in {elapsed:5.1f}s ({rate:7.0f}/s) seed {local_seed}")
+        print(
+            f"  {status:4}  {name:10} {iterations:6d} iterations in {elapsed:5.1f}s ({rate:7.0f}/s) seed {local_seed}"
+        )
 
     if failures:
-        print(f"\n{len(failures)} target(s) violated a property. Each failure above is reproducible: "
-              "re-run with the printed seed.")
+        print(
+            f"\n{len(failures)} target(s) violated a property. Each failure above is reproducible: "
+            "re-run with the printed seed."
+        )
         return 1
     print("\nEvery target held its properties.")
     return 0

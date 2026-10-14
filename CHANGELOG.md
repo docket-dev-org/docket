@@ -31,9 +31,44 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 - **`docket game-day` gains a `rollback` phase** (`--phases rollback`): seeded files, an agent
   that damages them, a cap breach, then automated restore — audited against the disk (files
   byte for byte), the receipt and the ledger, including that the run's own evidence survived.
+- **Two URL guards, one per kind of caller**, applied at every `urlopen` in the package:
+  `util.http_url` (the scheme must be http or https, and a host must be present) for code that
+  stands in for an agent and may be pointed at any provider, and `util.local_http_url` (that,
+  plus the host must be this machine) for Docket's own clients — the boundary recorder and the
+  self-test probes — whose address comes from the environment. A `DOCKET_PROXY_URL` that is not
+  loopback is now refused when the recorder is constructed rather than at the first event, and
+  `0.0.0.0` is *not* accepted as a destination. This is the answer to the static-analysis
+  finding that flags an unchecked `urlopen` as a possible SSRF or local-file read.
+- **`make audit`**: `bandit` over `src/` and `tools/`, also a CI step. Every remaining class of
+  finding is either fixed or has one written-down reason in `[tool.bandit]` (`"PASS"` as an
+  output word, seeded `random`, list-argv `subprocess`); nothing is suppressed without a reason.
 
 ### Fixed
 
+- **A relative working directory made every recorded path absolute.** `fsdiff.snapshot`
+  relativised paths against an *unresolved* base, and a relative base can never be a prefix of
+  the absolute paths a walk produces — so with `cwd="."` (what `docket game-day` and
+  `docket run --root .` pass) every `fs.change` event carried an absolute path. Nothing
+  surfaced: no ignore pattern matched, so Docket's own ledger and snapshot store were recorded
+  as the agent's changes, and the confined restore then refused its own change list as
+  out-of-tree. The base is resolved now, and `tests/test_fsdiff.py` asserts the relative and
+  absolute forms agree.
+- **A rollback that restored nothing is no longer recorded as applied.** `ops.rollback.applied`
+  was set for having *attempted* a restore, so a plan whose every item was refused — see the
+  defect above — produced `applied: true`, an `x-docket.rollback-applied` event and a console
+  line reading "the watched tree has been put back", over a tree that had not been touched.
+  `applied` now means files went back; a declined restore is recorded as
+  `x-docket.rollback-refused` with its reason, named in `ops.rollback.reason` and
+  `ops.rollback.refused`, and printed by both `docket run` and `docket report`.
+- **`spec/vectors` had gone stale.** The committed conformance vectors still carried a policy
+  document from before the `[resilience]` defaults existed, so their policy digest — which is
+  bound into the first ledger event and therefore into the head, the Merkle root and the receipt
+  core digest — no longer agreed with the implementation that is supposed to produce it. They
+  are regenerated, and `test_committed_vectors_match_the_generator` now runs the generator into
+  a copy and fails if anything differs, which is the check that would have caught it.
+- **`explain.total_estimated_savings` names an unreadable impact** instead of skipping it: those
+  strings are written by Docket itself, so an unreadable one is a bug, and a silently smaller
+  total in a document people make decisions from is worse than a visible caveat.
 - **Verification no longer reports two verdicts under one check name.** The Merkle-path verdict
   and the ledger re-binding verdict were both reported as `usage-inclusion-proofs`, so a
   doctored ledger produced `FAIL usage-inclusion-proofs` and `PASS usage-inclusion-proofs`

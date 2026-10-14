@@ -229,9 +229,7 @@ class Ledger:
         return cls(path=None, clock=clock or _now_rfc3339)
 
     # -- writing ----------------------------------------------------------- #
-    def append(
-        self, event_type: str, data: dict[str, Any] | None = None, *, control: bool = False
-    ) -> Event:
+    def append(self, event_type: str, data: dict[str, Any] | None = None, *, control: bool = False) -> Event:
         """Record an event.
 
         ``control=True`` marks an event written by the supervising tool itself — the
@@ -249,10 +247,18 @@ class Ledger:
             try:
                 self._handle = self.path.open("a", encoding="utf-8")
             except OSError as exc:
-                self.unwritten.append({"seq": len(self.events), "type": event_type, "error": f"{type(exc).__name__}: {exc}"})
+                self.unwritten.append(
+                    {"seq": len(self.events), "type": event_type, "error": f"{type(exc).__name__}: {exc}"}
+                )
                 if self.guard is not None:
                     self.guard.record_failure(seq=len(self.events), error=exc)
-                ev = Event(seq=len(self.events), ts=self.clock(), type=event_type, data=data or {}, prev=self.events[-1].hash if self.events else GENESIS)
+                ev = Event(
+                    seq=len(self.events),
+                    ts=self.clock(),
+                    type=event_type,
+                    data=data or {},
+                    prev=self.events[-1].hash if self.events else GENESIS,
+                )
                 ev.hash = ev.compute_hash()
                 self.events.append(ev)
                 return ev

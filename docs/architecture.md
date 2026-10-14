@@ -76,9 +76,11 @@ be marketing.
    exits `0`, or `42` if a cap fired.
 9. If the run breached a cap and `--rollback-on-breach` was given, the watched tree is restored
    from the content snapshot *after* the child has exited, and the outcome — counts, paths,
-   refusals — is written to the ledger as `x-docket.rollback-applied` and folded into
-   `ops.rollback` in the receipt. `docket restore` performs the same restore on demand, months
-   later, from the receipt and ledger alone.
+   refusals — is written to the ledger as `x-docket.rollback-applied` (or
+   `x-docket.rollback-refused` when every path was declined, because those are two outcomes and
+   a report that runs them together is a false claim) and folded into `ops.rollback` in the
+   receipt. `docket restore` performs the same restore on demand, months later, from the receipt
+   and ledger alone.
 
 ## Why the ledger is the source of truth
 

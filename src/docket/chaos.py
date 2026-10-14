@@ -84,6 +84,10 @@ def ledger_facts(ledger_path: Path) -> dict[str, Any]:
         "model_requests": counts.get(ev.MODEL_REQUEST, 0),
         "evidence_gaps": [e.data for e in events if e.type == "x-docket.evidence-gap"],
         "rollbacks": [e.data for e in events if e.type == "x-docket.rollback-applied"],
+        # A restore that declined every path is the outcome an operator most needs to see, and
+        # it is recorded under its own name — so the audit looks for both, and the check below
+        # passes on either precisely because one of them always exists once a restore was tried.
+        "rollbacks_refused": [e.data for e in events if e.type == "x-docket.rollback-refused"],
         "tool_calls": counts.get(ev.TOOL_CALL, 0),
         "notes": [e.data.get("message") for e in events if e.type == ev.NOTE and e.data.get("message")],
     }
@@ -150,8 +154,11 @@ def audit_run(
             f"agent received {observed_bad} non-2xx of {len(statuses)} calls; the ledger explains "
             f"{explained} ({facts['denials']} denied, {len(facts['rate_limited'])} throttled, "
             f"{len(facts['faults'])} injected, {facts['errors']} error)"
-            + (" — note: injected faults are also recorded as model.error, so this is an upper bound"
-               if injection_only else ""),
+            + (
+                " — note: injected faults are also recorded as model.error, so this is an upper bound"
+                if injection_only
+                else ""
+            ),
         )
 
     # 2. A failure must never be filed as a success — checked from both sides: the error
@@ -727,16 +734,16 @@ def run_phase(
     return record
 
 
-def _rollback_checks(
-    phase: Phase, workspace: Path, docket_dir: Path, record: dict[str, Any]
-) -> list[dict[str, str]]:
+def _rollback_checks(phase: Phase, workspace: Path, docket_dir: Path, record: dict[str, Any]) -> list[dict[str, str]]:
     """Did the tree come back, and does the record say what came back?"""
     checks: list[dict[str, str]] = []
     operations = record.get("receipt_ops") or {}
     snapshot = operations.get("snapshot") or {}
     rollback = operations.get("rollback") or {}
 
-    changed = [path for path, content in phase.seed_files.items() if (workspace / path).read_text(encoding="utf-8") != content]
+    changed = [
+        path for path, content in phase.seed_files.items() if (workspace / path).read_text(encoding="utf-8") != content
+    ]
     checks.append(
         {
             "name": "the seeded files are byte-for-byte what they were before the run",
@@ -753,13 +760,18 @@ def _rollback_checks(
             f"counts={rollback.get('counts')}",
         }
     )
-    rollbacks = record.get("facts", {}).get("rollbacks")
+    facts = record.get("facts", {})
+    applied_events = facts.get("rollbacks") or []
+    refused_events = facts.get("rollbacks_refused") or []
     # `facts` is trimmed of notes and stored in the record; the rollback events are kept.
     checks.append(
         {
             "name": "the rollback is a ledger event, not just a receipt field",
-            "status": "pass" if rollbacks else "fail",
-            "detail": f"{len(rollbacks or [])} x-docket.rollback-applied event(s) in the ledger",
+            "status": "pass" if (applied_events or refused_events) else "fail",
+            "detail": (
+                f"{len(applied_events)} x-docket.rollback-applied and "
+                f"{len(refused_events)} x-docket.rollback-refused event(s) in the ledger"
+            ),
         }
     )
     runs = sorted((docket_dir / "runs").glob("*.jsonl"))
@@ -1078,9 +1090,7 @@ def render_post_mortem(report: dict[str, Any]) -> str:
         "- A ledger that could not be completed is declared incomplete in the receipt and fails "
         "verification, rather than passing as a clean record."
     )
-    lines.append(
-        "- A killed supervisor leaves a readable ledger, no receipt, and a named recovery command."
-    )
+    lines.append("- A killed supervisor leaves a readable ledger, no receipt, and a named recovery command.")
     lines.append("")
     lines.append("## What this does not prove")
     lines.append("")

@@ -29,6 +29,7 @@ from .ledger import Ledger
 from .policy import Caps, Files, Policy
 from .report import render_receipt
 from .supervisor import EXIT_CAP_EXCEEDED, Supervisor
+from .util import http_url, local_http_url
 from .verify import verify_receipt
 
 PLAN_MODEL = "claude-opus-4-8"
@@ -81,8 +82,11 @@ def child_main() -> int:
                 {"role": "user", "content": prompt},
             ],
         }
+        # Agent-side: the base URL comes from the environment the supervisor set, so the
+        # guard is about *scheme* only — a supervised agent talks to whatever it is pointed
+        # at, but it is never a file read.
         request = urllib.request.Request(
-            f"{base}/chat/completions",
+            http_url(f"{base}/chat/completions"),
             data=json.dumps(body).encode("utf-8"),
             headers={"Content-Type": "application/json", "Authorization": "Bearer demo-key"},
         )
@@ -107,14 +111,16 @@ def child_main() -> int:
         return {"raw": raw}
 
     def _report(root: str, kind: str, payload: dict[str, Any]) -> None:
-        request = urllib.request.Request(
-            f"{root}/docket/{kind}",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-        )
-        # Instrumentation must never break the agent being recorded.
-        with contextlib.suppress(Exception):  # pragma: no cover
-            urllib.request.urlopen(request, timeout=5).read()
+        # The recording endpoint is this run's own boundary on loopback; the guard is inside
+        # the suppression because instrumentation must never break the agent being recorded.
+        with contextlib.suppress(ValueError):  # pragma: no cover - a loopback URL is always used
+            request = urllib.request.Request(
+                local_http_url(f"{root}/docket/{kind}"),
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with contextlib.suppress(Exception):  # pragma: no cover
+                urllib.request.urlopen(request, timeout=5).read()
 
     # 1. plan (small call on an expensive model)
     if call(PLAN_MODEL, "Plan the fix for the failing reconcile() assertion.", stream=False) is None:
@@ -247,8 +253,7 @@ def run_demo(
             (
                 index
                 for index, line in enumerate(lines)
-                if isinstance(json.loads(line).get("data"), dict)
-                and json.loads(line).get("type") == "model.response"
+                if isinstance(json.loads(line).get("data"), dict) and json.loads(line).get("type") == "model.response"
             ),
             None,
         )

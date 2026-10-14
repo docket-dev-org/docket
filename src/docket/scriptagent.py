@@ -44,6 +44,8 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from .util import http_url, local_http_url
+
 DEFAULT_PROMPT = "Summarise the failing test and propose the smallest fix."
 
 
@@ -51,14 +53,15 @@ def _report(kind: str, payload: dict[str, Any]) -> None:
     root = os.environ.get("DOCKET_PROXY_URL")
     if not root:
         return
-    request = urllib.request.Request(
-        f"{root}/docket/{kind}",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
-    # Instrumentation must never break the agent being recorded.
-    with contextlib.suppress(Exception):
-        urllib.request.urlopen(request, timeout=5).read()
+    with contextlib.suppress(ValueError):
+        request = urllib.request.Request(
+            local_http_url(f"{root}/docket/{kind}"),
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        # Instrumentation must never break the agent being recorded.
+        with contextlib.suppress(Exception):
+            urllib.request.urlopen(request, timeout=5).read()
 
 
 def _one_call(base: str, model: str, prompt: str, timeout: float) -> tuple[int, str]:
@@ -67,8 +70,11 @@ def _one_call(base: str, model: str, prompt: str, timeout: float) -> tuple[int, 
         "messages": [{"role": "user", "content": prompt}],
         "metadata": {"source": "docket.scriptagent"},
     }
+    # Agent-side: the boundary points this at a loopback URL in every documented setup, but
+    # this file *is* the agent, so the guard is scheme-only — an agent talks to whatever
+    # provider it is configured for, and never to `file://`.
     request = urllib.request.Request(
-        f"{base}/chat/completions",
+        http_url(f"{base}/chat/completions"),
         data=json.dumps(body).encode("utf-8"),
         headers={"Content-Type": "application/json", "Authorization": "Bearer scriptagent"},
     )

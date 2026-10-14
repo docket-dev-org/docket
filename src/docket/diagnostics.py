@@ -52,6 +52,7 @@ from .policy import Caps, Policy
 from .pricing import CostMeter, PriceTable
 from .receipt import build_receipt
 from .resilience import CircuitBreaker, FaultInjector, HealthState, RateLimiter, parse_fault_spec
+from .util import local_http_url
 
 BUNDLE_EXCLUDES = ("*.jsonl", "*.receipt.json", "*.torn-*", "*.lock")
 
@@ -120,9 +121,7 @@ def _receipt_summary(path: Path) -> dict[str, Any]:
         "exit_code": receipt.get("session", {}).get("exit_code"),
         "breached": receipt.get("session", {}).get("breached"),
         "totals": {k: receipt.get("totals", {}).get(k) for k in ("calls", "cost_usd", "total_tokens")},
-        "ledger": {
-            k: receipt.get("ledger", {}).get(k) for k in ("events", "head", "merkle_root", "file_sha256")
-        },
+        "ledger": {k: receipt.get("ledger", {}).get(k) for k in ("events", "head", "merkle_root", "file_sha256")},
         "evidence": receipt.get("evidence"),
         "ops": {
             "chaos_run": (receipt.get("ops") or {}).get("chaos_run"),
@@ -138,9 +137,7 @@ def _receipt_summary(path: Path) -> dict[str, Any]:
 def collect_diagnostics(docket_dir: Path) -> dict[str, Any]:
     """Everything a maintainer would ask for first, and nothing that leaks a prompt."""
     runs = sorted((docket_dir / "runs").glob("*.jsonl")) if (docket_dir / "runs").exists() else []
-    receipts = (
-        sorted((docket_dir / "receipts").glob("*.receipt.json")) if (docket_dir / "receipts").exists() else []
-    )
+    receipts = sorted((docket_dir / "receipts").glob("*.receipt.json")) if (docket_dir / "receipts").exists() else []
     torn = sorted((docket_dir / "runs").glob("*.torn-*")) if (docket_dir / "runs").exists() else []
     free = None
     # A free-space figure is nice to have; an unreadable filesystem is not a reason to
@@ -240,11 +237,19 @@ class Probe:
     data: dict[str, Any] = field(default_factory=dict)
 
 
-def _call(base: str, path: str, body: dict[str, Any] | None = None, timeout: float = 15.0) -> tuple[int, dict[str, Any]]:
+def _call(
+    base: str, path: str, body: dict[str, Any] | None = None, timeout: float = 15.0
+) -> tuple[int, dict[str, Any]]:
     payload = json.dumps(body or {"model": "claude-sonnet-5", "messages": [{"role": "user", "content": "hi"}]})
-    request = urllib.request.Request(
-        base + path, data=payload.encode("utf-8"), headers={"content-type": "application/json"}
-    )
+    try:
+        # The probe's boundary is on loopback; the URL comes from the probe's own socket, so
+        # this can only fail if the platform handed back something strange — in which case the
+        # probe reports it as a result, the way it reports every other failure.
+        request = urllib.request.Request(
+            local_http_url(base + path), data=payload.encode("utf-8"), headers={"content-type": "application/json"}
+        )
+    except ValueError as exc:
+        return 0, {"invalid_url": str(exc)}
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             raw = response.read()
@@ -376,7 +381,15 @@ def self_test(*, keep_workspace: bool = False) -> tuple[list[Probe], Path]:
             ready_status == 200 and ready_body.get("ready") is True,
             f"HTTP {ready_status}, problems={ready_body.get('problems')}",
         )
-        metrics = urllib.request.urlopen(base + "/docket/metrics", timeout=10).read().decode("utf-8")
+        try:
+            metrics = (
+                urllib.request.urlopen(local_http_url(base + "/docket/metrics"), timeout=10).read().decode("utf-8")
+            )
+        except (ValueError, urllib.error.URLError, OSError) as exc:
+            # A probe that cannot fetch its own metrics reports that, in the same shape as
+            # every other probe result, rather than taking the self-test down with it.
+            add("exposes Prometheus metrics for the guarantees it makes", False, f"{type(exc).__name__}: {exc}")
+            metrics = ""
         required = {
             "docket_model_calls_total",
             "docket_model_denied_total",
@@ -487,8 +500,7 @@ def self_test(*, keep_workspace: bool = False) -> tuple[list[Probe], Path]:
         add(
             "a failed call is not recorded as a successful one",
             len(errors) == 2 and not [e for e in ledger5 if e.type == ev.MODEL_RESPONSE],
-            f"{len(errors)} model.error, "
-            f"{len([e for e in ledger5 if e.type == ev.MODEL_RESPONSE])} model.response",
+            f"{len(errors)} model.error, " f"{len([e for e in ledger5 if e.type == ev.MODEL_RESPONSE])} model.response",
         )
         proxy5.stop()
 
@@ -603,8 +615,7 @@ def self_test(*, keep_workspace: bool = False) -> tuple[list[Probe], Path]:
             "builds a receipt that verifies offline",
             result.ok,
             f"{sum(1 for c in result.checks if c.status == 'pass')} checks passed, "
-            f"{len(result.failures)} failed"
-            + (f": {result.failures[:2]}" if result.failures else ""),
+            f"{len(result.failures)} failed" + (f": {result.failures[:2]}" if result.failures else ""),
         )
         tampered = json.loads(json.dumps(receipt))
         original_total = tampered["totals"]["cost_usd"]

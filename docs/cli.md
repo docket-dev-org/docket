@@ -220,7 +220,10 @@ its own audit, and the expected-vs-actual for each.
 The `rollback` phase is the disaster-recovery drill: the workspace is seeded with files, the
 agent modifies them and breaches its cap, and the phase then checks the disk — the seeded files
 byte for byte, the rollback declaration in the receipt, the `x-docket.rollback-applied` event in
-the ledger, and that the run's own ledger and receipt survived the restore that they paid for. Offline by default against a scripted
+the ledger, and that the run's own ledger and receipt survived the restore that they paid for. A
+restore that restores nothing is recorded as `x-docket.rollback-refused` with its reason, and the
+phase treats `applied: true` over zero restored files as a failure — the check reads the disk, not
+the claim. Offline by default against a scripted
 provider (no API key, deterministic). `--phases` runs a subset (e.g. `--phases
 ledger-pressure`); `--online` uses your configured provider and requires `--max-usd`.
 

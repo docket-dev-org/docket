@@ -57,19 +57,11 @@ def test_no_check_reports_two_verdicts(make_receipt):
     receipt, path, ledger_path = make_receipt()
     clean = verify_receipt(load_receipt(path), ledger_path=ledger_path)
     assert clean.ok, clean.failures
-    lines = [
-        line
-        for line in pathlib.Path(ledger_path).read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    lines = [line for line in pathlib.Path(ledger_path).read_text(encoding="utf-8").splitlines() if line.strip()]
     # Forge a *response*: that is the event the appendix rows are bound to, so the two facts
     # come apart — the proofs still verify against the receipt's claimed root, and the rows no
     # longer match the ledger as it now reads.
-    target = next(
-        index
-        for index, line in enumerate(lines)
-        if json.loads(line).get("type") == "model.response"
-    )
+    target = next(index for index, line in enumerate(lines) if json.loads(line).get("type") == "model.response")
     payload = json.loads(lines[target])
     payload["data"]["model"] = "claude-haiku-forged"
     lines[target] = json.dumps(payload)

@@ -71,28 +71,63 @@ def scratch_workspace(
     return directory, kept
 
 
-_LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", "0.0.0.0"}
+#: Host names that count as this machine. ``localhost`` because that is what a user types;
+#: everything else goes through ``ipaddress.is_loopback`` so the whole 127.0.0.0/8 range and
+#: ``::1`` are recognised without hand-rolling an IP parser — and so that ``0.0.0.0`` is
+#: *not* accepted (it is a bind address, not a destination, and on some systems it routes to
+#: the default interface), nor is ``localhost.example.com``, nor ``localhost@evil.example``.
+_LOOPBACK_NAMES = {"localhost"}
 
 
-def local_http_url(url: str) -> str:
-    """Return ``url`` if it is an HTTP URL pointing at this machine, else raise ``ValueError``.
+def _is_local_host(host: str) -> bool:
+    if host in _LOOPBACK_NAMES:
+        return True
+    import ipaddress
 
-    Every ``urllib.request.urlopen`` in this package talks to a scripted provider or the
-    boundary on loopback; nothing else is ever intended. Asserting that here means a URL that
-    arrives from outside — a redirect, a crafted ``DOCKET_*`` environment variable, a receipt —
-    cannot steer the client at ``file://``, at a cloud metadata endpoint, or at somebody else's
-    host. (Static analysis flags every ``urlopen`` as a possible SSRF for exactly this reason;
-    this function is the answer to it, and the analysis suppressals point here.)
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def http_url(url: str) -> str:
+    """Return ``url`` if it is an ``http``/``https`` URL, else raise ``ValueError``.
+
+    The weaker of the two guards, and the right one for code that *stands in for an agent*:
+    a supervised agent talks to whatever the boundary points it at, so restricting its host
+    would be wrong, but handing it ``file:///etc/passwd`` is never right. Every
+    ``urlopen`` in this package goes through this function or :func:`local_http_url`, which is
+    also the answer to the static-analysis finding that flags unchecked ``urlopen`` as a
+    possible SSRF or local-file read (see ``[tool.bandit]`` in pyproject.toml).
     """
     from urllib.parse import urlsplit
 
     parts = urlsplit(str(url))
     if parts.scheme not in {"http", "https"}:
         raise ValueError(f"refusing to fetch {url!r}: only http/https URLs are used by docket")
-    host = (parts.hostname or "").lower()
-    if host not in _LOOPBACK_HOSTS:
-        raise ValueError(f"refusing to fetch {url!r}: docket only fetches from local addresses, not {host!r}")
+    if not parts.hostname:
+        raise ValueError(f"refusing to fetch {url!r}: no host")
     return str(url)
+
+
+def local_http_url(url: str) -> str:
+    """Return ``url`` if it is an HTTP URL pointing at this machine, else raise ``ValueError``.
+
+    This is the guard for Docket's *own* clients: the SDK posting to the run's boundary, the
+    self-test probing it, the demo talking to its scripted provider. All of those are loopback
+    by contract, and each one reads its address from somewhere an attacker may reach — an
+    environment variable, a config file, a redirect. Asserting the host here means such a value
+    cannot steer Docket at ``file://``, at a cloud metadata endpoint, or at somebody else's
+    host with the agent's event stream — which for the SDK would be exfiltration of whatever the
+    agent recorded as notes.
+    """
+    parts_url = http_url(url)
+    from urllib.parse import urlsplit
+
+    host = (urlsplit(parts_url).hostname or "").lower()
+    if not _is_local_host(host):
+        raise ValueError(f"refusing to fetch {url!r}: docket only fetches from local addresses, not {host!r}")
+    return parts_url
 
 
 def matches_any(path: str, patterns: Iterable[str]) -> bool:

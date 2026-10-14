@@ -247,7 +247,13 @@ def build_receipt(
             "applied": rollback.get("applied"),
             "trigger": rollback.get("trigger"),
             "counts": rollback.get("counts"),
-            "paths": [item["path"] for item in rollback.get("applied_paths", []) if item.get("status") in {"restored", "recreated", "removed"}],
+            # Present when `applied` is false and a restore was attempted: why it declined.
+            "reason": rollback.get("reason"),
+            "paths": [
+                item["path"]
+                for item in rollback.get("applied_paths", [])
+                if item.get("status") in {"restored", "recreated", "removed"}
+            ],
             "refused": [
                 {"path": item["path"], "reason": item.get("reason")}
                 for item in rollback.get("applied_paths", [])

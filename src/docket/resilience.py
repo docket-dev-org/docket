@@ -388,8 +388,7 @@ def parse_fault_spec(spec: str) -> list[Fault]:
             # only honest option: a chaos flag that quietly does something else is worse
             # than no flag at all.
             raise ValueError(
-                f"{token!r} sets a value on {kind!r}, which takes none; write {kind}:{argument} "
-                "for a probability"
+                f"{token!r} sets a value on {kind!r}, which takes none; write {kind}:{argument} " "for a probability"
             )
         elif kind == "truncate":
             try:
@@ -617,7 +616,9 @@ class HealthState:
             }
 
 
-def readiness(*, ledger_ok: bool, ledger_error: str | None, free_bytes: int | None, min_free_bytes: int) -> dict[str, Any]:
+def readiness(
+    *, ledger_ok: bool, ledger_error: str | None, free_bytes: int | None, min_free_bytes: int
+) -> dict[str, Any]:
     """The readiness decision, in one place so tests can pin it.
 
     Not ready means one of: evidence cannot be written, or the volume holding the

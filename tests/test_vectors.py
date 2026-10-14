@@ -7,6 +7,7 @@ format portable rather than merely documented.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from docket.canon import canonical_json, merkle_root, sha256_hex, verify_merkle_proof
@@ -97,3 +98,37 @@ def test_receipt_vector_binds_to_the_ledger_vector():
 def test_vectors_are_the_only_source_of_truth_for_the_format():
     for name in ("canonical.json", "merkle.json", "ledger.json", "receipt.json"):
         assert (VECTORS / name).exists(), f"{name} must be committed"
+
+
+def test_committed_vectors_match_the_generator(tmp_path, monkeypatch):
+    """Regeneration must be a no-op, so "the vectors are stale" is a failing test rather than
+    something a reader has to notice by eye. This is the check that would have caught the
+    whole load-bearing set (the policy digest in every event, the receipt core digest, the
+    Merkle root) drifting away from the implementation that is supposed to produce it.
+
+    The generator is run in a copy of the vectors directory; nothing in the repository is
+    written by running the tests.
+    """
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parents[1]
+    staged = tmp_path / "vectors"
+    staged.mkdir()
+    for path in VECTORS.glob("*.json"):
+        (staged / path.name).write_bytes(path.read_bytes())
+    script = tmp_path / "generate.py"
+    script.write_text((VECTORS / "generate.py").read_text(encoding="utf-8"), encoding="utf-8")
+
+    env = dict(os.environ, PYTHONPATH=str(root / "src"), PYTHONHASHSEED="0")
+    completed = subprocess.run(
+        [sys.executable, str(script)], cwd=str(tmp_path), env=env, capture_output=True, text=True, timeout=300
+    )
+    assert completed.returncode == 0, completed.stderr
+
+    stale = [
+        name
+        for name in sorted(p.name for p in VECTORS.glob("*.json") if p.name != "generate.py")
+        if (staged / name).read_bytes() != (VECTORS / name).read_bytes()
+    ]
+    assert not stale, f"spec/vectors is stale relative to the implementation: {stale}. Regenerate deliberately."

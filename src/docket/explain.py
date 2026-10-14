@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable
-from decimal import Decimal
+from decimal import Decimal, DecimalException
 from typing import Any
 
 from . import events as ev
@@ -316,16 +316,28 @@ def analyse(
 
 
 def total_estimated_savings(findings: list[dict[str, Any]]) -> str:
-    """Sum of the dollar impacts Docket attributes to concrete findings."""
+    """Sum of the dollar impacts Docket attributes to concrete findings.
+
+    Findings without an attributed cost are the common case (a deny-write violation has no
+    dollar figure) and are simply not part of the sum. A finding that *does* carry an amount
+    which cannot be read back is different: Docket wrote that string itself, so failing to
+    parse it is a bug, and skipping it silently would understate the savings in a document
+    people make decisions from. Those are counted and named in the result instead.
+    """
     total = Decimal("0")
+    unreadable = 0
     for finding in findings:
         value = finding.get("usd_impact")
-        if isinstance(value, str) and value.startswith("$"):
-            try:
-                total += Decimal(value.replace("$", "").replace(",", ""))
-            except Exception:  # pragma: no cover - defensive
-                continue
-    return human_usd(total)
+        if not (isinstance(value, str) and value.startswith("$")):
+            continue
+        try:
+            total += Decimal(value.replace("$", "").replace(",", ""))
+        except (DecimalException, ValueError):  # pragma: no cover - defensive
+            unreadable += 1
+    rendered = human_usd(total)
+    if unreadable:
+        return f"{rendered} (plus {unreadable} unreadable impact value(s) omitted)"
+    return rendered
 
 
 def oversized_payloads(events: Iterable[Any], threshold_bytes: int = FAT_PAYLOAD_BYTES) -> list[tuple[int, int]]:

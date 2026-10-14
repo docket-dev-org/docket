@@ -177,7 +177,9 @@ class Resilience:
             "breaker_cooldown_seconds": self.breaker_cooldown_seconds,
             "breaker_max_cooldown_seconds": self.breaker_max_cooldown_seconds,
             "max_calls_per_minute": self.max_calls_per_minute,
-            "max_calls_per_second": _number(self.max_calls_per_second) if self.max_calls_per_second is not None else None,
+            "max_calls_per_second": _number(self.max_calls_per_second)
+            if self.max_calls_per_second is not None
+            else None,
             "max_events": self.max_events,
             "max_ledger_bytes": self.max_ledger_bytes,
             "fail_fast_evidence": self.fail_fast_evidence,
@@ -246,19 +248,16 @@ class Policy:
             return list(default or [])
         if isinstance(value, str):
             raise ValueError(
-                f"{section}.{key} must be a list of strings, got the string {value!r} "
-                f'(write it as ["{value}"])'
+                f"{section}.{key} must be a list of strings, got the string {value!r} " f'(write it as ["{value}"])'
             )
-        if isinstance(value, (bool, int, float, dict)):
+        if isinstance(value, bool | int | float | dict):
             raise ValueError(f"{section}.{key} must be a list of strings, got {type(value).__name__}")
-        if not isinstance(value, (list, tuple)):
+        if not isinstance(value, list | tuple):
             raise ValueError(f"{section}.{key} must be a list of strings, got {type(value).__name__}")
         out: list[str] = []
         for index, item in enumerate(value):
-            if isinstance(item, (dict, list, tuple)) or item is None:
-                raise ValueError(
-                    f"{section}.{key}[{index}] must be a string, got {type(item).__name__}"
-                )
+            if isinstance(item, dict | list | tuple) or item is None:
+                raise ValueError(f"{section}.{key}[{index}] must be a string, got {type(item).__name__}")
             out.append(str(item))
         return out
 
@@ -302,9 +301,7 @@ class Policy:
                 continue
             raise ValueError(f"{where} must be a string, got {value!r} ({type(value).__name__})")
         if nested and top and str(nested) != str(top):
-            raise ValueError(
-                f"the policy name is given twice and differently: policy.name={nested!r}, name={top!r}"
-            )
+            raise ValueError(f"the policy name is given twice and differently: policy.name={nested!r}, name={top!r}")
         # Presence, not truthiness: an explicitly empty name is a mistake to report, not a
         # silent fall back to the default (which would name the policy something nobody chose).
         chosen = nested if nested is not None else top
@@ -582,7 +579,10 @@ def _resilience_from(raw: dict[str, Any]) -> Resilience:
             "resilience", "breaker_threshold", raw.get("breaker_threshold"), defaults.breaker_threshold
         ),
         breaker_cooldown_seconds=_whole_key(
-            "resilience", "breaker_cooldown_seconds", raw.get("breaker_cooldown_seconds"), defaults.breaker_cooldown_seconds
+            "resilience",
+            "breaker_cooldown_seconds",
+            raw.get("breaker_cooldown_seconds"),
+            defaults.breaker_cooldown_seconds,
         ),
         breaker_max_cooldown_seconds=_whole_key(
             "resilience",
@@ -590,12 +590,8 @@ def _resilience_from(raw: dict[str, Any]) -> Resilience:
             raw.get("breaker_max_cooldown_seconds"),
             defaults.breaker_max_cooldown_seconds,
         ),
-        max_calls_per_minute=_whole_key(
-            "resilience", "max_calls_per_minute", raw.get("max_calls_per_minute"), None
-        ),
-        max_calls_per_second=_amount_key(
-            "resilience", "max_calls_per_second", raw.get("max_calls_per_second"), None
-        ),
+        max_calls_per_minute=_whole_key("resilience", "max_calls_per_minute", raw.get("max_calls_per_minute"), None),
+        max_calls_per_second=_amount_key("resilience", "max_calls_per_second", raw.get("max_calls_per_second"), None),
         max_events=_whole_key("resilience", "max_events", raw.get("max_events"), None),
         max_ledger_bytes=_whole_key("resilience", "max_ledger_bytes", raw.get("max_ledger_bytes"), None),
         fail_fast_evidence=_bool_key(

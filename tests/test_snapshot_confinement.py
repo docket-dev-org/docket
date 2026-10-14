@@ -220,9 +220,7 @@ def test_a_watched_root_outside_the_tree_is_disclosed(tree: Path, tmp_path: Path
     outside = tmp_path / "elsewhere"
     outside.mkdir()
     (outside / "file.txt").write_text("outside\n", encoding="utf-8")
-    taken = take_snapshot(
-        roots=[".", str(outside)], ignore=[], root=tree, store=tmp_path / "store3"
-    )
+    taken = take_snapshot(roots=[".", str(outside)], ignore=[], root=tree, store=tmp_path / "store3")
     assert all(not entry["path"].startswith("/") for entry in taken.entries)
     assert any("outside the run's working directory" in item["reason"] for item in taken.not_covered)
 
@@ -302,9 +300,7 @@ def test_the_command_restores_the_covered_file_and_refuses_the_escaping_one(
     assert "REFUSE" in out and "../outside.txt" in out
 
 
-def test_the_command_stops_when_the_records_disagree_about_the_tree(
-    tree: Path, tmp_path: Path, monkeypatch, capsys
-):
+def test_the_command_stops_when_the_records_disagree_about_the_tree(tree: Path, tmp_path: Path, monkeypatch, capsys):
     """A receipt is evidence, not proof of authorship: it does not get to redirect a restore."""
     from docket.cli import main
 
@@ -328,9 +324,7 @@ def test_the_command_stops_when_the_records_disagree_about_the_tree(
     assert (tree / "notes.txt").read_text(encoding="utf-8") == "original\n"
 
 
-def test_the_command_says_where_to_look_when_the_recorded_tree_is_gone(
-    tree: Path, tmp_path: Path, monkeypatch, capsys
-):
+def test_the_command_says_where_to_look_when_the_recorded_tree_is_gone(tree: Path, tmp_path: Path, monkeypatch, capsys):
     from docket.cli import main
 
     receipt_path, _, _ = _docket_dir_with(tree, tmp_path)

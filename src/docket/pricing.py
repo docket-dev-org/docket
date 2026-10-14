@@ -50,8 +50,8 @@ ARITHMETIC = Context(prec=64, Emax=999_999, Emin=-999_999)
 # a human can act on — rather than being poured into arithmetic until the decimal module
 # raises. Refusing a claim is a finding; raising InvalidOperation is a crashed checker.
 MAX_CLAIMED_TOKENS_PER_CALL = 10**15
-PRICE_CEILING_PER_MTOK = Decimal("1000000")           # $1,000,000 per million tokens
-COST_CEILING_PER_CALL = Decimal("1000000000000")      # $1e12 in a single call
+PRICE_CEILING_PER_MTOK = Decimal("1000000")  # $1,000,000 per million tokens
+COST_CEILING_PER_CALL = Decimal("1000000000000")  # $1e12 in a single call
 
 
 @dataclass(frozen=True)

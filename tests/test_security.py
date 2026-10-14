@@ -149,8 +149,7 @@ def test_absolute_form_requests_are_routed_by_host_and_foreign_hosts_are_refused
     refused = raw_request(
         host,
         port,
-        b"POST http://attacker.example/steal HTTP/1.1\r\nHost: attacker.example\r\n"
-        b"Content-Length: 2\r\n\r\n{}",
+        b"POST http://attacker.example/steal HTTP/1.1\r\nHost: attacker.example\r\n" b"Content-Length: 2\r\n\r\n{}",
     )
     assert status_of(refused) == 404, "an absolute-form request for another host is not routed"
     assert proxy.stats.model_calls == 1
@@ -203,7 +202,7 @@ def test_a_chunked_body_is_refused_rather_than_forwarded_empty(live_proxy):
         port,
         b"POST /openai/v1/chat/completions HTTP/1.1\r\nHost: localhost\r\n"
         b"Transfer-Encoding: chunked\r\n\r\n"
-        b"2b\r\n{\"model\": \"claude-sonnet-5\", \"messages\": []}\r\n0\r\n\r\n",
+        b'2b\r\n{"model": "claude-sonnet-5", "messages": []}\r\n0\r\n\r\n',
     )
     assert status_of(response) == 411
     body = json.loads(response.split(b"\r\n\r\n", 1)[1])
@@ -219,8 +218,7 @@ def test_a_malformed_content_length_is_refused(value: str, live_proxy):
     response = raw_request(
         host,
         port,
-        f"POST /openai/v1/chat/completions HTTP/1.1\r\nHost: localhost\r\n"
-        f"Content-Length: {value}\r\n\r\n".encode(),
+        f"POST /openai/v1/chat/completions HTTP/1.1\r\nHost: localhost\r\n" f"Content-Length: {value}\r\n\r\n".encode(),
     )
     assert status_of(response) in {400, 411}
 
@@ -248,7 +246,7 @@ def test_a_deeply_nested_json_body_is_refused_by_name(live_proxy):
     """A nesting bomb must be refused, not raise: an uncaught RecursionError inside a
     request thread is a crash in the component that exists to prevent crashes."""
     proxy, host, port, ledger = live_proxy
-    body = (b'{"model": "claude-sonnet-5", "messages": ' + b"[" * 6000 + b"]" * 6000 + b"}") 
+    body = b'{"model": "claude-sonnet-5", "messages": ' + b"[" * 6000 + b"]" * 6000 + b"}"
     response = raw_request(
         host,
         port,
@@ -292,8 +290,7 @@ class _HostileUpstream:
                 # The attack: a header value carrying its own CRLF-delimited header.
                 self.wfile.write(
                     b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
-                    b"X-Injected: yes\r\nSet-Cookie: session=stolen\r\n\r\n"
-                    + payload
+                    b"X-Injected: yes\r\nSet-Cookie: session=stolen\r\n\r\n" + payload
                 )
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -367,9 +364,10 @@ def test_a_forged_header_value_cannot_forge_a_response(tmp_path: Path):
         assert payload["error"]["type"] == "docket_upstream_error"
         assert payload["error"]["code"] in {"bad_upstream_response", "upstream_timeout"}
         errors = [e.data for e in ledger if e.type == "model.error"]
-        assert errors and errors[0].get("code") in {"bad_upstream_response", "upstream_timeout"}, (
-            "the ledger must record a provider failure, not an internal error"
-        )
+        assert errors and errors[0].get("code") in {
+            "bad_upstream_response",
+            "upstream_timeout",
+        }, "the ledger must record a provider failure, not an internal error"
         assert not [e for e in ledger if e.type == "model.response"], "no success may be recorded here"
     finally:
         proxy.stop()
