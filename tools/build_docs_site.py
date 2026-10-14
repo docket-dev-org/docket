@@ -59,21 +59,26 @@ def main() -> int:
         print("mkdocs is not installed: pip install mkdocs-material", file=sys.stderr)
         return 2
 
-    if args.check:
-        with tempfile.TemporaryDirectory() as tmp:
-            staged = Path(tmp) / "stage"
-            staged.mkdir()
-            stage(staged)
-            command = ["mkdocs", "build", "--strict", "--site-dir", str(Path(tmp) / "site")]
-            completed = subprocess.run(command, cwd=ROOT, check=False)
-            return completed.returncode
-
     if STAGE.exists():
         shutil.rmtree(STAGE)
     stage(STAGE)
-    if args.serve:
-        return subprocess.run(["mkdocs", "serve", "--strict"], cwd=ROOT, check=False).returncode
-    return subprocess.run(["mkdocs", "build", "--strict"], cwd=ROOT, check=False).returncode
+
+    try:
+        if args.check:
+            with tempfile.TemporaryDirectory() as tmp:
+                return subprocess.run(
+                    ["mkdocs", "build", "--strict", "--site-dir", str(Path(tmp) / "site")],
+                    cwd=ROOT,
+                    check=False,
+                ).returncode
+        if args.serve:
+            return subprocess.run(["mkdocs", "serve", "--strict"], cwd=ROOT, check=False).returncode
+        return subprocess.run(["mkdocs", "build", "--strict"], cwd=ROOT, check=False).returncode
+    finally:
+        # The staged tree is an artifact of the build, not something to leave behind for
+        # someone to edit by mistake.
+        if args.check and STAGE.exists():
+            shutil.rmtree(STAGE, ignore_errors=True)
 
 
 if __name__ == "__main__":
