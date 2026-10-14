@@ -104,18 +104,36 @@ default: it prints what it would do and writes nothing until you pass `--apply`.
 | `--json` | the plan, the applied records and the counts as data |
 
 ```console
-$ docket restore .docket/latest.receipt.json
-  docket restore — run DKT-20261014-746EF4 into /home/you/project
+$ docket restore .docket/latest.receipt.json      # dry run: prints the plan, writes nothing
+  docket restore — run 017aa8b8e4ac into /home/you/project
 
-  would restore   src/agent.py -> 7ffd13fb0082
-  would recreate  config/.env
-  would remove    scratch/output.csv
-  would skip (not covered)      models/big.bin — 134217728 bytes is over the per-file snapshot ceiling of 10485760
+  would restore src/agent.py -> 4efcb38c3e18
 
   dry run: nothing was written. Add --apply to restore these paths.
+
+  the snapshot could not cover 1 file(s):
+    models/big.bin — 12000000 bytes is over the per-file snapshot ceiling of 8388608
 ```
 
-Four rules, all of them learned from what a rollback tool must not do:
+The verbs are one per path: `would restore` (the file existed before the run and was modified),
+`would recreate` (it was deleted), `would remove` (the agent created it), and `skip (not covered)`
+for a change the snapshot has no copy of. `--apply` reports what *happened* instead — `restored`,
+`recreated`, `removed`, `already restored`, `REFUSED`, `FAILED`, `skipped (not covered)`,
+`already gone` — and an applied restore is recorded beside the evidence:
+
+```console
+$ docket restore .docket/latest.receipt.json --apply
+  REFUSED     src/agent.py -> 4efcb38c3e18 — the file changed after the run (expected
+              4efcb38c3e18…, found 5ad82ad71d5c…); re-run with --force to overwrite it
+
+  applied: {'refused': 1}
+
+  recorded: .docket/restores/20261014T203012Z-DKT-20261014-58CBC2.json
+$ echo $?
+1
+```
+
+Six rules, all of them learned from what a rollback tool must not do:
 
 1. **The plan comes from the record, not from re-walking the tree.** It is derived from the
    snapshot manifest and the run's own `fs.change` events, so it can be audited (and
@@ -130,6 +148,18 @@ Four rules, all of them learned from what a rollback tool must not do:
 4. **It never claims completeness.** Paths the snapshot could not cover are printed as exactly
    that, and the exit code is `1` whenever any path was refused or failed — a partial restore
    is not reported as success.
+5. **Running it twice succeeds.** A file that already holds the snapshot's bytes, with the mode
+   the plan would apply, is reported `already restored`: no write, no refusal. Before that
+   branch existed, the second run refused the file as "changed after the run" — an accusation
+   against the operator for an edit Docket itself had made, and a command that fails when a
+   script or a nervous hand repeats it.
+6. **It leaves a record of its own.** An applied restore writes
+   `.docket/restores/<utc-stamp>-<docket-number>.json` (`docket/restore/v1`): the receipt and
+   store it came from, the resolved root, whether `--force` was used, every per-path outcome,
+   the counts, the uncovered paths and the exit code. Several restores of the same run are all
+   kept, never overwritten. The run's ledger and receipt are not touched — they are historical
+   observations, and appending to them afterwards would break the receipt's own agreement with
+   the ledger it cites. Dry runs write nothing, because they change nothing.
 
 ## `docket verify <receipt.json> [flags]`
 

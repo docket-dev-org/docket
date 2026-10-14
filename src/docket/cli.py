@@ -462,6 +462,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
         "failed": "FAILED",
         "skipped": "skipped (not covered)",
         "absent": "already gone",
+        "already": "already restored",
     }
     lines = [header, ""]
     rows = applied if applied is not None else plan
@@ -490,25 +491,99 @@ def cmd_restore(args: argparse.Namespace) -> int:
         lines.append(f"  the snapshot could not cover {len(manifest['not_covered'])} file(s):")
         for item in manifest["not_covered"][:5]:
             lines.append(f"    {item['path']} — {item['reason']}")
-    if args.json:
-        _out(
-            sys.stdout,
-            json.dumps(
-                {
-                    "root": str(root),
-                    "recorded": recorded,
-                    "plan": plan,
-                    "applied": applied,
-                    "counts": snapshot_module.summarise(applied) if applied else None,
-                    "not_covered": manifest.get("not_covered", []),
-                },
-                indent=2,
-            ),
+    blocked = [item for item in (applied or []) if item["status"] in {"refused", "failed"}]
+    payload: dict[str, Any] = {
+        "root": str(root),
+        "recorded": recorded,
+        "plan": plan,
+        "applied": applied,
+        "counts": snapshot_module.summarise(applied) if applied else None,
+        "not_covered": manifest.get("not_covered", []),
+    }
+    if applied is not None:
+        # A restore is a destructive act performed on somebody's tree, months after the run,
+        # possibly by somebody who did not run the agent. It leaves a record of its own — a new
+        # file beside the evidence, never an edit to the run's ledger or receipt: those are
+        # historical observations, and an implementation that appended to them after the fact
+        # would break the receipt's own agreement with the ledger it cites. Dry runs write
+        # nothing, because they change nothing.
+        written = _write_restore_record(
+            docket_dir=docket_dir,
+            receipt_path=receipt_path,
+            receipt=receipt,
+            root=root,
+            store=store,
+            plan=plan,
+            applied=applied,
+            counts=snapshot_module.summarise(applied),
+            not_covered=manifest.get("not_covered") or [],
+            forced=bool(args.force),
+            exit_code=1 if blocked else 0,
         )
+        payload["record"] = str(written)
+        if not args.json:
+            lines.append("")
+            lines.append(f"  recorded: {written}")
+    if args.json:
+        _out(sys.stdout, json.dumps(payload, indent=2))
     else:
         _out(sys.stdout, "\n".join(lines))
-    blocked = [item for item in (applied or []) if item["status"] in {"refused", "failed"}]
     return 1 if blocked else 0
+
+
+def _write_restore_record(
+    *,
+    docket_dir: Path,
+    receipt_path: Path,
+    receipt: dict[str, Any],
+    root: Path,
+    store: Path,
+    plan: list[dict[str, Any]],
+    applied: list[dict[str, Any]],
+    counts: dict[str, int],
+    not_covered: list[dict[str, Any]],
+    forced: bool,
+    exit_code: int,
+) -> Path:
+    """Write what this restore did, beside the evidence, without touching the run's records.
+
+    The record is self-describing (``docket/restore/v1``), names the receipt and the store it
+    came from, and carries the per-path outcomes verbatim — including the refusals, which are
+    the part an operator investigating "who put this file back?" most needs. Names are
+    timestamped so several restores of the same run are all kept; nothing is ever overwritten.
+    """
+    from .util import atomic_write
+
+    directory = docket_dir / "restores"
+    # The filename carries a compact, sortable UTC stamp; the document carries RFC 3339, the
+    # same form the ledger and the receipt use for every other instant they record.
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    restored_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    number = str(receipt.get("docket_number") or "unknown")
+    base = f"{stamp}-{number}"
+    candidate = directory / f"{base}.json"
+    suffix = 2
+    while candidate.exists():
+        candidate = directory / f"{base}-{suffix}.json"
+        suffix += 1
+    document = {
+        "format": "docket/restore/v1",
+        "tool": {"name": "docket", "version": __version__},
+        "restored_at": restored_at,
+        "docket_number": number,
+        "session_id": (receipt.get("session") or {}).get("id"),
+        "receipt": str(receipt_path),
+        "snapshot_store": str(store),
+        "root": str(root),
+        "forced": bool(forced),
+        "counts": counts,
+        "planned": len(plan),
+        "applied": applied,
+        "not_covered": not_covered,
+        "exit_code": exit_code,
+    }
+    atomic_write(candidate, json.dumps(document, indent=2, ensure_ascii=False) + "\n")
+    return candidate
 
 
 def cmd_verify(args: argparse.Namespace) -> int:

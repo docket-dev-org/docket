@@ -45,6 +45,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -406,6 +407,12 @@ def apply_restore(
     that would silently discard their work, so the path is refused unless ``force=True``. Refusals
     are returned as records rather than raised, so a partial restore is reported path by path
     instead of stopping at the first surprise.
+
+    The exception is the file that *already holds the snapshot's bytes*: that is a path
+    somebody — including an earlier run of this same command — has already put back. Refusing it
+    as "changed after the run" would be a false accusation and would make restoring twice fail,
+    which is exactly what an operator repeating a command (or a script doing it for them) would
+    hit. It is reported as ``already``: no write, no refusal, no claim that anything happened.
     """
     base = Path(root).resolve()
     store_path = Path(store)
@@ -430,26 +437,36 @@ def apply_restore(
             continue
         expected = (item.get("sha256") or "") if action in {"restore", "recreate"} else None
         post = item.get("post_sha256")
-        if post and not force and action in {"remove", "restore", "recreate"}:
+        needs_comparison = bool(expected) or (bool(post) and not force and action in {"remove", "restore", "recreate"})
+        observed: str | None = None
+        if needs_comparison:
             try:
                 observed = _sha256_file(path) if path.is_file() and not path.is_symlink() else None
             except OSError:
                 observed = None
-            if observed is not None and observed != post:
-                applied.append(
-                    {
-                        **item,
-                        "status": "refused",
-                        "reason": (
-                            "the file changed after the run "
-                            f"(expected {post[:12]}…, found {observed[:12]}…); "
-                            "re-run with --force to overwrite it"
-                        ),
-                    }
-                )
-                continue
+        # The reason to refuse this path, if anybody edited it after the run finished. Computed
+        # once and consulted per action: a removal has nothing to compare against, and a
+        # restore/recreate that finds the snapshot's bytes already in place has nothing to
+        # overwrite — which is what makes restoring twice a success rather than an accusation
+        # (see the `already` branch below).
+        changed_since_the_run: str | None = None
+        if (
+            not force
+            and post
+            and action in {"remove", "restore", "recreate"}
+            and observed is not None
+            and observed != post
+        ):
+            changed_since_the_run = (
+                "the file changed after the run "
+                f"(expected {post[:12]}…, found {observed[:12]}…); "
+                "re-run with --force to overwrite it"
+            )
         try:
             if action == "remove":
+                if changed_since_the_run:
+                    applied.append({**item, "status": "refused", "reason": changed_since_the_run})
+                    continue
                 if path.is_symlink() or path.is_file():
                     path.unlink()
                     applied.append({**item, "status": "removed"})
@@ -484,6 +501,21 @@ def apply_restore(
                     }
                 )
                 continue
+            mode = _mode_of(item, item.get("mode_honoured") if isinstance(item.get("mode_honoured"), int) else 0)
+            if observed == expected and _current_mode(path) == mode:
+                # The file already holds the bytes the snapshot wants, with the mode the plan
+                # would apply: an earlier run of this same command, or the operator putting it
+                # back by hand. Nothing to do, and — the reason this branch exists — nothing to
+                # accuse anybody of: without it, a second restore reported the file as "changed
+                # after the run" when the change was Docket's own, so repeating the command
+                # failed. It sits after the plan has been checked against the store, so a
+                # doctored plan is still refused on its own merits rather than reported as an
+                # idempotent no-op.
+                applied.append({**item, "status": "already", "reason": "already the bytes the snapshot holds"})
+                continue
+            if changed_since_the_run:
+                applied.append({**item, "status": "refused", "reason": changed_since_the_run})
+                continue
             try:
                 descriptor = os.open(blob, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
             except OSError as exc:
@@ -515,7 +547,6 @@ def apply_restore(
             # Atomic replace: a crash mid-restore leaves the old bytes or the new ones, never a
             # half-written file that a later restore would then treat as the original.
             atomic_write(path, data)
-            mode = _mode_of(item, item.get("mode_honoured") if isinstance(item.get("mode_honoured"), int) else 0)
             record = {**item, "status": "restored" if action == "restore" else "recreated"}
             if item.get("mode") not in (None, mode):
                 record["mode_note"] = (
@@ -529,6 +560,18 @@ def apply_restore(
         except OSError as exc:
             applied.append({**item, "status": "failed", "reason": str(exc)})
     return applied
+
+
+def _current_mode(path: Path) -> int:
+    """The permission bits a file has right now, or 0 if they cannot be read.
+
+    A file whose bytes are already right but whose mode is not is *not* an idempotent no-op:
+    the plan asked for a mode and the tree does not have it, so the restore still has work to do.
+    """
+    try:
+        return stat.S_IMODE(path.stat().st_mode)
+    except OSError:
+        return 0
 
 
 def _requested_mode(item: dict[str, Any], default: int = 0o644) -> int:

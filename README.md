@@ -228,48 +228,59 @@ write to your tree, and they are opt-in for that reason: a tool that silently co
 working directory into `.docket/` on every run is not a tool you leave installed.
 
 Cap the agent below what it will spend and it gets stopped; ask for the tree back and it comes
-back:
+back — this is one real run, captured whole:
 
 ```console
-$ docket run --snapshot --rollback-on-breach --max-usd 0.35 --report full -- python agent.py
+$ docket run --snapshot --rollback-on-breach --max-usd 0.01 -- python -m docket.scriptagent
 …
   files      1 changed (+0 ~1 -0)
-  undo       snapshot: 3 file(s), 1.5 KiB stored
+  undo       snapshot: 3 file(s), 1.5 KiB stored  1 not covered
   rollback   applied (cap breached): 1 restored
-…
 docket: the run breached max_usd and 1 file(s) changed: the watched tree has been put back
-        from the snapshot (1 restored).
+        from the snapshot (1 restored). `docket restore --help` shows the same restore by hand.
 ```
 
-The same restore, by hand, months later — dry run first, then applied:
+The same restore, by hand, months later — dry run first, then applied. Note the third command:
+somebody edited the file after the run, so the restore refuses and exits `1`:
 
 ```console
 $ docket restore .docket/latest.receipt.json
-  docket restore — run 816045d5d7b8 into /home/you/project
+  docket restore — run 017aa8b8e4ac into /home/you/project
 
-  would restore notes.txt -> 559c6bf64599
+  would restore src/agent.py -> 4efcb38c3e18
 
   dry run: nothing was written. Add --apply to restore these paths.
 
+  the snapshot could not cover 1 file(s):
+    models/big.bin — 12000000 bytes is over the per-file snapshot ceiling of 8388608
+
 $ docket restore .docket/latest.receipt.json --apply
-  REFUSED     notes.txt -> 559c6bf64599 — the file changed after the run (expected
-              559c6bf64599…, found f4a867bb9e58…); re-run with --force to overwrite it
+  REFUSED     src/agent.py -> 4efcb38c3e18 — the file changed after the run (expected
+              4efcb38c3e18…, found 5ad82ad71d5c…); re-run with --force to overwrite it
 
   applied: {'refused': 1}
 $ echo $?
 1
 
 $ docket restore .docket/latest.receipt.json --apply --force
-  restored    notes.txt -> 559c6bf64599
+  restored    src/agent.py -> 4efcb38c3e18
 
   applied: {'restored': 1}
+
+  recorded: .docket/restores/20261014T203014Z-DKT-20261014-58CBC2.json
+
+$ docket restore .docket/latest.receipt.json --apply     # and again, for good measure
+  already restored src/agent.py -> 4efcb38c3e18
+
+  applied: {'already': 1}
 ```
 
-(Two lines wrapped for print width; the tool emits one line per path.)
+(Two lines wrapped for print width — the tool emits one line per path. The tree was a scratch
+directory; the run is one real run, `DKT-20261014-58CBC2`.)
 
-That middle refusal is the point. Somebody edited `notes.txt` after the run — often to fix what
-the agent broke — and a restore that silently discards it is a worse bug than the overspend.
-Four rules follow from the same reasoning:
+That middle refusal is the point. Somebody edited `src/agent.py` after the run — often to fix
+what the agent broke — and a restore that silently discards it is a worse bug than the overspend.
+Six rules follow from the same reasoning:
 
 | rule | why |
 | --- | --- |
@@ -277,6 +288,8 @@ Four rules follow from the same reasoning:
 | A file edited after the run is refused unless `--force` | the fix for an agent's mess is usually a human edit; overwriting it is data loss dressed up as recovery |
 | Only paths inside the run's tree are ever touched | the path list comes from documents, so it is checked, not trusted: no absolute paths, no `..`, no symlinked components, blobs located by digest, modes masked to permission bits ([ADR 0004](docs/adr/0004-content-snapshots-and-confinement.md)) |
 | It never claims completeness | files the snapshot could not cover (too large, symlinked, outside the tree) are named in `ops.snapshot.not_covered`, and `restore` exits `1` if any path was refused |
+| Running it twice is success, not a scare | a file that already holds the snapshot's bytes is reported `already restored` — without that branch, the second run refused it as "changed after the run", blaming the operator (or Docket itself) for an edit nobody made |
+| It leaves a record of its own | an applied restore writes `.docket/restores/<utc>-<docket-number>.json` (`docket/restore/v1`): what it planned, what it did, what it refused, and whether `--force` was used. The run's ledger and receipt are never edited: they are historical observations, and appending to them afterwards would break the receipt's agreement with the ledger it cites |
 
 A tree that does not fit the snapshot budget is refused **before the agent starts** — a partial
 snapshot invites restoring over a file it never captured, which is the one failure mode a

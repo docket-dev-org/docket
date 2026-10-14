@@ -178,6 +178,9 @@ def test_a_manifest_that_names_one_path_twice_cannot_swap_the_bytes(tree: Path, 
 
     plan = plan_restore(read_manifest(store), [_change("notes.txt")])
     assert plan[0]["sha256"] == entry["sha256"], "the first manifest entry must win"
+    # The agent changed the file, so the restore has real work to do; the question is only
+    # which bytes win, and it must be the first entry's.
+    (tree / "notes.txt").write_text("what the agent left behind\n", encoding="utf-8")
     applied = apply_restore(plan, root=tree, store=store, force=True)
     assert applied[0]["status"] == "restored"
     assert (tree / "notes.txt").read_text(encoding="utf-8") == "original\n"

@@ -81,6 +81,12 @@ be marketing.
    a report that runs them together is a false claim) and folded into `ops.rollback` in the
    receipt. `docket restore` performs the same restore on demand, months later, from the receipt
    and ledger alone.
+10. A separate `docket restore --apply` — the same restore, months later, by somebody who may
+   never have run the agent — writes its own record to
+   `.docket/restores/<utc-stamp>-<docket-number>.json` (`docket/restore/v1`): what it planned,
+   what it did, what it refused, and whether `--force` was used. It never edits the run's ledger
+   or receipt: those are historical observations, and appending to them afterwards would break
+   the receipt's own agreement with the ledger it cites.
 
 ## Why the ledger is the source of truth
 

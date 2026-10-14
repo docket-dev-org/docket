@@ -39,12 +39,25 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   loopback is now refused when the recorder is constructed rather than at the first event, and
   `0.0.0.0` is *not* accepted as a destination. This is the answer to the static-analysis
   finding that flags an unchecked `urlopen` as a possible SSRF or local-file read.
+- **An applied restore writes its own record**: `.docket/restores/<utc-stamp>-<docket-number>.json`
+  (`docket/restore/v1`) with the receipt and store it came from, the resolved root, whether
+  `--force` was used, every per-path outcome, the counts, the uncovered paths and the exit code.
+  Several restores of one run are all kept. The run's ledger and receipt are never edited: they
+  are historical observations, and appending to them after the fact would break the receipt's
+  agreement with the ledger it cites. Dry runs write nothing.
 - **`make audit`**: `bandit` over `src/` and `tools/`, also a CI step. Every remaining class of
   finding is either fixed or has one written-down reason in `[tool.bandit]` (`"PASS"` as an
   output word, seeded `random`, list-argv `subprocess`); nothing is suppressed without a reason.
 
 ### Fixed
 
+- **Restoring twice no longer blames the operator.** After a successful restore the file holds
+  the snapshot's bytes rather than the digest the run ended with, so a second `docket restore`
+  refused it as "changed after the run" — a false accusation, and a command that fails when a
+  script, a cron job or a nervous hand repeats it. A path that already holds the snapshot's bytes
+  *and* the mode the plan would apply is now reported `already restored`: no write, no refusal.
+  The check runs after the plan has been validated against the snapshot store, so a doctored
+  manifest is still refused on its own merits rather than reported as an idempotent no-op.
 - **A relative working directory made every recorded path absolute.** `fsdiff.snapshot`
   relativised paths against an *unresolved* base, and a relative base can never be a prefix of
   the absolute paths a walk produces — so with `cwd="."` (what `docket game-day` and

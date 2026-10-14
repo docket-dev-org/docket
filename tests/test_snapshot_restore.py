@@ -194,12 +194,20 @@ def test_restore_refuses_to_overwrite_an_edit_made_after_the_run(workspace: Path
     manifest = read_manifest(store)
     plan = plan_restore(manifest, [_change("notes.txt", "modified", "aaa", "bbb")])
     plan[0]["post_sha256"] = "not-the-current-digest"
+    # The edit itself, not just a field claiming one happened: a restore that only compared
+    # digests would pass this test against a tree nobody had touched.
+    (workspace / "notes.txt").write_text("edited by somebody else\n", encoding="utf-8")
     applied = apply_restore(plan, root=workspace, store=store)  # force=False
     assert applied[0]["status"] == "refused"
     assert "changed after the run" in applied[0]["reason"]
-    assert (workspace / "notes.txt").read_text(encoding="utf-8") == "original\n"
+    # Refusing is the point: the other person's edit is still there.
+    assert (workspace / "notes.txt").read_text(encoding="utf-8") == "edited by somebody else\n"
     forced = apply_restore(plan, root=workspace, store=store, force=True)
     assert forced[0]["status"] == "restored"
+    # …and once it has been restored, the same plan is a no-op rather than another refusal.
+    again = apply_restore(plan, root=workspace, store=store)
+    assert again[0]["status"] == "already"
+    assert (workspace / "notes.txt").read_text(encoding="utf-8") == "original\n"
 
 
 def test_a_corrupted_snapshot_blob_is_reported_not_applied(workspace: Path, tmp_path: Path):
@@ -397,6 +405,71 @@ def test_a_deleted_file_is_recovered_from_the_snapshot_alone(workspace: Path, tm
     assert summarise(applied).get("restored", 0) >= 1
 
 
+def test_restoring_twice_succeeds_and_blames_nobody(workspace: Path, tmp_path: Path):
+    """The defect this covers: after a successful restore, the file no longer holds the digest
+    the *run* finished with, so a second `docket restore` refused it as "changed after the run"
+    — a false accusation against the operator, and a command that fails when repeated (which is
+    what a script, a cron job or a nervous hand does)."""
+    from docket.cli import main
+
+    result, docket_dir = _run_with_rollback(workspace, tmp_path, rollback_on_breach=False)
+    first = main(["restore", str(result.receipt_path), "--apply"])
+    assert first == 0
+    assert (workspace / "notes.txt").read_text(encoding="utf-8") == "original\n"
+
+    second = main(["restore", str(result.receipt_path), "--apply"])
+    assert second == 0, "restoring an already-restored tree is not a failure"
+    assert (workspace / "notes.txt").read_text(encoding="utf-8") == "original\n"
+
+    records = sorted((docket_dir / "restores").glob("*.json"))
+    assert len(records) == 2, "each restore is recorded separately, and nothing is overwritten"
+
+    # Sorted by name, `…-2.json` comes *before* `….json` (hyphen sorts before dot), so the
+    # documents are identified by their own names rather than by position in a listing.
+    def _by_name(suffix: str) -> dict:
+        path = next(item for item in records if item.stem.endswith(suffix))
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    first = next(json.loads(item.read_text(encoding="utf-8")) for item in records if not item.stem.endswith("-2"))
+    second = _by_name("-2")
+    assert first["counts"].get("restored") or first["counts"].get("recreated"), first["counts"]
+    assert set(second["counts"]) <= {"already", "absent"}, second["counts"]
+    assert not [item for item in second["applied"] if item["status"] in {"refused", "failed"}]
+
+
+def test_apply_restore_reports_already_when_the_bytes_are_the_snapshots(tmp_path: Path):
+    """The same property at the function level, without the CLI: `already` is a status of its
+    own, distinct from `restored`, so a caller counting writes is not misled by one."""
+    from docket.snapshot import apply_restore, take_snapshot
+
+    root = tmp_path / "tree"
+    root.mkdir()
+    (root / "file.txt").write_text("original\n", encoding="utf-8")
+    store = tmp_path / "store"
+    taken = take_snapshot(roots=["."], ignore=[], root=root, store=store)
+    entry = next(item for item in taken.entries if item["path"] == "file.txt")
+    plan = [
+        {
+            "path": "file.txt",
+            "action": "restore",
+            "sha256": entry["sha256"],
+            "blob": entry["blob"],
+            "mode": entry["mode"],
+            "post_sha256": "f" * 64,  # the digest the run ended with; the file has moved on
+        }
+    ]
+    # Someone edited it after the run: refused, as before.
+    (root / "file.txt").write_text("edited by a colleague\n", encoding="utf-8")
+    refused = apply_restore(plan, root=root, store=store)
+    assert [item["status"] for item in refused] == ["refused"]
+
+    # Someone put the original bytes back: nothing to do, and nothing to complain about.
+    (root / "file.txt").write_text("original\n", encoding="utf-8")
+    already = apply_restore(plan, root=root, store=store)
+    assert [item["status"] for item in already] == ["already"]
+    assert summarise(already) == {"already": 1}
+
+
 def test_a_run_never_records_its_own_evidence_as_the_agents_work(workspace: Path, tmp_path: Path):
     """The ledger is written during the run. If it is inside the watched tree, it must not be
     reported as a change the agent made — and a rollback must never plan to delete it."""
@@ -468,6 +541,48 @@ def test_the_restore_command_dry_runs_then_applies(workspace: Path, tmp_path: Pa
     exit_code = main(["restore", str(receipt_path), "--apply", "--force"])
     assert exit_code == 0
     assert (workspace / "notes.txt").read_text(encoding="utf-8") == "original\n"
+
+
+def test_an_applied_restore_leaves_its_own_record_and_touches_no_evidence(workspace: Path, tmp_path: Path, capsys):
+    """Restoring is destructive and may be done months later by somebody who never ran the
+    agent, so it is recorded. The record is a *new* file: the run's ledger and receipt are
+    historical observations and an implementation that edited them afterwards would break the
+    receipt's agreement with the ledger it cites. Dry runs write nothing at all."""
+    from docket.cli import main
+
+    result, docket_dir = _run_with_rollback(workspace, tmp_path, rollback_on_breach=False)
+    receipt_path = result.receipt_path
+    ledger_before = Path(result.ledger_path).read_bytes()
+    receipt_before = Path(receipt_path).read_bytes()
+
+    assert main(["restore", str(receipt_path)]) == 0
+    assert capsys.readouterr().out.count("dry run") == 1
+    assert not (docket_dir / "restores").exists(), "a dry run changes nothing, so it records nothing"
+
+    assert main(["restore", str(receipt_path), "--apply"]) == 0
+    out = capsys.readouterr().out
+    assert "recorded:" in out
+
+    records = sorted((docket_dir / "restores").glob("*.json"))
+    assert len(records) == 1, records
+    document = json.loads(records[0].read_text(encoding="utf-8"))
+    assert document["format"] == "docket/restore/v1"
+    assert document["docket_number"] == result.docket_number
+    assert document["session_id"] == result.receipt["session"]["id"]
+    assert document["forced"] is False
+    assert document["counts"]["restored"] >= 1
+    assert document["root"] == str(workspace)
+    assert document["exit_code"] == 0
+    assert [item["path"] for item in document["applied"]]
+    assert "not_covered" in document
+
+    assert Path(result.ledger_path).read_bytes() == ledger_before, "the run's ledger is not edited"
+    assert Path(receipt_path).read_bytes() == receipt_before, "the run's receipt is not edited"
+
+    # A second restore of the same run is kept, not overwritten.
+    assert main(["restore", str(receipt_path), "--apply"]) == 0
+    capsys.readouterr()
+    assert len(sorted((docket_dir / "restores").glob("*.json"))) == 2
     assert (workspace / "gone.txt").read_text(encoding="utf-8") == "delete me\n"
 
 
