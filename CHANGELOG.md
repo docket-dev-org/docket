@@ -51,6 +51,17 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Fixed
 
+- **Parallel model calls could write the ledger out of order.** The boundary is a
+  `ThreadingHTTPServer`, so two calls in flight are two `append` calls: the sequence number,
+  the `prev` link, the digest and the write were computed as separate steps, and a burst of
+  eight threads produced a file whose events were not in sequence order — a chain that
+  `docket verify` then reports as broken, i.e. Docket accusing an honest run of tampering.
+  `Ledger.append` now runs under an instance lock, so the file is always one contiguous chain
+  in sequence order. `tests/test_ledger_concurrency.py` (8 threads × 25 events, statuses and
+  chain checked from disk) and `tests/test_proxy_concurrency.py` (parallel calls through the
+  real boundary: sound chain, meter total exactly the sum of the rows, a limiter that admits
+  exactly its budget, a breaker that counts each failure once, a burst that cannot walk past a
+  cap, and a receipt built from the result that still verifies) cover it.
 - **A bad `--max-usd` is a usage error, and `--max-usd nan` no longer disables the cap.**
   `Decimal("NaN")` compares false against every threshold, so `docket run --max-usd nan`
   completed with the cap silently switched off and filed an ordinary-looking receipt reading

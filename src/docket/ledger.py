@@ -36,6 +36,7 @@ import errno
 import hashlib
 import json
 import os
+import threading
 import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
@@ -146,6 +147,13 @@ class Ledger:
     unwritten: list[dict[str, Any]] = field(default_factory=list)
     _handle: Any = None
     _lock_handle: Any = None
+    #: Serialises `append` *within* this process. Not an optimisation: the boundary is a
+    #: `ThreadingHTTPServer`, so parallel model calls are parallel `append` calls, and the
+    #: sequence number, `prev` link, hash and file write have to happen as one step or the file
+    #: can hold events out of order — a chain that a verifier then reports as broken, i.e.
+    #: Docket accusing its own honest run of tampering. Re-entrant because `append` is reached
+    #: from control paths (`_record_control`, the evidence guard) that may run inside a write.
+    _append_lock: Any = field(default_factory=threading.RLock, repr=False, compare=False, init=False)
 
     # -- construction ------------------------------------------------------ #
     @classmethod
@@ -237,7 +245,16 @@ class Ledger:
         are exempt from the ledger's own ceilings: a ceiling that could prevent the record
         from explaining *why the run stopped* would turn a policy outcome into a crash.
         Events attributed to the agent never get this exemption.
+
+        The whole body runs under an instance lock: sequence number, previous hash, digest and
+        the write to disk are one step, so concurrent callers get a file in sequence order
+        (`tests/test_ledger_concurrency.py`). The alternative — callers serialising — is not
+        available to the proxy, which is exactly where the concurrency comes from.
         """
+        with self._append_lock:
+            return self._append_locked(event_type, data, control=control)
+
+    def _append_locked(self, event_type: str, data: dict[str, Any] | None, *, control: bool) -> Event:
         # A handle can be closed under us (descriptors get reclaimed, an operator closes
         # one by hand, an embedder reuses the object). Reopen first: a writable path that
         # was only *closed* is not a lost record.
