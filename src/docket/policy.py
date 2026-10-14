@@ -36,7 +36,7 @@ from __future__ import annotations
 import fnmatch
 import tomllib
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +78,30 @@ class Caps:
     on_breach: str = "kill"  # kill | deny
     grace_seconds: float = 5.0
 
+    def __post_init__(self) -> None:
+        """Accept ``"0.05"`` as well as ``Decimal("0.05")``, and reject nonsense early.
+
+        The dataclass is a public surface (tests, examples and the SDK construct it), and
+        a string that reaches comparison with a Decimal raises deep inside a request
+        thread — a crash in the boundary rather than an error at the call site. Coercing
+        here makes the failure mode "clear exception where you wrote the mistake".
+        """
+        if self.max_usd is not None and not isinstance(self.max_usd, Decimal):
+            try:
+                self.max_usd = Decimal(str(self.max_usd))
+            except (InvalidOperation, ValueError) as exc:
+                raise ValueError(f"caps.max_usd is not a valid amount: {self.max_usd!r}") from exc
+        if self.max_usd is not None and (self.max_usd.is_nan() or self.max_usd < 0):
+            raise ValueError(f"caps.max_usd must be a non-negative amount, not {self.max_usd}")
+        if self.max_tokens is not None and int(self.max_tokens) < 0:
+            raise ValueError("caps.max_tokens must not be negative")
+        if self.max_model_calls is not None and int(self.max_model_calls) < 0:
+            raise ValueError("caps.max_model_calls must not be negative")
+        if not 0.0 < float(self.warn_at) <= 1.0:
+            raise ValueError(f"caps.warn_at must be in (0, 1], not {self.warn_at}")
+        if float(self.grace_seconds) < 0:
+            raise ValueError("caps.grace_seconds must not be negative")
+
     def to_dict(self) -> dict[str, Any]:
         """Serialise for the ledger and the receipt.
 
@@ -118,6 +142,50 @@ class Models:
 
 
 @dataclass
+class Resilience:
+    """Failure behaviour: what the boundary does when the world misbehaves.
+
+    Every knob is opt-in, because a recorder that changes behaviour on its own is a
+    recorder you cannot trust. Defaults are chosen so that the *evidence* stays honest
+    and the run keeps working:
+
+    * ``breaker_threshold`` / ``breaker_cooldown_seconds`` — stop hammering an upstream
+      that is failing, and record the decision.
+    * ``max_calls_per_minute`` / ``max_calls_per_second`` — a token bucket in front of
+      the upstream, so a looping agent is throttled rather than merely billed.
+    * ``max_events`` / ``max_ledger_bytes`` — a ceiling on the run's own record, so a
+      runaway agent cannot fill a disk with its own press coverage.
+    * ``fail_fast_evidence`` — ``false`` tolerates a write failure and declares the gap
+      in the receipt; ``true`` stops the run instead, for CI where half a record is
+      worse than none.
+    * ``min_free_bytes`` — readiness reports the volume as not-ready below this floor.
+    """
+
+    breaker_threshold: int = 5
+    breaker_cooldown_seconds: int = 30
+    breaker_max_cooldown_seconds: int = 300
+    max_calls_per_minute: int | None = None
+    max_calls_per_second: Decimal | None = None
+    max_events: int | None = None
+    max_ledger_bytes: int | None = 256 * 1024 * 1024
+    fail_fast_evidence: bool = False
+    min_free_bytes: int = 16 * 1024 * 1024
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "breaker_threshold": self.breaker_threshold,
+            "breaker_cooldown_seconds": self.breaker_cooldown_seconds,
+            "breaker_max_cooldown_seconds": self.breaker_max_cooldown_seconds,
+            "max_calls_per_minute": self.max_calls_per_minute,
+            "max_calls_per_second": _number(self.max_calls_per_second) if self.max_calls_per_second is not None else None,
+            "max_events": self.max_events,
+            "max_ledger_bytes": self.max_ledger_bytes,
+            "fail_fast_evidence": self.fail_fast_evidence,
+            "min_free_bytes": self.min_free_bytes,
+        }
+
+
+@dataclass
 class Egress:
     mode: str = "deny"  # deny | tunnel
     allow: list[str] = field(default_factory=lambda: list(DEFAULT_EGRESS_ALLOW))
@@ -154,6 +222,7 @@ class Policy:
     egress: Egress = field(default_factory=Egress)
     files: Files = field(default_factory=Files)
     budget_mode: str = "usd"  # usd | quota
+    resilience: Resilience = field(default_factory=Resilience)
     source_path: str | None = None
 
     # -- loading ----------------------------------------------------------- #
@@ -171,6 +240,7 @@ class Policy:
         egress_raw = raw.get("egress", {}) or {}
         files_raw = raw.get("files", {}) or {}
         budget_raw = raw.get("budget", {}) or {}
+        resilience_raw = raw.get("resilience", {}) or {}
         policy_raw = raw.get("policy", {}) or {}
 
         caps = Caps(
@@ -198,9 +268,12 @@ class Policy:
         if egress.mode not in {"deny", "tunnel"}:
             raise ValueError("egress.mode must be 'deny' or 'tunnel'")
 
+        resilience = _resilience_from(resilience_raw)
+
         policy = cls(
             name=str(policy_raw.get("name", "default")),
             caps=caps,
+            resilience=resilience,
             models=Models(
                 allow=[str(p) for p in models_raw.get("allow", [])],
                 deny=[str(p) for p in models_raw.get("deny", [])],
@@ -227,6 +300,7 @@ class Policy:
             "egress": self.egress.to_dict(),
             "files": self.files.to_dict(),
             "budget": {"mode": self.budget_mode},
+            "resilience": self.resilience.to_dict(),
         }
 
     def digest(self) -> str:
@@ -274,6 +348,20 @@ class Policy:
             f"ignore = {self.files.ignore!r}",
             f"deny_write = {self.files.deny_write!r}",
             "",
+            "# Failure behaviour. Every key below is off/quiet by default: a recorder that",
+            "# changes how your agent behaves without being asked is a recorder you cannot",
+            "# trust. See docs/resilience.md before turning any of them on.",
+            "[resilience]",
+            f"breaker_threshold = {self.resilience.breaker_threshold}          # consecutive upstream failures before refusing to send",
+            f"breaker_cooldown_seconds = {self.resilience.breaker_cooldown_seconds}     # first cooldown; doubles on a failed probe",
+            f"breaker_max_cooldown_seconds = {self.resilience.breaker_max_cooldown_seconds}  # ceiling for the doubling",
+            "# max_calls_per_minute = 120      # sliding-window throttle in front of the upstream",
+            "# max_calls_per_second = 5        # token bucket; burst = one second of steady traffic",
+            "# max_events = 200000             # ceiling on this run's own record",
+            f"max_ledger_bytes = {self.resilience.max_ledger_bytes}  # ceiling on the ledger file (bytes)",
+            f"fail_fast_evidence = {str(self.resilience.fail_fast_evidence).lower()}      # true: stop the run if evidence cannot be written",
+            f"min_free_bytes = {self.resilience.min_free_bytes}    # readiness reports not-ready below this floor",
+            "",
         ]
         return "\n".join(lines)
 
@@ -290,6 +378,9 @@ class Policy:
                 "per-session model-call ceiling",
                 "model allow/deny rules",
                 "wall-clock ceiling (by terminating the supervised process)",
+                "call-rate ceiling, when resilience.max_calls_per_minute or max_calls_per_second is set",
+                "requests to an upstream whose circuit breaker is open",
+                "any further model call once the ledger has reached its configured limit",
             ],
             "recorded_not_enforced": [
                 "filesystem changes under watched paths (detected by snapshot diffing)",
@@ -302,6 +393,14 @@ class Policy:
                 "prompts, completions or file contents unless --record-bodies is enabled",
                 "actions taken by processes outside the supervised process tree",
             ],
+            "failure_behaviour": [
+                "upstream failures are counted per provider; a circuit breaker stops sending "
+                "after the configured threshold and records every state change",
+                "when the ledger cannot be written, the run continues by default and the "
+                "receipt declares the gap (resilience.fail_fast_evidence = true stops it instead)",
+                "a torn final line in a ledger is reported, never silently repaired; "
+                "`docket doctor --quarantine-torn-tail` moves the bytes aside and keeps them",
+            ],
             "trust_assumptions": [
                 "the operator ran Docket honestly; the chain proves what was written, not that nothing else happened",
                 "reported token usage is the provider's own count; estimated usage is marked as estimated",
@@ -312,3 +411,53 @@ class Policy:
 def DEFAULT_TOML(name: str = "default", max_usd: str = "5.00") -> str:
     policy = Policy(name=name, caps=Caps(max_usd=Decimal(max_usd)))
     return policy.to_toml()
+
+
+def _resilience_from(raw: dict[str, Any]) -> Resilience:
+    """Build the resilience section, rejecting values that cannot mean anything.
+
+    Silence is the failure mode being designed against here: a policy knob that is
+    ignored because of a typo is worse than one that fails loudly, so unknown keys and
+    impossible numbers raise rather than defaulting.
+    """
+    known = set(Resilience.__dataclass_fields__)
+    unknown = sorted(set(raw) - known)
+    if unknown:
+        raise ValueError(
+            f"unknown key(s) in [resilience]: {', '.join(unknown)}. Known keys: {', '.join(sorted(known))}"
+        )
+    defaults = Resilience()
+    resilience = Resilience(
+        breaker_threshold=int(raw.get("breaker_threshold", defaults.breaker_threshold)),
+        breaker_cooldown_seconds=int(raw.get("breaker_cooldown_seconds", defaults.breaker_cooldown_seconds)),
+        breaker_max_cooldown_seconds=int(
+            raw.get("breaker_max_cooldown_seconds", defaults.breaker_max_cooldown_seconds)
+        ),
+        max_calls_per_minute=(
+            int(raw["max_calls_per_minute"]) if raw.get("max_calls_per_minute") is not None else None
+        ),
+        max_calls_per_second=(
+            Decimal(str(raw["max_calls_per_second"])) if raw.get("max_calls_per_second") is not None else None
+        ),
+        max_events=int(raw["max_events"]) if raw.get("max_events") is not None else None,
+        max_ledger_bytes=(
+            int(raw["max_ledger_bytes"]) if raw.get("max_ledger_bytes") is not None else None
+        ),
+        fail_fast_evidence=bool(raw.get("fail_fast_evidence", defaults.fail_fast_evidence)),
+        min_free_bytes=int(raw.get("min_free_bytes", defaults.min_free_bytes)),
+    )
+    if resilience.breaker_threshold < 1:
+        raise ValueError("resilience.breaker_threshold must be at least 1")
+    if resilience.breaker_cooldown_seconds < 0:
+        raise ValueError("resilience.breaker_cooldown_seconds must not be negative")
+    if resilience.max_calls_per_minute is not None and resilience.max_calls_per_minute < 1:
+        raise ValueError("resilience.max_calls_per_minute must be at least 1")
+    if resilience.max_calls_per_second is not None and resilience.max_calls_per_second <= 0:
+        raise ValueError("resilience.max_calls_per_second must be positive")
+    if resilience.max_events is not None and resilience.max_events < 1:
+        raise ValueError("resilience.max_events must be at least 1")
+    if resilience.max_ledger_bytes is not None and resilience.max_ledger_bytes < 4096:
+        raise ValueError("resilience.max_ledger_bytes must be at least 4096 (below that the ledger cannot hold a run)")
+    if resilience.min_free_bytes < 0:
+        raise ValueError("resilience.min_free_bytes must not be negative")
+    return resilience

@@ -299,6 +299,29 @@ def verify_receipt(
     else:
         add("limits-disclosure", "fail", "receipt does not disclose the scope of its evidence")
 
+    # -- 9. did the record itself survive the run? ------------------------- #
+    # A receipt that quietly carries an incomplete ledger would be the tool lying about
+    # its own evidence, which is the one thing this format exists to prevent. Old
+    # receipts without the member are "skip", never "pass".
+    evidence = receipt.get("evidence")
+    if evidence is None:
+        add("evidence-completeness", "skip", "receipt predates the evidence member")
+    elif evidence.get("ledger_complete") is False:
+        add(
+            "evidence-completeness",
+            "fail",
+            f"the ledger is incomplete: {evidence.get('unwritten_events', 0)} event(s) never reached disk, "
+            f"first at seq {evidence.get('first_failing_seq')}",
+        )
+    else:
+        add("evidence-completeness", "pass", "every event reached the ledger file")
+
+    # -- 10. was this a chaos run? ----------------------------------------- #
+    ops = receipt.get("ops") or {}
+    if ops.get("chaos_run"):
+        faults = (ops.get("fault_injection") or {}).get("injections", 0)
+        add("chaos-run", "skip", f"fault injection was active: {faults} injected fault(s) — this receipt records a test, not production behaviour")
+
     return VerifyResult(
         ok=not failures,
         checks=checks,

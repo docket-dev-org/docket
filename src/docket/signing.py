@@ -57,13 +57,36 @@ def verify_seal(receipt_core: dict[str, Any], sealed: dict[str, Any], key_hex: s
 
 
 def load_or_create_seal_key(key_path: str | os.PathLike[str]) -> str:
+    """Load the local sealing key, creating it owner-only if it does not exist.
+
+    A sealing key that other users can read is not a seal, so this both creates the key
+    with mode 0600 and refuses to *use* one that is group- or world-readable, naming the
+    file and the fix. Silently accepting a world-readable key would make every receipt
+    produced with it look sealed while being forgeable by anyone on the machine.
+    """
     path = Path(key_path)
     if path.exists():
+        if path.is_symlink():
+            raise ValueError(f"refusing to use {path}: a sealing key must not be a symbolic link")
+        mode = path.stat().st_mode & 0o777
+        if mode & 0o077:
+            raise ValueError(
+                f"refusing to use {path}: it is readable by other users (mode {mode:o}). "
+                f"Fix it with `chmod 600 {path}` — a key anyone on the machine can read is not a seal."
+            )
         return path.read_text(encoding="utf-8").strip()
     key = new_seal_key()
-    atomic_write(path, key + "\n")
-    with contextlib.suppress(OSError):  # pragma: no cover - platform dependent
-        os.chmod(path, 0o600)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        os.chmod(path.parent, 0o700)
+    if hasattr(os, "O_NOFOLLOW"):
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(key + "\n")
+    else:  # pragma: no cover - platform dependent
+        atomic_write(path, key + "\n")
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o600)
     return key
 
 

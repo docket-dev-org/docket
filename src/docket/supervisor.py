@@ -36,8 +36,9 @@ from typing import Any
 from . import events as ev
 from .canon import num
 from .fsdiff import deny_write_violations, diff, snapshot, tree_digest
-from .ledger import Ledger
+from .ledger import Ledger, LedgerFullError
 from .policy import Policy
+from .resilience import CircuitBreaker, EvidenceGuard, FaultInjector, HealthState, RateLimiter
 from .pricing import CostMeter, PriceTable
 from .proxy import RecordingProxy
 from .receipt import build_receipt, write_receipt
@@ -107,6 +108,10 @@ class Supervisor:
         stderr: Any = None,
         rng: Any = None,
         label: str | None = None,
+        faults: list[Any] | None = None,
+        fault_seed: int = 0,
+        evidence_warn: Any = None,
+        time_scale: float = 1.0,
     ) -> None:
         self.argv = argv
         self.policy = policy or Policy()
@@ -127,6 +132,49 @@ class Supervisor:
         self.stdout = stdout if stdout is not None else sys.stdout
         self.stderr = stderr if stderr is not None else sys.stderr
         self.label = label
+        #: Faults are an explicit, recorded act: a run with injections is marked in the
+        #: ledger and cannot be mistaken for a normal run's evidence.
+        self.faults = faults or []
+        self.fault_seed = fault_seed
+        self.evidence_warn = evidence_warn
+        #: Wall-clock caps are measured in real seconds, but a supervised wait can be
+        #: scaled for tests. 1.0 means "faithful"; never changed by the CLI.
+        self.time_scale = time_scale
+
+    def _record(
+        self, ledger: Ledger, event_type: str, data: dict[str, Any], breach_state: dict[str, str | None]
+    ) -> Any:
+        """Append supervisor-written evidence, tolerating a ledger that is already full.
+
+        The rule for the supervising tool is the opposite of the rule for the agent: a
+        full ledger must never turn the *shutdown path* into a traceback. When the ceiling
+        is hit, the run is marked as stopped by it and the receipt says so; nothing is
+        silently dropped, and a control event naming the ceiling is always recordable.
+        """
+        try:
+            return ledger.append(event_type, data)
+        except LedgerFullError as exc:
+            if breach_state.get("cap") is None:
+                breach_state["cap"] = "max_events" if ledger.max_events is not None else "max_ledger_bytes"
+            with contextlib.suppress(Exception):
+                ledger.append(
+                    ev.CAP_EXCEEDED,
+                    {
+                        "cap": breach_state["cap"],
+                        "observed": exc.observed,
+                        "limit": exc.limit,
+                        "action": f"not recording {event_type} (ledger ceiling reached)",
+                    },
+                    control=True,
+                )
+            return None
+
+    def _warn_evidence(self, message: str) -> None:
+        """One loud line the first time evidence cannot be written. Never silent."""
+        if self.evidence_warn is not None:
+            self.evidence_warn(message)
+            return
+        print(f"docket: {message}", file=self.stderr, flush=True)
 
     # -- public API -------------------------------------------------------- #
     def run(self) -> RunResult:
@@ -134,10 +182,32 @@ class Supervisor:
         runs_dir = self.docket_dir / "runs"
         receipts_dir = self.docket_dir / "receipts"
         ledger_path = runs_dir / f"{self.session_id}.jsonl"
-        ledger = Ledger.open(ledger_path, clock=self.clock)
+        resilience = self.policy.resilience
+        guard = EvidenceGuard(
+            fail_fast=resilience.fail_fast_evidence,
+            warn=self._warn_evidence,
+        )
+        ledger = Ledger.open(
+            ledger_path,
+            clock=self.clock,
+            guard=guard,
+            max_events=resilience.max_events,
+            max_bytes=resilience.max_ledger_bytes,
+        )
         meter = CostMeter(price_table=self.price_table, mode=self.policy.budget_mode)
         number = docket_number(rng=self.rng)
         breach_state: dict[str, str | None] = {"cap": None}
+        breaker = CircuitBreaker(
+            threshold=resilience.breaker_threshold,
+            cooldown_seconds=float(resilience.breaker_cooldown_seconds),
+            max_cooldown_seconds=float(resilience.breaker_max_cooldown_seconds),
+        )
+        limiter = RateLimiter(
+            per_second=float(resilience.max_calls_per_second) if resilience.max_calls_per_second else None,
+            per_minute=resilience.max_calls_per_minute,
+        )
+        injector = FaultInjector(self.faults, seed=self.fault_seed) if self.faults else None
+        health = HealthState()
 
         ledger.append(
             ev.SESSION_START,
@@ -175,8 +245,19 @@ class Supervisor:
             session_id=self.session_id,
             upstreams=self.upstreams,
             record_bodies=self.record_bodies,
+            breaker=breaker,
+            limiter=limiter,
+            injector=injector,
+            health=health,
+            min_free_bytes=resilience.min_free_bytes,
         )
         host, port = proxy.start()
+
+        if injector is not None:
+            ledger.append(
+                "x-docket.fault-plan",
+                {"seed": self.fault_seed, "spec": [f.describe() for f in self.faults]},
+            )
 
         def on_breach(cap: str) -> None:
             breach_state["cap"] = cap
@@ -203,7 +284,7 @@ class Supervisor:
         previous_handlers: dict[int, Any] = {}
 
         try:
-            ledger.append(ev.PROC_SPAWN, {"argv": self.argv, "cwd": str(self.cwd)})
+            ledger.append(ev.PROC_SPAWN, {"argv": self.argv, "cwd": str(self.cwd)}, control=True)
             proc = subprocess.Popen(
                 self.argv,
                 cwd=str(self.cwd),
@@ -225,7 +306,7 @@ class Supervisor:
                 with contextlib.suppress(ValueError, OSError):  # pragma: no cover - non-main thread
                     previous_handlers[sig] = signal.signal(sig, _forward)
 
-            exit_code = self._supervise(proc, breach_state, started_mono, ledger)
+            exit_code = self._supervise(proc, breach_state, started_mono, ledger, proxy)
         finally:
             for sig, handler in previous_handlers.items():
                 with contextlib.suppress(ValueError, OSError):  # pragma: no cover
@@ -238,24 +319,29 @@ class Supervisor:
             after = snapshot(self.policy.files.watch, self.policy.files.ignore, cwd=self.cwd)
             changes = diff(before, after)
             for change in changes[:MAX_RECORDED_FILE_CHANGES]:
-                ledger.append(ev.FS_CHANGE, change)
+                self._record(ledger, ev.FS_CHANGE, change, breach_state)
             if len(changes) > MAX_RECORDED_FILE_CHANGES:
                 ledger.append(
                     ev.NOTE,
                     {"message": f"{len(changes) - MAX_RECORDED_FILE_CHANGES} further file changes elided"},
+                    control=True,
                 )
-            ledger.append(
+            self._record(
+                ledger,
                 ev.FS_SNAPSHOT,
                 {"phase": "after", "files": len(after), "tree_sha256": tree_digest(after), "changes": len(changes)},
+                breach_state,
             )
             for violation in deny_write_violations(changes, self.policy.files.deny_write):
-                ledger.append(
+                self._record(
+                    ledger,
                     ev.POLICY_VIOLATION,
                     {
                         "rule": "files.deny_write",
                         "path": violation["path"],
                         "detail": "file inside a deny_write scope was changed during the run",
                     },
+                    breach_state,
                 )
 
         duration = self.monotonic() - started_mono
@@ -272,6 +358,24 @@ class Supervisor:
             },
         )
         events = list(ledger)
+        # -- evidence integrity and failure behaviour ---------------------- #
+        # Three things must be visible in the receipt, not just in a log line: whether
+        # every event reached the disk, whether the boundary stopped talking to an
+        # upstream, and whether the run was a chaos run.
+        if ledger.degraded:
+            gap_event = {
+                "unwritten": ledger.unwritten[:20],
+                "count": len(ledger.unwritten),
+                "first_failing_seq": ledger.unwritten[0]["seq"],
+                "last_error": ledger.unwritten[-1]["error"],
+                "note": "the file is not a complete record: the chain will not verify past the first gap",
+            }
+            # Best-effort: the same conditions that caused the gap may prevent this write.
+            with contextlib.suppress(Exception):
+                ledger.append("x-docket.evidence-gap", gap_event)
+            for gap in guard.gaps.extra:
+                ledger.append("note", {"message": "evidence note", **gap})
+
         receipt = build_receipt(
             events=events,
             ledger=ledger,
@@ -286,6 +390,10 @@ class Supervisor:
             seal_key=self.seal_key,
             sign_key=self.sign_key,
             label=self.label,
+            breaker=breaker,
+            limiter=limiter,
+            injector=injector,
+            health=health,
         )
         ledger.close()
         proxy.stop()
@@ -339,13 +447,20 @@ class Supervisor:
         breach_state: dict[str, str | None],
         started_mono: float,
         ledger: Ledger,
+        proxy: Any,
     ) -> int:
         wall_limit = self.policy.caps.max_wall_seconds
         while True:
             code = proc.poll()
             if code is not None:
-                ledger.append(ev.PROC_EXIT, {"exit_code": code})
+                ledger.append(ev.PROC_EXIT, {"exit_code": code}, control=True)
                 return code
+            # A full ledger is a policy outcome, not an environment failure: the
+            # boundary has already told the agent (in HTTP words) and recorded why. The
+            # run stops here so that "the tool could not keep its promise to record"
+            # cannot be mistaken for a normal completion.
+            if getattr(proxy, "ledger_full", None) is not None and proxy.ledger_full.is_set() and breach_state["cap"] is None:
+                breach_state["cap"] = "max_events" if getattr(ledger, "max_events", None) is not None else "max_ledger_bytes"
             elapsed = self.monotonic() - started_mono
             if wall_limit is not None and elapsed >= wall_limit and breach_state["cap"] is None:
                 breach_state["cap"] = "max_wall_seconds"
@@ -356,7 +471,7 @@ class Supervisor:
             if breach_state["cap"] and self.policy.caps.on_breach == "kill":
                 self._terminate(proc, ledger, breach_state["cap"])
                 code = proc.wait(timeout=30)
-                ledger.append(ev.PROC_EXIT, {"exit_code": code, "terminated_by": "docket"})
+                ledger.append(ev.PROC_EXIT, {"exit_code": code, "terminated_by": "docket"}, control=True)
                 return code
             time.sleep(0.05)
 
@@ -371,7 +486,7 @@ class Supervisor:
                 proc.terminate()
             except OSError:
                 return
-        ledger.append(ev.NOTE, {"message": f"sent SIGTERM to process group after {cap} cap"})
+        ledger.append(ev.NOTE, {"message": f"sent SIGTERM to process group after {cap} cap"}, control=True)
         deadline = time.monotonic() + grace
         while time.monotonic() < deadline:
             if proc.poll() is not None:
@@ -382,7 +497,7 @@ class Supervisor:
         except (ProcessLookupError, PermissionError, OSError):  # pragma: no cover
             with contextlib.suppress(OSError):
                 proc.kill()
-        ledger.append(ev.NOTE, {"message": f"sent SIGKILL after {grace}s grace period"})
+        ledger.append(ev.NOTE, {"message": f"sent SIGKILL after {grace}s grace period"}, control=True)
 
 
 def _popen_stdio(stream: Any) -> Any:

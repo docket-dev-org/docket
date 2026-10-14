@@ -8,17 +8,20 @@ import json
 import os
 import shutil
 import sys
+import time
 from collections.abc import Sequence
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .ledger import Ledger
-from .policy import DEFAULT_TOML, Policy
+from .diagnostics import write_diagnostic_bundle
+from .ledger import Ledger, quarantine_torn_tail
+from .policy import DEFAULT_TOML, Caps, Policy
 from .pricing import PriceTable
 from .receipt import load_receipt
 from .report import diff_receipts, render_diff, render_findings, render_markdown, render_receipt
+from .resilience import parse_fault_spec
 from .supervisor import Supervisor
 from .verify import verify_receipt
 
@@ -65,6 +68,25 @@ def cmd_run(args: argparse.Namespace) -> int:
         policy.caps.on_breach = args.on_breach
     if args.budget_mode:
         policy.budget_mode = args.budget_mode
+    if args.max_calls_per_minute is not None:
+        policy.resilience.max_calls_per_minute = int(args.max_calls_per_minute)
+        overrides.append(f"max_calls_per_minute={args.max_calls_per_minute}")
+    if args.max_events is not None:
+        policy.resilience.max_events = int(args.max_events)
+        overrides.append(f"max_events={args.max_events}")
+    if args.fail_fast_evidence:
+        policy.resilience.fail_fast_evidence = True
+        overrides.append("fail_fast_evidence=true")
+    faults = []
+    if args.fault_inject:
+        try:
+            faults = parse_fault_spec(args.fault_inject)
+        except ValueError as exc:
+            _out(sys.stderr, f"{PROGRAM}: bad --fault-inject: {exc}")
+            return 43
+        if not faults:
+            _out(sys.stderr, f"{PROGRAM}: --fault-inject did not describe any fault: {args.fault_inject!r}")
+            return 43
     if args.docket_dir:
         policy.files.ignore = policy.files.ignore + [f"{args.docket_dir}/**"]
 
@@ -78,19 +100,45 @@ def cmd_run(args: argparse.Namespace) -> int:
         _out(sys.stderr, f"{PROGRAM}: nothing to run. Usage: {PROGRAM} run -- <command> [args…]")
         return 43
 
+    upstream_override = os.environ.get("DOCKET_GAME_DAY_UPSTREAM")
+    upstreams = None
+    if upstream_override:
+        # Used by `docket game-day` to point a real `docket run` at a local scripted
+        # provider. Documented, single-purpose, and never set by Docket itself in normal
+        # operation: the boundary is still the real boundary.
+        try:
+            upstreams = json.loads(upstream_override)
+        except json.JSONDecodeError as exc:
+            _out(sys.stderr, f"{PROGRAM}: bad DOCKET_GAME_DAY_UPSTREAM: {exc}")
+            return 43
+        if not isinstance(upstreams, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in upstreams.items()
+        ):
+            _out(sys.stderr, f"{PROGRAM}: DOCKET_GAME_DAY_UPSTREAM must be a JSON object of provider→URL")
+            return 43
+
     supervisor = Supervisor(
         args.command,
         policy=policy,
         docket_dir=args.docket_dir,
         cwd=args.cwd,
-        profile=args.profile,
+        profile="minimal" if upstreams and args.profile == "full" else args.profile,
         http_proxy=args.http_proxy,
         record_bodies=args.record_bodies,
         seal_key=seal_key,
         sign_key=args.sign,
         label=args.label,
         price_table=PriceTable.load(args.prices) if args.prices else None,
+        faults=faults,
+        fault_seed=args.fault_seed,
+        upstreams=upstreams,
     )
+    if faults:
+        _out(
+            sys.stderr,
+            f"{PROGRAM}: FAULT INJECTION ACTIVE ({'; '.join(f.describe() for f in faults)}"
+            f", seed {args.fault_seed}) — this receipt records a test, not production behaviour",
+        )
     result = supervisor.run()
     color = _color_enabled(sys.stderr)
     receipt = result.receipt
@@ -109,6 +157,24 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
         if result.breached:
             _out(sys.stderr, f"{PROGRAM}: find out why with `{PROGRAM} explain {result.receipt_path}`")
+        evidence = receipt.get("evidence") or {}
+        if evidence.get("ledger_complete") is False:
+            _out(
+                sys.stderr,
+                f"{PROGRAM}: WARNING the ledger is incomplete: {evidence.get('unwritten_events')} event(s) "
+                f"never reached disk (first at seq {evidence.get('first_failing_seq')}). "
+                "The receipt declares this and verification will report it.",
+            )
+        ops = receipt.get("ops") or {}
+        breaker = ops.get("circuit_breaker") or {}
+        opened = {name: state for name, state in breaker.items() if state.get("state") != "closed"}
+        if opened:
+            for name, state in opened.items():
+                _out(
+                    sys.stderr,
+                    f"{PROGRAM}: circuit {state['state']} for {name!r} after {state['total_failures']} "
+                    f"failure(s); the boundary stopped sending and said so in the ledger.",
+                )
     return result.exit_code
 
 
@@ -258,7 +324,164 @@ def cmd_prices(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_selftest(args: argparse.Namespace) -> int:
+    from .diagnostics import render_probes, self_test
+
+    probes, workspace = self_test(keep_workspace=args.keep)
+    failed = [p for p in probes if p.status == "fail"]
+    if args.json:
+        _out(
+            sys.stdout,
+            json.dumps(
+                {
+                    "probes": [
+                        {"name": p.name, "status": p.status, "detail": p.detail, "data": p.data} for p in probes
+                    ],
+                    "passed": sum(1 for p in probes if p.status == "pass"),
+                    "failed": len(failed),
+                    "skipped": sum(1 for p in probes if p.status == "skipped"),
+                    "workspace": str(workspace),
+                },
+                indent=2,
+            ),
+        )
+        return 1 if failed else 0
+    _out(sys.stdout, f"{PROGRAM} {__version__} selftest — the boundary, exercised in this process")
+    _out(sys.stdout)
+    _out(sys.stdout, render_probes(probes, color=_color_enabled(sys.stdout)))
+    if args.keep:
+        _out(sys.stdout)
+        _out(sys.stdout, f"  workspace kept at {workspace}")
+    return 1 if failed else 0
+
+
+def cmd_chaos(args: argparse.Namespace) -> int:
+    from .chaos import render_chaos, run_chaos
+
+    policy = Policy(name="chaos experiment", caps=Caps(max_usd=None))
+    if args.max_usd:
+        policy.caps.max_usd = Decimal(args.max_usd)
+    command = [c for c in (args.command or []) if c != "--"] or None
+    if not command and not args.faults:
+        _out(
+            sys.stderr,
+            f"{PROGRAM}: nothing to break. Give a fault spec (--faults status=500:1.0) or a command to run "
+            "after `--`. Run `docket selftest` for the built-in checks.",
+        )
+        return 43
+    outcome = run_chaos(
+        faults_spec=args.faults or "",
+        seed=args.seed,
+        calls=args.calls,
+        mode=args.mode,
+        policy=policy,
+        command=command,
+    )
+    if args.json:
+        _out(sys.stdout, json.dumps(outcome, indent=2))
+    else:
+        _out(sys.stdout, render_chaos(outcome))
+        if args.keep:
+            _out(sys.stdout)
+            _out(sys.stdout, f"  workspace kept at {outcome['ledger_path'].rsplit('/', 2)[0]}")
+    return 1 if [c for c in outcome["checks"] if c["status"] == "fail"] else 0
+
+
+def cmd_game_day(args: argparse.Namespace) -> int:
+    from .chaos import render_post_mortem, run_game_day
+
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+    out_dir = Path(args.out or f".docket/game-day-{stamp}")
+    policy = Policy(name="game day", caps=Caps(max_usd=None))
+    if args.max_usd:
+        policy.caps.max_usd = Decimal(args.max_usd)
+    if args.online and not args.max_usd:
+        # Refusing here is the whole point: a game day against a real provider without a
+        # cap is an experiment with an unbounded bill.
+        _out(
+            sys.stderr,
+            f"{PROGRAM}: --online spends real money; pass --max-usd to bound it (the phases run the "
+            "synthetic agent, and a cap also proves the cap path on live traffic).",
+        )
+        return 43
+    phases = None
+    if args.phases:
+        from .chaos import GAME_DAY_PHASES
+
+        wanted = [name.strip() for name in args.phases.split(",") if name.strip()]
+        unknown = [name for name in wanted if name not in {p.name for p in GAME_DAY_PHASES}]
+        if unknown:
+            _out(
+                sys.stderr,
+                f"{PROGRAM}: unknown phase(s) {unknown}; known: {[p.name for p in GAME_DAY_PHASES]}",
+            )
+            return 43
+        phases = [p for p in GAME_DAY_PHASES if p.name in wanted]
+    _out(sys.stdout, f"{PROGRAM} game day — {len(phases) if phases else 'all'} phase(s), writing to {out_dir}")
+    report = run_game_day(root=out_dir, phases=phases, policy=policy)
+    post_mortem = render_post_mortem(report)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    from .util import atomic_write
+
+    atomic_write(out_dir / "post-mortem.md", post_mortem)
+    atomic_write(out_dir / "game-day.json", json.dumps(report, indent=2, sort_keys=True))
+    if args.json:
+        _out(
+            sys.stdout,
+            json.dumps(
+                {
+                    "phases": report["phases"],
+                    "phases_ok": report["phases_ok"],
+                    "phases_total": report["phases_total"],
+                    "failed_checks": report["failed_checks"],
+                    "skipped_checks": report["skipped_checks"],
+                    "post_mortem": str(out_dir / "post-mortem.md"),
+                    "record": str(out_dir / "game-day.json"),
+                },
+                indent=2,
+            ),
+        )
+    else:
+        for record in report["phases"]:
+            marks = {"pass": "PASS", "fail": "FAIL", "skip": "SKIP"}
+            counts: dict[str, int] = {}
+            for check in record.get("checks", []):
+                counts[check["status"]] = counts.get(check["status"], 0) + 1
+            _out(
+                sys.stdout,
+                f"  {record['phase']:18} exit {str(record.get('exit_code')):>4}  "
+                f"{counts.get('pass', 0)} passed, {counts.get('fail', 0)} failed, {counts.get('skip', 0)} skipped",
+            )
+        _out(sys.stdout)
+        _out(
+            sys.stdout,
+            f"{PROGRAM}: {report['phases_ok']}/{report['phases_total']} phases met every stated expectation",
+        )
+        for failed in report["failed_checks"]:
+            _out(sys.stdout, f"  FAIL  {failed['phase']}: {failed['name']} — {failed['detail']}")
+        _out(sys.stdout, f"  post-mortem: {out_dir / 'post-mortem.md'}")
+        _out(sys.stdout, f"  raw record:  {out_dir / 'game-day.json'}")
+    return 1 if report["failed_checks"] else 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
+    if args.quarantine_torn_tail:
+        result = quarantine_torn_tail(args.quarantine_torn_tail)
+        _out(sys.stdout, f"{PROGRAM} doctor --quarantine-torn-tail {args.quarantine_torn_tail}")
+        if result.performed:
+            _out(sys.stdout, f"  moved   {result.moved_bytes} byte(s) to {result.sidecar}")
+            _out(sys.stdout, f"  kept    {result.kept_bytes} byte(s) in place")
+            _out(sys.stdout, "  the ledger now parses cleanly; the moved bytes were preserved, not deleted.")
+            return 0
+        _out(sys.stdout, f"  nothing moved: {result.reason}")
+        return 0 if "parses cleanly" in result.reason else 1
+
+    if args.bundle:
+        path = write_diagnostic_bundle(Path(args.docket_dir).resolve(), Path(args.bundle))
+        _out(sys.stdout, f"{PROGRAM}: wrote diagnostic bundle {path}")
+        _out(sys.stdout, "  contents: environment, ledger diagnostics, receipts summary, doctor output (no ledger bodies)")
+        return 0
+
     table = PriceTable.load()
     checks = [
         ("python", sys.version.split()[0], sys.version_info >= (3, 11)),
@@ -274,12 +497,43 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         )
     except Exception as exc:  # pragma: no cover
         checks.append(("cryptography (signing)", str(exc), True))
+    ledger_dir = Path(args.docket_dir) / "runs"
+    ledgers = sorted(ledger_dir.glob("*.jsonl")) if ledger_dir.exists() else []
+    unhealthy = []
+    for path in ledgers:
+        _, diagnostics = Ledger.read_with_diagnostics(path)
+        if not diagnostics.get("healthy", False):
+            unhealthy.append((path, diagnostics))
+    checks.append(
+        (
+            "ledgers",
+            f"{len(ledgers)} found" + (f", {len(unhealthy)} damaged" if unhealthy else ", all parse"),
+            not unhealthy,
+        )
+    )
+    free = shutil.disk_usage(Path.cwd()).free
+    checks.append(("free space", f"{free // (1024 * 1024)} MiB where the ledger lives", free > 16 * 1024 * 1024))
+
     _out(sys.stdout, f"{PROGRAM} {__version__} doctor")
     for name, detail, ok in checks:
         _out(sys.stdout, f"  {'ok ' if ok else 'warn'}  {name:24} {detail}")
+    for path, diagnostics in unhealthy:
+        _out(sys.stdout)
+        _out(sys.stdout, f"  damaged ledger: {path}")
+        if diagnostics.get("torn_tail"):
+            tail = diagnostics["torn_tail"]
+            _out(sys.stdout, f"    torn final line at line {tail['line']} ({tail['bytes']} bytes): {tail['error']}")
+            _out(sys.stdout, f"    recover with: {PROGRAM} doctor --quarantine-torn-tail {path}")
+            _out(sys.stdout, "    (the moved bytes are kept beside the ledger; nothing is deleted)")
+        if diagnostics.get("bad_lines"):
+            first = diagnostics["bad_lines"][0]
+            _out(sys.stdout, f"    line {first['line']} is not valid JSON: {first['error']}")
+            _out(sys.stdout, "    this is not a torn write: the file was edited or corrupted. Preserve it as evidence.")
+        if not diagnostics.get("utf8", True):
+            _out(sys.stdout, f"    {diagnostics.get('error')}")
     _out(sys.stdout)
     _out(sys.stdout, "Everything Docket needs to record and verify is in the standard library.")
-    return 0
+    return 0 if not unhealthy else 1
 
 
 # --------------------------------------------------------------------------- #
@@ -318,6 +572,15 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--max-minutes", help="override the wall-clock cap (minutes)")
     run.add_argument("--on-breach", choices=["kill", "deny"], help="override breach behaviour")
     run.add_argument("--budget-mode", choices=["usd", "quota"], help="usd for metered APIs, quota for subscriptions")
+    run.add_argument("--max-calls-per-minute", help="throttle: refuse calls beyond this rate (recorded, HTTP 429)")
+    run.add_argument("--max-events", help="ceiling on this run's own ledger events")
+    run.add_argument("--fail-fast-evidence", action="store_true", help="stop the run if evidence cannot be written")
+    run.add_argument(
+        "--fault-inject",
+        metavar="SPEC",
+        help="chaos testing: make the boundary misbehave (delay=250ms, status=503:0.5, drop, reset, truncate, corrupt, slow)",
+    )
+    run.add_argument("--fault-seed", type=int, default=0, help="seed for --fault-inject (same seed, same faults)")
     run.add_argument("command", nargs=argparse.REMAINDER, help="command to run (after --)")
     run.set_defaults(func=cmd_run)
 
@@ -365,8 +628,53 @@ def build_parser() -> argparse.ArgumentParser:
     prices.add_argument("--json", action="store_true")
     prices.set_defaults(func=cmd_prices)
 
-    doctor = sub.add_parser("doctor", help="check the local environment")
+    selftest = sub.add_parser(
+        "selftest",
+        help="exercise the boundary's own guarantees (forwarding, caps, breaker, faults, ledger failure)",
+    )
+    selftest.add_argument("--json", action="store_true")
+    selftest.add_argument("--keep", action="store_true", help="keep the probe workspace")
+    selftest.set_defaults(func=cmd_selftest)
+
+    chaos = sub.add_parser("chaos", help="run a command under injected faults and audit what happened")
+    chaos.add_argument(
+        "--faults",
+        default="",
+        help="fault spec: delay=250ms:0.5, status=500:1.0, drop, reset, slow=2s, truncate, corrupt (seed=N)",
+    )
+    chaos.add_argument("--seed", type=int, default=0)
+    chaos.add_argument("--calls", type=int, default=8, help="calls for the bundled synthetic agent")
+    chaos.add_argument("--mode", choices=["bounded", "retry"], default="retry")
+    chaos.add_argument("--max-usd", help="USD cap for the experiment")
+    chaos.add_argument("--json", action="store_true")
+    chaos.add_argument("--keep", action="store_true")
+    chaos.add_argument("command", nargs=argparse.REMAINDER, help="command to run (after --)")
+    chaos.set_defaults(func=cmd_chaos)
+
+    game_day = sub.add_parser(
+        "game-day", help="run the scripted failure phases against an agent and write a post-mortem"
+    )
+    game_day.add_argument("--out", help="where to write the record (default .docket/game-day-<stamp>)")
+    game_day.add_argument("--phases", help="comma-separated subset of phases to run")
+    game_day.add_argument("--online", action="store_true", help="use your configured provider instead of a scripted one")
+    game_day.add_argument("--max-usd", help="USD cap per phase (required with --online)")
+    game_day.add_argument("--json", action="store_true")
+    game_day.set_defaults(func=cmd_game_day)
+
+    doctor = sub.add_parser("doctor", help="check the local environment and the health of existing ledgers")
     doctor.add_argument("--docket-dir", default=".docket")
+    doctor.add_argument(
+        "--quarantine-torn-tail",
+        metavar="LEDGER",
+        help="move an incomplete final line aside, keeping every byte (refuses mid-file damage)",
+    )
+    doctor.add_argument(
+        "--bundle",
+        metavar="PATH",
+        nargs="?",
+        const="docket-diagnostics.tar.gz",
+        help="write a diagnostic bundle for a bug report (environment, ledger health, no bodies)",
+    )
     doctor.set_defaults(func=cmd_doctor)
 
     return parser

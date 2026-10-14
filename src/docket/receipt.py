@@ -149,6 +149,10 @@ def build_receipt(
     sign_key: str | Path | None = None,
     label: str | None = None,
     created_at: str | None = None,
+    breaker: Any | None = None,
+    limiter: Any | None = None,
+    injector: Any | None = None,
+    health: Any | None = None,
 ) -> dict[str, Any]:
     """Assemble a receipt from a finished session.
 
@@ -189,6 +193,42 @@ def build_receipt(
 
     session_start = next((e.data for e in events if e.type == ev.SESSION_START), {})
     session_end = next((e.data for e in events if e.type == ev.SESSION_END), {})
+
+    # -- evidence integrity: did the record survive the run? ---------------- #
+    # A receipt is a claim about a run. If the ledger could not be written while the run
+    # happened, the claim has a hole in it, and the hole belongs in the claim.
+    evidence: dict[str, Any] = {
+        "ledger_complete": not getattr(ledger, "unwritten", []),
+        "unwritten_events": len(getattr(ledger, "unwritten", [])),
+        "first_failing_seq": (ledger.unwritten[0]["seq"] if getattr(ledger, "unwritten", []) else None),
+        "write_failures": len(getattr(ledger, "unwritten", [])),
+        "fail_fast": bool(getattr(getattr(ledger, "guard", None), "fail_fast", False)),
+        "policy_limits": {
+            "max_events": getattr(ledger, "max_events", None),
+            "max_ledger_bytes": getattr(ledger, "max_bytes", None),
+        },
+        "note": (
+            "every event reached the ledger file"
+            if not getattr(ledger, "unwritten", [])
+            else "the ledger is an incomplete record; the chain will not verify past the first gap"
+        ),
+    }
+
+    # -- failure behaviour: what the boundary did under stress -------------- #
+    ops: dict[str, Any] = {
+        "circuit_breaker": breaker.snapshot() if breaker is not None else None,
+        "rate_limiter": limiter.snapshot() if limiter is not None and limiter.configured else None,
+        "health": health.to_dict() if health is not None else None,
+        "proxy": {
+            "model_calls": getattr(proxy_stats, "model_calls", None),
+            "model_errors": getattr(proxy_stats, "model_errors", None),
+            "denied": getattr(proxy_stats, "denied", None),
+        }
+        if proxy_stats is not None
+        else None,
+        "fault_injection": injector.snapshot() if injector is not None and injector.enabled else None,
+        "chaos_run": bool(injector is not None and injector.enabled),
+    }
 
     receipt: dict[str, Any] = {
         "format": FORMAT,
@@ -252,6 +292,8 @@ def build_receipt(
                 "embedded price_table to check this receipt without trusting docket."
             ),
         },
+        "evidence": evidence,
+        "ops": ops,
         "findings": findings,
         "limits_disclosure": policy.limits_disclosure(),
     }
