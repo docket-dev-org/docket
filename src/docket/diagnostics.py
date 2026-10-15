@@ -79,12 +79,19 @@ try:
     ledger.close()
 except Exception as exc:  # a close that raises would break every orderly shutdown
     closed_cleanly = f"{type(exc).__name__}: {exc}"
+first_unwritten = next((event for event in ledger.events if event.seq in {e["seq"] for e in ledger.unwritten}), None)
 print(json.dumps({
     "unwritten": len(ledger.unwritten),
     "first_error": (ledger.unwritten[0]["error"] if ledger.unwritten else None),
     "on_disk_bytes": target.stat().st_size,
     "chain_valid": ledger.chain_error() is None,
     "closed_cleanly": closed_cleanly,
+    # An event the disk refused is still an event in memory, with its own payload: the receipt
+    # built from this ledger has to be able to say *what* could not be recorded, not merely that
+    # something could not be. (A mutant that emptied `data` on this path passed the suite.)
+    "first_unwritten_data": (first_unwritten.data if first_unwritten is not None else None),
+    "recorded_events": len(ledger.events),
+    "recorded_with_data": len([event for event in ledger.events if event.data]),
 }))
 """
 

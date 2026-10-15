@@ -80,7 +80,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | monkey / gorilla | `docket game-day` kills the supervisor with SIGKILL mid-run and asserts what survives |
 | boundary-value | every cap: 0, 1, exactly at the limit, one over; every ceiling in `pricing`/`policy` |
 | equivalence partitioning | the fault grammar, the policy validators, the URL guards (loopback vs not, scheme by scheme) |
-| mutation | **partial** — see below |
+| mutation | `tools/mutate.py`: seeded single-site mutation of `canon.py`, `verify.py` and `ledger.py`, with every survivor classified — see *Mutation testing* |
 | static | `ruff check`, `ruff format --check`, `bandit -q -c pyproject.toml -r src tools` |
 | dynamic | `tools/fuzz.py`: six property-based targets, time-boxed, seeded and reproducible |
 | alpha / beta | **not applicable yet** — no release channel beyond the source tree |
@@ -125,13 +125,109 @@ with a named regression test in `test_fuzz_regressions.py` or the relevant file:
 | the conformance check | `spec/vectors` going stale after a policy change (the digest bound into every event) |
 | re-reading the spec against the implementation | `NaN`/`Infinity` are read by Python and rejected by `JSON.parse`: a request body carrying one became `502 docket internal error` in the run's own evidence, a ledger line carrying one was reported as "cannot be canonicalised" instead of "not JSON", and a hand-written `Infinity` on the last line claimed the torn-tail crash-recovery path |
 
+## Mutation testing
+
+`tools/mutate.py` changes **one** site per run and asks whether the suite notices. A site is a
+comparison operator, a boolean operator, a `not`, a boolean or small-integer constant, a
+`min`/`max` call, or any `return`, rewritten through `ast` and spliced back by character span. A
+mutant that the suite still passes is *survived*; a mutant the suite catches is *killed*. Timeouts
+are counted and reported separately, never as kills.
+
+```console
+$ python3 tools/mutate.py --file src/docket/verify.py --seed 42 --max-mutants 200 \
+      --json /tmp/verify.json --markdown /tmp/verify.md
+```
+
+Properties of the harness itself, because a mutation score is only as good as its tool:
+
+- **It falsifies itself first.** Splicing every site back verbatim must be a byte-for-byte
+  no-op (`splice_only`), and the unmutated sandbox must pass the whole subset before any mutant
+  runs. If either check fails, no score is printed.
+- **It mutates a copy**, one mutation at a time, restoring the file between runs.
+- **The subset is declared, not implied.** `TARGET_TESTS` names the test files that make claims
+  about each module. A survivor from a subset that does not cover the module's branches is an
+  artefact of the subset, not a gap: verify.py's first wide run reported 23 survivors, four of
+  them in the signing branch, and after `test_signing_and_attach.py` was added to the subset and
+  *no source was changed* it reported 2.
+- **Duplicate keys are not identities.** Two mutants at one line with the same operator (two
+  `False -> True` on a single line) are separate mutants: report and compare them as such.
+- **A survivor in a branch nothing can reach is not a gap.** Two of this round's survivors were
+  mutants of dead defensive code — a second `torn_tail is None` check under a guard that had
+  already returned, and an `events is None` check the reader cannot produce. They were deleted,
+  not tested: branch coverage by assertion is theatre. The same reasoning removed a `required`
+  parameter from `verify.section()` (all three call sites passed it) and an existence fallback
+  around `p.stat()` (the handle above it always creates the file).
+
+### The runs
+
+Seed, candidate count and subset are recorded per run; scores are not comparable across seeds
+because the sample differs, and the candidate count changes with the source.
+
+| module | candidates | run | killed | survived | timed out | score | wall clock | seed |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `src/docket/verify.py` | 95 | 95 | 94 | 1 | 0 | **98.9%** | 66 s | 42 |
+| `src/docket/canon.py` | 63 | 63 | 58 | 1 | 4 | **98.3%** ([^timeouts]) | 209 s | 42 |
+| `src/docket/ledger.py` | 171 | 171 | 143 | 28 | 0 | **83.6%** | 276 s | 11 |
+
+Started from 67.5% (canon + verify, 80-mutant sample, seed 3) and 50.0% (ledger, 70 of 153
+candidates, seed 11). The ledger number moved because the *tests* moved: the first run wrote no
+test for the lock file's contents, the byte accounting, the ceiling fields, `degraded()`, the
+repair path's sidecar naming, or the chain verdict's own silence.
+
+### Every survivor, classified
+
+A survivor is either a gap or an equivalent mutant. Each one is listed here with which it is and
+why; an equivalent mutant is not a defect and no test pretends otherwise.
+
+| site | mutant | verdict |
+| --- | --- | --- |
+| `verify.py:178` | `isinstance(value, bool) or value is None` → `and` | **equivalent.** `whole(True)` fails as a bool on one path and as the unparsable string `"True"` on the other, and `whole(None)` likewise; both routes record the same named failure with the same text. |
+| `canon.py:51` | `or` → `and` in the early return for bool/`None`/str | **equivalent.** The fallback at the end of `_normalise` returns those three types unchanged as well; the early return is a fast path, not a behaviour. |
+| `canon.py:139`, `canon.py:160` | `len(level) > 1` → `>=` and `1` → `0` in the `while` loop of `merkle_root` and of `merkle_proof` | **non-terminating, all four.** Each turns a one-node level into a level that is promoted to itself, so the tree never finishes. They exceed a 45 s per-mutant timeout (the same sites exceeded 120 s in an earlier run): reported as timeouts, never as kills, because a hang is not the suite noticing a wrong answer. |
+| `ledger.py:153,160,161,168` | `compare=False` → `True` on the clock, the two handles and the append lock | **equivalent.** Nothing compares two `Ledger` objects — the field option is declared so that a repr and a comparison cannot reach into a descriptor, and the *repr* half of the same declaration is killed by `test_the_repr_of_a_ledger_is_safe_to_put_in_a_log`. |
+| `ledger.py:168` | `init=False` → `True` on the append lock | **equivalent.** A lock passed to the constructor changes nothing; nothing constructs a ledger that way. |
+| `ledger.py:215` | `if size > 0` → `>=` | **equivalent.** For a zero-byte file the guarded block reads the file and extends the event list with nothing. |
+| `ledger.py:277` | `getattr(self._handle, "closed", False)` → default `True` | **equivalent.** The attribute exists on every file object a ledger can hold; the default is reachable only for an object that is not a file. |
+| `ledger.py:301` | `self.max_bytes or 0` → `or 1` | **equivalent (unreachable).** This expression is inside `LedgerFullError`, raised only when a ceiling is set, and `_room_for` never refuses when both ceilings are `None`. |
+| `ledger.py:365` | `__exit__` returning `False` → `None` | **equivalent.** The `with` statement tests truthiness; both let an exception through. |
+| `ledger.py:406` | the diagnostics skeleton's `trailing_newline: True` → `False` | **equivalent.** Every path that reads bytes overwrites it; it is readable only for a file that does not exist, where neither value is a claim about bytes. |
+| `ledger.py:628-646` | six mutants: the `and`/`not` of the stale-lock test, `unlink(missing_ok=True)` in both the stale branch and the release path, and the two `return`s of that branch | **unreachable here.** Those branches are the `else` of `fcntl is not None`, so on any platform with `flock` they cannot run at all; the POSIX equivalents are killed. `missing_ok=False` is additionally covered by the surrounding `contextlib.suppress(OSError)`. |
+| `ledger.py:664-672` | ten mutants in the Windows process-liveness probe (both `if not …` guards, both `return`s, the exit-code comparison, the `OpenProcess` arguments) | **unreachable here.** Exercised on Windows only, where the process table is asked directly — see *Windows* below. |
+| `ledger.py:680` | `except (ValueError, OverflowError)` → the two mutants of its `return False` | **unreachable on this kernel.** `os.kill` reports a pid no kernel would hand out as `ESRCH`, which is an `OSError` and is handled (and killed) by the branch above; this guard is for the platforms that raise `OverflowError` instead. |
+
+[^timeouts]: All four mutants in this family failed to terminate within the 45 s per-mutant
+    timeout. The score is over the 59 mutants that produced a verdict (63 candidates minus the
+    four timeouts); a timeout is reported beside the score, never folded into it.
+
+### What the round changed
+
+Writing the tests that kill a mutant is where the defects were:
+
+| found by | defect |
+| --- | --- |
+| a test for a surviving `return` | `quarantine_torn_tail` reported `performed: true` having moved **zero bytes** when the interrupted write had landed its partial line *with* a newline: the split took everything after the last newline, which is empty, and the ledger was left exactly as damaged as it was found — an operator's repair that repairs nothing, and says it worked. It now splits by the reader's own measurement of the torn tail. |
+| reading a survivor in a Windows branch | `_pid_alive` probed with `os.kill(pid, 0)`. On Windows Python's `os.kill` *is* `TerminateProcess`, so the liveness check for a stale lock would have **killed the process holding the lock** — the opposite of the check, with a blast radius that reaches another run. Windows now asks the process table (`OpenProcess`/`GetExitCodeProcess`) and answers "alive" when it cannot tell. |
+| a test for the diagnostics' shape | `read_with_diagnostics` promised "the same keys on every path" in a comment while the missing-file path returned nine of eleven: `healthy` and `chain_error` raised `KeyError` for a caller that had only ever seen a healthy ledger. |
+| a test for the ceiling's error | `LedgerFullError`'s byte ceiling collapsed to `0` under a mutated `or`, and the reported usage shifted under a mutated index, and nothing read either field. |
+| reading a ledger's repr | the repr carried a descriptor, a lock handle and a memory address into CI logs. |
+
+### Not claimed
+
+A mutation score is a statement about the mutants a tool generated, over one subset, at one
+commit. It says nothing about the defects no mutant represents: a missing feature, a wrong
+decision, an interface nobody needed. 83.6% on `ledger.py` with every survivor explained is not
+"the ledger is 83.6% correct"; it is "of 171 single-site changes to this file that this harness
+produced, 143 were caught by these tests, 28 are provably equivalent or unreachable here, and
+none is unaccounted for".
+
 ## Not covered, and why
 
-- **A full mutation score.** `tools/fuzz.py` mutates *inputs*; there is no mutation run that
-  mutates the *source* and measures how many mutants the suite kills. It is a real gap: the
-  suite is property-heavy by design, which usually means a good score, but "usually" is not a
-  measurement. A bounded, seeded mutation run over `canon.py` and `verify.py` is the next
-  piece of this, and until it exists no number is claimed here.
+- **A full mutation score over the whole source tree.** `tools/mutate.py` runs over three
+  modules — the two whose promises are cryptographic (`canon.py`, `verify.py`) and the one that
+  holds the evidence (`ledger.py`). The rest of `src/docket` is not mutated: a score for
+  `proxy.py` or `cli.py` would be a much larger run, and a number nobody has run is not a
+  number. What *has* been run, and what every survivor turned out to be, is in *Mutation
+  testing* below.
 - **Endurance and soak.** The longest run under test is seconds, not hours. Nothing in the
   design grows with wall-clock time — no caches, no unbounded buffers, the ledger is
   append-only and its ceiling is enforced — but that is an argument, not a measurement, and the
@@ -149,5 +245,8 @@ with a named regression test in `test_fuzz_regressions.py` or the relevant file:
 - **Accessibility beyond the terminal.** There is no GUI to test. The `NO_COLOR` path, the
   monochrome golden files and the markdown report are what "nothing is only conveyed by colour"
   means here.
-- **Windows.** The lock, the process-group kill and the file modes assume POSIX. `docket doctor`
-  says so rather than pretending otherwise.
+- **Windows.** There is no Windows in this environment or in CI, so nothing Windows-specific is
+  claimed: the `O_EXCL` lock fallback, the `OpenProcess` liveness probe and the process-group kill
+  are written, are the reason those code paths are marked `# pragma: no cover`, and have never
+  been executed here. The lock fallback's liveness probe killed a live process until this round
+  (see *Mutation testing*); a Windows contributor's first run is the one that will exercise it.

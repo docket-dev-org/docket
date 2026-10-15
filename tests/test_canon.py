@@ -8,10 +8,13 @@ cannot silently agree with itself.
 from __future__ import annotations
 
 import hashlib
+import json
+from decimal import Decimal
 
 import pytest
 
 from docket.canon import (
+    canonical_bytes,
     canonical_json,
     merkle_proof,
     merkle_root,
@@ -79,6 +82,89 @@ def test_num_helper_encodes_fractions_as_strings():
     assert num(800) == 800
     assert num(0.8) == "0.8"
     assert canonical_json({"warn_at": num(0.8)}) == '{"warn_at":"0.8"}'
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (Decimal("2.0"), 2),  # an integral Decimal is an integer, never "2.0"
+        (Decimal("0"), 0),
+        # One and a half is not an integer, so it stays a string — normalised, so "1.50" and
+        # "1.5" cannot both exist in a hashed structure. Money is a different question, and
+        # `usd()` is what fixes a money string's shape (two decimals, or six).
+        (Decimal("1.50"), "1.5"),
+        (Decimal("0.25"), "0.25"),
+        (Decimal("0.018000"), "0.018"),
+        ("1.5", "1.5"),  # a string is already encoded; `num` must not re-parse it
+        ("1200", "1200"),
+        (-3, -3),
+        (-0.5, "-0.5"),
+    ],
+)
+def test_num_helper_handles_every_input_shape_it_documents(value, expected):
+    """Every branch of `num` is a branch of *recording*, and `num` returning `None` would be a
+    fact turning into null inside a hashed event.
+
+    Found by `tools/mutate.py`: the string and `Decimal` branches could each be replaced by
+    `return None` without a test noticing, because the existing cases were floats and ints.
+    """
+    from docket.canon import num
+
+    encoded = num(value)
+    assert encoded == expected, f"num({value!r}) == {encoded!r}, expected {expected!r}"
+    assert type(encoded) is type(expected), f"num({value!r}) changed type to {type(encoded).__name__}"
+    # Whatever it returns has to be canonically encodable: that is `num`'s whole job.
+    assert json.loads(canonical_json({"v": encoded}))["v"] == expected
+
+
+def test_digest_of_is_the_digest_of_the_canonical_form():
+    """`digest_of` is the one-liner every other digest in the project sits on, and it had no test
+    of its own (found by `tools/mutate.py`: replacing its body with `return None` changed no
+    outcome in the suite). It is asserted against the composition it claims to be, in both
+    directions: the value, and the property that key order cannot change it."""
+    from docket.canon import digest_of
+
+    value = {"b": [1, 2, {"c": "x"}], "a": None}
+    assert digest_of(value) == sha256_hex(canonical_bytes(value))
+    assert digest_of({"a": None, "b": [1, 2, {"c": "x"}]}) == digest_of(value)
+    assert digest_of({"a": None, "b": [1, 2, {"c": "y"}]}) != digest_of(value)
+    assert digest_of({}) == sha256_hex(b"{}")
+    # A digest is lowercase hex of a 32-byte hash, never a repr or a prefixed string.
+    assert len(digest_of(value)) == 64 and digest_of(value) == digest_of(value).lower()
+
+
+@pytest.mark.parametrize("root", [None, 123, ["a" * 64], True, Decimal("1")])
+def test_a_merkle_root_that_is_not_a_hex_string_is_refused(root):
+    """The guard is `not isinstance(root, str) or not root`, and the two halves cover two
+    different lies: a root that is not a string at all, and a root that is an empty one. Only the
+    empty case was tested, so `or` -> `and` left a non-string root to fail later with an
+    `AttributeError` out of `.lower()` — a crash where the contract says `ValueError`.
+    """
+    from docket.canon import verify_merkle_proof
+
+    leaf = sha256_hex(b"leaf")
+    path = [{"side": "left", "hash": "b" * 64}]
+    with pytest.raises(ValueError):
+        verify_merkle_proof(leaf, path, root)
+
+
+def test_an_empty_merkle_root_is_refused_and_a_short_one_simply_does_not_prove():
+    """Two shapes of bad root, two different answers — and the difference is the contract.
+
+    An empty root is not a root, so it is a `ValueError` (the caller passed something that cannot
+    be one). A short-but-real hex string is a root that cannot match, so the answer is `False`:
+    "this does not prove" rather than "you called me wrong". Collapsing the two would make a
+    verifier that raises on a doctored receipt instead of reporting it.
+    """
+    from docket.canon import verify_merkle_proof
+
+    leaf = sha256_hex(b"leaf")
+    path = [{"side": "left", "hash": "b" * 64}]
+    with pytest.raises(ValueError, match="merkle root"):
+        verify_merkle_proof(leaf, path, "")
+    assert verify_merkle_proof(leaf, path, "0") is False
+    assert verify_merkle_proof(leaf, path, "0" * 64) is False
+    assert verify_merkle_proof(leaf, path, sha256_hex(b"not this leaf")) is False
 
 
 @pytest.mark.parametrize(

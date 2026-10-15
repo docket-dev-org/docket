@@ -257,6 +257,15 @@ def test_a_write_that_fails_degrades_the_record_visibly():
     assert facts["chain_valid"] is True, "the in-memory chain stays valid so a receipt can still be built"
     assert facts["closed_cleanly"] is True, "closing a ledger on a failing filesystem must not raise"
     assert facts["on_disk_bytes"] > 0
+    # An event the disk refused is still an event in memory, and it still carries its payload:
+    # the receipt built from a damaged ledger has to be able to say *what* was not recorded, not
+    # merely that something was not. `tools/mutate.py` emptied `data` on this path and no test
+    # disagreed, because the assertions were about counts rather than contents.
+    assert (
+        facts["recorded_with_data"] == facts["recorded_events"]
+    ), f"{facts['recorded_events'] - facts['recorded_with_data']} in-memory event(s) lost their data"
+    assert facts["first_unwritten_data"], "the first unwritten event must keep its payload"
+    assert facts["first_unwritten_data"]["padding"] == "x" * 200
 
 
 def test_a_ledger_may_not_be_a_symlink(tmp_path: Path):
@@ -368,3 +377,186 @@ def test_an_os_error_while_opening_surfaces_as_that_error(tmp_path: Path):
         _open_ledger_handle(directory)
     assert not isinstance(caught.value, NameError)
     assert caught.value.errno == errno.EISDIR
+
+
+# --------------------------------------------------------------------------- #
+# What the diagnostics do *not* claim
+# --------------------------------------------------------------------------- #
+
+
+def test_a_file_with_a_bad_line_gets_no_chain_verdict_and_no_event_count(tmp_path: Path):
+    """The chain check is a statement about a file that parsed. A file that did not has no
+    verdict to give, and saying "the chain is fine" (or "broken") about it would be the reader
+    inventing a finding. `tools/mutate.py` inverted this guard and no test noticed, because the
+    existing assertions stopped at `bad_lines` and `torn_tail`."""
+    path = tmp_path / "bad-middle.jsonl"
+    _write_chain(path, 3)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    lines[1] = "not json at all"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    _events, diagnostics = Ledger.read_with_diagnostics(path)
+    assert diagnostics["bad_lines"], "the damage is still reported"
+    assert diagnostics["chain_error"] is None, "no chain verdict for a file that did not parse"
+    assert diagnostics["events"] is None, "and no event count presented as if it were a total"
+    assert diagnostics["healthy"] is False
+
+    # The same for a torn tail: the prefix is readable, the file is not healthy, and the chain
+    # check has nothing to say about a file whose last line is half-written.
+    torn = tmp_path / "torn-guard.jsonl"
+    _write_chain(torn, 2)
+    with torn.open("a", encoding="utf-8") as handle:
+        handle.write('{"half": ')
+    _events, diagnostics = Ledger.read_with_diagnostics(torn)
+    assert diagnostics["torn_tail"] is not None
+    assert diagnostics["chain_error"] is None
+    assert diagnostics["events"] is None
+
+
+def test_an_unparsable_last_line_after_damage_is_corruption_not_a_crash(tmp_path: Path):
+    """A torn tail is the *only* explanation for the last line when nothing else is wrong.
+
+    With a bad line earlier in the file, the last line is no longer evidence of an interrupted
+    write: the file has been edited, and calling its last line "the write that was killed" would
+    offer the recovery path to a doctored ledger.
+    """
+    path = tmp_path / "bad-then-torn.jsonl"
+    _write_chain(path, 3)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    lines[1] = "not json at all"
+    lines.append('{"partial": tru')
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    _events, diagnostics = Ledger.read_with_diagnostics(path)
+    assert diagnostics["torn_tail"] is None, "damage earlier in the file rules out a torn write"
+    assert [entry["line"] for entry in diagnostics["bad_lines"]] == [2, 4]
+    assert diagnostics["healthy"] is False
+
+
+def test_a_file_that_is_not_utf8_says_so_including_where(tmp_path: Path):
+    """Nothing else can be said about a file that is not text, and the diagnostics say *that*.
+
+    The shape is fixed on every path — the same keys, with `recoverable_prefix` false and no
+    chain verdict — because a caller that reads three keys from a healthy file must not get a
+    surprise from a damaged one.
+    """
+    path = tmp_path / "not-text.jsonl"
+    _write_chain(path, 2)
+    with path.open("ab") as handle:
+        handle.write(b"\xff\xfe\x00garbage\n")
+    events, diagnostics = Ledger.read_with_diagnostics(path)
+    assert events == []
+    assert diagnostics["utf8"] is False
+    assert diagnostics["recoverable_prefix"] is False
+    assert diagnostics["chain_error"] is None
+    assert diagnostics["torn_tail"] is None
+    assert diagnostics["bad_lines"] == []
+    assert diagnostics["events"] is None
+    assert "not valid UTF-8" in diagnostics["error"]
+
+
+def test_reading_a_ledger_that_does_not_exist_is_a_diagnosis_not_an_exception(tmp_path: Path):
+    """A missing file is a *state* a caller asks about, and every key exists on this path too.
+
+    The defaults matter: reporting `1 byte` for a file that is not there would make a doctor
+    report lie, and a caller unpacking `(events, diagnostics)` must not get `None` back.
+    """
+    missing = tmp_path / "never-written.jsonl"
+    events, diagnostics = Ledger.read_with_diagnostics(missing)
+    assert events == []
+    assert diagnostics["error"] == "file does not exist"
+    assert (diagnostics["bytes"], diagnostics["lines"], diagnostics["events"]) == (0, 0, 0)
+    assert diagnostics["torn_tail"] is None and diagnostics["bad_lines"] == []
+    assert diagnostics["healthy"] is False
+    assert diagnostics["chain_error"] is None and diagnostics["recoverable_prefix"] is False
+
+
+# --------------------------------------------------------------------------- #
+# Quarantine: what it refuses, and what it reports
+# --------------------------------------------------------------------------- #
+
+
+def test_quarantine_refuses_a_file_that_is_not_utf8_and_says_so(tmp_path: Path):
+    path = tmp_path / "binary2.jsonl"
+    _write_chain(path, 2)
+    with path.open("ab") as handle:
+        handle.write(b"\xff\xfe\x00garbage\n")
+    before = path.read_bytes()
+    result = quarantine_torn_tail(path)
+    assert result.performed is False, "a refused recovery must not claim to have performed one"
+    assert "not UTF-8" in result.reason
+    assert path.read_bytes() == before
+    assert not list(tmp_path.glob("*.torn-*"))
+
+
+def test_a_quarantine_result_describes_itself_completely(tmp_path: Path):
+    """The result is printed by `docket doctor` and asserted by its tests, so its dictionary is
+    part of the interface: every field present, and the successful case reporting real numbers
+    rather than placeholders. `tools/mutate.py` replaced `to_dict` with `return None` and the
+    suite stayed green."""
+    healthy = tmp_path / "clean.jsonl"
+    _write_chain(healthy, 1)
+    refused = quarantine_torn_tail(healthy)
+    assert refused.to_dict() == {
+        "performed": False,
+        "reason": refused.reason,
+        "kept_bytes": 0,
+        "moved_bytes": 0,
+        "sidecar": None,
+    }
+
+    torn = tmp_path / "torn-result.jsonl"
+    _write_chain(torn, 2)
+    half_written = '{"partial": tru'
+    with torn.open("a", encoding="utf-8") as handle:
+        handle.write(half_written)
+    performed = quarantine_torn_tail(torn)
+    payload = performed.to_dict()
+    assert set(payload) == {"performed", "reason", "kept_bytes", "moved_bytes", "sidecar"}
+    assert payload["performed"] is True
+    assert payload["moved_bytes"] == len(half_written)
+    assert payload["kept_bytes"] > 0
+    assert payload["sidecar"] and Path(payload["sidecar"]).exists()
+    assert json.loads(json.dumps(payload)) == payload, "the report survives JSON"
+
+
+def test_every_diagnostics_path_returns_the_same_keys(tmp_path: Path):
+    """One shape, five states: healthy, empty, missing, torn, corrupt, not-UTF-8.
+
+    The module promises this in a comment, and it is the promise that makes the diagnostics usable
+    from a caller that only ever looked at a healthy file: `diagnostics["healthy"]` must not raise
+    `KeyError` because *this* ledger happens not to exist. Two of those keys were missing from the
+    missing-file path until a test looked.
+    """
+    states: dict[str, Path] = {}
+    healthy = tmp_path / "healthy-keys.jsonl"
+    _write_chain(healthy, 2)
+    states["healthy"] = healthy
+
+    empty = tmp_path / "empty-keys.jsonl"
+    empty.write_bytes(b"")
+    states["empty"] = empty
+
+    states["missing"] = tmp_path / "absent-keys.jsonl"
+
+    torn = tmp_path / "torn-keys.jsonl"
+    _write_chain(torn, 2)
+    with torn.open("a", encoding="utf-8") as handle:
+        handle.write('{"half": ')
+    states["torn"] = torn
+
+    corrupt = tmp_path / "corrupt-keys.jsonl"
+    _write_chain(corrupt, 2)
+    lines = corrupt.read_text(encoding="utf-8").splitlines()
+    lines[1] = "junk"
+    corrupt.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    states["corrupt"] = corrupt
+
+    binary = tmp_path / "binary-keys.jsonl"
+    binary.write_bytes(b"\xff\xfe\x00\n")
+    states["not-utf8"] = binary
+
+    key_sets = {name: set(Ledger.read_with_diagnostics(path)[1]) for name, path in states.items()}
+    shapes = set(map(frozenset, key_sets.values()))
+    assert len(shapes) == 1, {name: sorted(keys) for name, keys in key_sets.items()}
+    assert {"path", "bytes", "lines", "events", "torn_tail", "bad_lines", "healthy"} <= key_sets["healthy"]

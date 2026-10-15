@@ -45,11 +45,44 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   Several restores of one run are all kept. The run's ledger and receipt are never edited: they
   are historical observations, and appending to them after the fact would break the receipt's
   agreement with the ledger it cites. Dry runs write nothing.
+- **`tools/mutate.py`, and `make mutation`**: single-site source mutation — comparison and boolean
+  operators, `not`, boolean and small-integer constants, `min`/`max`, and any `return`, rewritten
+  through `ast` and spliced back by character span. One mutant per run against a declared test
+  subset, in a copy of the repository, with the harness falsifying itself first (splicing back
+  verbatim must be a byte-for-byte no-op, and the unmutated sandbox must pass before any mutant
+  runs). Current scores and every classified survivor: [`docs/testing.md`](docs/testing.md#mutation-testing).
 - **`make audit`**: `bandit` over `src/` and `tools/`, also a CI step. Every remaining class of
   finding is either fixed or has one written-down reason in `[tool.bandit]` (`"PASS"` as an
   output word, seeded `random`, list-argv `subprocess`); nothing is suppressed without a reason.
 
 ### Fixed
+
+- **`quarantine_torn_tail` could report a repair it had not performed.** When the interrupted
+  write had landed its partial line *together with* the newline that closed it — a flush that
+  half-succeeds, not only a `kill -9` — the repair split the file at the last newline, which is
+  empty in that shape: it reported `performed: true`, moved **zero bytes** and left the ledger
+  exactly as damaged as it found it. `docket doctor --quarantine-torn-tail` now splits by the
+  reader's own measurement of the torn tail (`torn_tail.bytes`, plus the newline when the file
+  has one), and `test_ledger_contracts.py` asserts the moved bytes, the sidecar's contents and
+  that the repaired file is healthy afterwards.
+- **The Windows lock's liveness probe killed live processes.** `_pid_alive` probed with
+  `os.kill(pid, 0)`, which is the POSIX idiom and, on Windows, is `TerminateProcess`: the check
+  for "is the stale lock's holder still running?" would have terminated that holder with exit
+  code 0. Windows now asks the process table through `OpenProcess`/`GetExitCodeProcess` and
+  answers "alive" whenever it cannot tell, because a lock is never stolen on a guess. No Windows
+  is available in this environment, so the branch is written, marked `# pragma: no cover`, and
+  named as untested in [`docs/testing.md`](docs/testing.md#not-covered-and-why).
+- **`read_with_diagnostics` returned eleven keys from a healthy file and nine from a missing
+  one.** `healthy` and `chain_error` were documented as present on every path and were absent
+  from the "file does not exist" path, so a caller that had only ever seen a healthy ledger got
+  a `KeyError` from a ledger that was not there. The key set is now built once, pessimistically,
+  and every path fills in what it learned; `test_every_diagnostics_path_returns_the_same_keys`
+  pins it across six states (healthy, empty, missing, torn, corrupt, not-UTF-8).
+- **A ledger's `repr` carried descriptors and a memory address.** `_handle`, `_lock_handle` and
+  the clock were dataclass fields with default reprs, so a ledger printed into a CI log or a
+  pasted traceback showed file descriptors, a lock handle and `<SteppedClock object at 0x7f...>`.
+  They are `repr=False` now; the repr shows the state that matters (path, events, ceilings, bytes
+  written, unwritable events).
 
 - **A document with `NaN` or `Infinity` in it was read by Docket and refused by every JavaScript
   verifier.** Those two tokens (and `-Infinity`) are a Python extension: RFC 8259 has no spelling

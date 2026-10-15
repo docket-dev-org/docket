@@ -145,15 +145,20 @@ class Ledger:
     """
 
     path: Path | None = None
-    clock: Callable[[], str] = _now_rfc3339
+    #: `repr=False` throughout for the plumbing: a ledger's repr ends up in CI logs and test
+    #: output, and descriptors, lock handles and the identity of the clock object are noise
+    #: there — worse, a `<SteppedClock object at 0x7f...>` in a log is a memory address in a
+    #: customer's paste. What the repr *should* show is the state: path, events, ceilings,
+    #: bytes written, and what could not be written.
+    clock: Callable[[], str] = field(default=_now_rfc3339, repr=False, compare=False)
     events: list[Event] = field(default_factory=list)
     guard: EvidenceGuard | None = None
     max_events: int | None = None
     max_bytes: int | None = DEFAULT_MAX_BYTES
     bytes_written: int = 0
     unwritten: list[dict[str, Any]] = field(default_factory=list)
-    _handle: Any = None
-    _lock_handle: Any = None
+    _handle: Any = field(default=None, repr=False, compare=False)
+    _lock_handle: Any = field(default=None, repr=False, compare=False)
     #: Serialises `append` *within* this process. Not an optimisation: the boundary is a
     #: `ThreadingHTTPServer`, so parallel model calls are parallel `append` calls, and the
     #: sequence number, `prev` link, hash and file write have to happen as one step or the file
@@ -201,7 +206,11 @@ class Ledger:
             max_bytes=max_bytes,
             _lock_handle=lock_handle,
         )
-        size = p.stat().st_size if p.exists() else 0
+        # The handle above created the file if it was not there (``O_CREAT``), so the ledger is
+        # now exactly the file it will append to and there is nothing to fall back to: a
+        # "the path disappeared" branch here would be dead code that a mutation run reports as a
+        # survivor, because nothing can reach it to notice.
+        size = p.stat().st_size
         ledger.bytes_written = size
         if size > 0:
             # Resuming an existing ledger means continuing *its* chain. Starting a second
@@ -382,6 +391,11 @@ class Ledger:
         and *non-UTF-8 bytes* usually mean the file is not a ledger at all.
         """
         target = Path(path)
+        # Every key is present from the start, with the pessimistic value, and each path below
+        # overwrites only what it learned. The shape is then identical on every path — a caller
+        # that reads `diagnostics["healthy"]` from a file that parses must not get a `KeyError`
+        # from a file that does not exist. (Found by a test for exactly that promise: the
+        # missing-file path returned nine keys where the healthy path returned eleven.)
         diagnostics: dict[str, Any] = {
             "path": str(target),
             "bytes": 0,
@@ -391,28 +405,29 @@ class Ledger:
             "bad_lines": [],
             "trailing_newline": True,
             "utf8": True,
+            "chain_error": None,
+            "recoverable_prefix": False,
+            "healthy": False,
+            #: Set only when reading failed for a reason that has a sentence of its own. Present
+            #: always, so a caller can print it without asking whether this path has it.
+            "error": None,
         }
         events: list[Event] = []
         if not target.exists():
             diagnostics["error"] = "file does not exist"
-            return events, diagnostics
+            return events, diagnostics  # `healthy` stays False: nothing was read
         raw = target.read_bytes()
         diagnostics["bytes"] = len(raw)
         diagnostics["trailing_newline"] = raw.endswith(b"\n") or raw == b""
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError as exc:
-            # The diagnostics shape is the same on every path: a caller that reads three
-            # keys from a healthy file must not get a KeyError from a damaged one. The
-            # whole point of this method is that damage is *reported*, never surprising.
+            # The whole point of this method is that damage is *reported*, never surprising:
+            # the key set is identical on every path (see the skeleton above), so a caller that
+            # reads three keys from a healthy file reads the same three from this one.
             diagnostics["utf8"] = False
             diagnostics["error"] = f"not valid UTF-8 at byte {exc.start}: {exc.reason}"
-            diagnostics["healthy"] = False
             diagnostics["events"] = None
-            diagnostics["chain_error"] = None
-            diagnostics["torn_tail"] = None
-            diagnostics["bad_lines"] = []
-            diagnostics["recoverable_prefix"] = False
             return events, diagnostics
 
         lines = text.split("\n")
@@ -631,10 +646,37 @@ def _release_lock(handle: Any, path: Path | None) -> None:
             path.with_suffix(path.suffix + ".lock").unlink(missing_ok=True)
 
 
-def _pid_alive(pid: int) -> bool:  # pragma: no cover - Windows path
+def _pid_alive(pid: int) -> bool:
+    """Is `pid` a live process, as far as this platform can tell us?
+
+    Reaching for the POSIX idiom on Windows would be worse than useless: Python's `os.kill` there
+    *is* `TerminateProcess`, so `os.kill(pid, 0)` does not probe the holder of a lock — it kills
+    it, silently, with exit code 0, which is precisely the blast radius this check exists to
+    avoid. Windows therefore asks the process table directly and answers "alive" whenever it
+    cannot tell, because a lock is never stolen on a guess.
+    """
+    if os.name == "nt":  # pragma: no cover - exercised on Windows only
+        import ctypes
+        from ctypes import wintypes
+
+        process_query_limited_information = 0x1000
+        still_active = 259
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = kernel32.OpenProcess(process_query_limited_information, False, wintypes.DWORD(pid))
+        if not handle:
+            return False  # no such process, or not one this user may ask about
+        try:
+            code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return True
+            return code.value == still_active
+        finally:
+            kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except OSError:
+        return False
+    except (ValueError, OverflowError):  # a pid no kernel would have handed out
         return False
     return True
 
@@ -673,9 +715,9 @@ def quarantine_torn_tail(path: str | os.PathLike[str], *, now: str | None = None
     before the truncate) and the operation is described in the returned result.
     """
     target = Path(path)
-    events, diagnostics = Ledger.read_with_diagnostics(target)
-    if events is None:  # pragma: no cover - defensive
-        return QuarantineResult(False, "unreadable ledger")
+    if not target.exists():
+        return QuarantineResult(False, f"nothing to do: {target} does not exist")
+    _events, diagnostics = Ledger.read_with_diagnostics(target)  # the repair works from the diagnosis
     if diagnostics.get("bad_lines"):
         return QuarantineResult(
             False,
@@ -683,21 +725,24 @@ def quarantine_torn_tail(path: str | os.PathLike[str], *, now: str | None = None
             f"line {diagnostics['bad_lines'][0]['line']} is not valid JSON, which indicates tampering "
             "or corruption rather than an interrupted write. Preserve it as evidence.",
         )
-    if not diagnostics.get("utf8", True):
+    if not diagnostics["utf8"]:
+        # Every path returns the same key set (see `read_with_diagnostics`), so this is a direct
+        # read rather than a `.get` with a default that could disagree with the other paths.
         return QuarantineResult(False, f"refusing to modify a file that is not UTF-8: {diagnostics.get('error')}")
     if not diagnostics.get("torn_tail"):
         return QuarantineResult(False, "nothing to do: the ledger parses cleanly")
-    if diagnostics["torn_tail"] and diagnostics["bad_lines"] == []:
-        pass
     raw = target.read_bytes()
-    # Split on bytes so the moved blob is byte-identical to what was on disk.
-    if raw.endswith(b"\n"):
-        # A trailing newline with an unparsable last line: move that whole line.
-        head, _, tail = raw.rpartition(b"\n")
-        head += b"\n"
-    else:
-        head, _, tail = raw.rpartition(b"\n")
-        head += b"\n" if head else b""
+    # Split on bytes so the moved blob is byte-identical to what was on disk, and split *by the
+    # reader's own measurement* rather than by looking for the last newline. A killed writer can
+    # land a partial line together with the newline that closed it, and `rpartition(b"\n")` finds
+    # an empty tail there: the repair then reported success having moved zero bytes and left the
+    # file exactly as damaged as it found it. `torn_tail` already located the damage; use it.
+    # The guard above admits exactly one state past this point, and `mypy`-free Python has no other
+    # way to say so: no defensive re-check, because a branch nothing can reach is a branch nothing
+    # can test — and a mutation run then reports it as a survivor, which it is not.
+    leaf = diagnostics["torn_tail"]
+    broken = int(leaf["bytes"]) + (1 if diagnostics["trailing_newline"] else 0)
+    head, tail = raw[: len(raw) - broken], raw[len(raw) - broken :]
     # One sidecar per recovery, created exclusively: appending to an existing sidecar
     # would mix two recoveries into one file, and overwriting one would destroy evidence
     # that an operator is entitled to keep.

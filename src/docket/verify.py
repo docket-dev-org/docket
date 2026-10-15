@@ -85,18 +85,36 @@ def _amount(value: Any) -> Decimal:
 
     ``Decimal(True)`` is 1 and ``Decimal(float('nan'))`` is a trap, so booleans, floats
     and non-numeric strings are rejected here rather than silently coerced.
+
+    Every refusal is a ``ValueError``. An unparsable string used to leave
+    ``decimal.InvalidOperation`` to escape — which the one call site happens to catch, so it
+    was invisible, but a helper whose contract is "raise ValueError for a non-amount" should
+    not leak a second exception family depending on which *kind* of non-amount arrived. A
+    ``Decimal`` is accepted because it is already exact and is the type this returns; a
+    non-finite one is refused, because a NaN total compares false against everything and
+    would be reported as a mismatch rather than as the junk it is.
     """
     if isinstance(value, bool) or value is None:
         raise ValueError(f"not an amount: {value!r}")
     if isinstance(value, float):
         raise ValueError(f"amounts must not be floats: {value!r}")
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise ValueError(f"not a finite amount: {value!r}")
+        return value
     if isinstance(value, int):
         return Decimal(value)
     if isinstance(value, str):
         text = value.strip()
         if not text:
             raise ValueError("empty amount")
-        return Decimal(text)
+        try:
+            parsed = Decimal(text)
+        except InvalidOperation as exc:
+            raise ValueError(f"not an amount: {value!r}") from exc
+        if not parsed.is_finite():
+            raise ValueError(f"not a finite amount: {value!r}")
+        return parsed
     raise ValueError(f"not an amount: {value!r} ({type(value).__name__})")
 
 
@@ -130,7 +148,7 @@ def verify_receipt(
         if status == "fail":
             failures.append(f"{name}: {detail}")
 
-    def section(name: str, *, required: bool = False) -> dict[str, Any]:
+    def section(name: str) -> dict[str, Any]:
         """A named member as an object, or ``{}`` plus a stated failure when it is not one.
 
         Every member of a receipt is written by nobody the verifier trusts, and the members the
@@ -139,11 +157,16 @@ def verify_receipt(
         ``AttributeError`` out of a verifier), every read goes through here: a member that is the
         wrong shape becomes a named failure once, and the checks that depend on it report on an
         empty object rather than crashing.
+
+        There is no "optional" variant: a member this verifier reads and a receipt does not carry
+        is a *failure*, because the alternative — reporting nothing and returning ``{}`` — makes a
+        stripped receipt look like a receipt that passed. Callers that can legitimately be absent
+        (the seal, the signature, the appendix) read ``receipt.get(...)`` directly and say so in
+        the check they record.
         """
         value = receipt.get(name)
         if value is None:
-            if required:
-                add("receipt-shape", "fail", f"the receipt has no {name!r} member")
+            add("receipt-shape", "fail", f"the receipt has no {name!r} member")
             return {}
         if isinstance(value, dict):
             return value
@@ -200,7 +223,7 @@ def verify_receipt(
     events = list(ledger_events) if ledger_events is not None else None
     if events is None and ledger_path is not None:
         events = Ledger.read(ledger_path)
-    ledger_meta = section("ledger", required=True)
+    ledger_meta = section("ledger")
     if events is None:
         add(
             "ledger-chain",
@@ -412,7 +435,7 @@ def verify_receipt(
                 )
 
     # -- 5. cost recomputation -------------------------------------------- #
-    price_doc = section("price_table", required=True).get("document")
+    price_doc = section("price_table").get("document")
     if not appendix_ok:
         add(
             "cost-recomputation",
@@ -464,7 +487,7 @@ def verify_receipt(
             else:
                 add("cost-recomputation", "pass", f"{recomputed['calls']} calls recomputed from token counts")
 
-            totals = section("totals", required=True)
+            totals = section("totals")
             declared_raw = totals.get("cost_usd", "0.00")
             try:
                 declared = _amount(declared_raw)
