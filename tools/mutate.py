@@ -28,6 +28,23 @@ Design decisions worth knowing before reading a number from this tool:
   string constants only behind ``--include-strings`` (message text is often intentionally
   unasserted). A mutation score is a floor on test strength, not a certificate.
 
+Reading a score, in the order the mistakes actually happen. A survivor is a *question*, not a
+finding, and there are three wrong answers before the right one:
+
+1. **The subset was too small.** A survivor in a branch the subset never runs is an artefact of
+   the run. Widen ``TARGET_TESTS`` and change nothing else: if the score moves, it was the subset.
+2. **The branch cannot be reached.** A mutant of defensive code that nothing can execute survives
+   by construction. The answer is to delete the dead branch, not to write a test that pretends to
+   cover it — see ``docs/testing.md``.
+3. **The mutant is equivalent.** It changes the text and not the behaviour. Then the *reason* is
+   written down beside the other survivors, because an unexplained survivor and a known-equivalent
+   survivor look identical in a report.
+
+Only what remains is a gap: a real behaviour change the suite did not notice. The ledger's first
+sweep scored 50.0% over a 70-mutant sample and most of its 35 survivors turned out to be gaps of
+exactly that kind; the second, after the tests those survivors asked for, scored 83.6% with every
+one of its 28 remaining survivors classified.
+
 Usage::
 
     python tools/mutate.py                          # canon.py and verify.py, time-boxed
