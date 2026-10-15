@@ -106,6 +106,12 @@ DEFAULT_TESTS: dict[str, list[str]] = {
     "src/docket/supervisor.py": ["tests/test_supervisor.py", "tests/test_invariants.py"],
     "src/docket/scriptagent.py": ["tests/test_invariants.py", "tests/test_chaos.py"],
     "src/docket/util.py": ["tests/test_url_guards.py", "tests/test_cli_input.py"],
+    # The load driver's whole job is counting correctly and classifying refusals, so its tests are
+    # the only thing that can kill a mutant in those counters.
+    "src/docket/loaddriver.py": ["tests/test_loadtest.py"],
+    # `RateLimiter`'s validation mutants are reachable only from the parametrised refusals in
+    # `test_resilience.py`; the breaker and fault-injection code in the same file has its own file.
+    "src/docket/resilience.py": ["tests/test_resilience.py", "tests/test_proxy.py", "tests/test_chaos.py"],
     "src/docket/policy.py": ["tests/test_policy.py", "tests/test_cli_input.py"],
     "src/docket/pricing.py": ["tests/test_pricing.py"],
 }

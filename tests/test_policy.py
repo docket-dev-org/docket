@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 
 import pytest
@@ -114,3 +115,31 @@ def test_default_toml_round_trips(tmp_path):
     assert policy.name == "rt"
     assert policy.caps.max_usd == Decimal("7.50")
     assert policy.digest() == Policy(name="rt", caps=Caps(max_usd=Decimal("7.50"))).digest()
+
+
+# --------------------------------------------------------------------------- #
+# The refusal reader
+# --------------------------------------------------------------------------- #
+
+
+def test_denial_code_reads_only_the_boundary_s_own_envelope():
+    """The one place two clients agree about what "Docket refused this" means.
+
+    A relayed provider error is not a refusal, however much it looks like one: the boundary
+    forwards upstream bodies verbatim, and providers use ``error.code`` for their own codes. The
+    envelope's ``type`` is what identifies the author.
+    """
+    from docket.policy import DENIAL_TYPE, denial_code
+
+    assert denial_code({"error": {"type": DENIAL_TYPE, "code": "max_usd"}}) == "max_usd"
+    assert denial_code(json.dumps({"error": {"type": DENIAL_TYPE, "code": "rate_limited"}})) == "rate_limited"
+    # A provider's own 401 body, relayed unchanged: an error, not a refusal.
+    assert denial_code({"error": {"code": "invalid_api_key", "type": "invalid_request_error"}}) == ""
+    # A Docket-shaped envelope with no code, a code that is not a string, and junk of every kind.
+    assert denial_code({"error": {"type": DENIAL_TYPE}}) == ""
+    assert denial_code({"error": {"type": DENIAL_TYPE, "code": 42}}) == ""
+    assert denial_code(b'{"error": {"type": "' + DENIAL_TYPE.encode() + b'", "code": "max_tokens"}}') == "max_tokens"
+    assert denial_code(b"not json at all") == ""
+    assert denial_code(None) == ""
+    assert denial_code([]) == ""
+    assert denial_code(b"") == ""

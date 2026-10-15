@@ -47,7 +47,7 @@ from urllib.parse import urlsplit
 from . import events as ev
 from .canon import digest_of, num, usd
 from .ledger import Ledger, LedgerFullError
-from .policy import Policy
+from .policy import DENIAL_TYPE, Policy
 from .pricing import CostMeter, PriceTable, estimate_tokens_from_text
 from .resilience import (
     CircuitBreaker,
@@ -148,9 +148,6 @@ def _json_depth_exceeded(blob: bytes) -> bool:
             depth = max(0, depth - 1)
     del _json
     return False
-
-
-DENIAL_TYPE = "docket_policy_denied"
 
 
 @dataclass

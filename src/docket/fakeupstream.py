@@ -112,9 +112,18 @@ class FakeUpstream:
                 anthropic = "/messages" in self.path
                 model = body.get("model") or step.model
                 if step.status != 200:
-                    payload = json.dumps(
-                        {"error": {"type": "overloaded_error", "message": "scripted upstream error"}}
-                    ).encode()
+                    # A scripted error can carry a *provider-shaped* body, which is not a
+                    # decoration: providers put their own codes in `error.code`, and the
+                    # difference between "the provider rejected this" and "Docket refused this"
+                    # is exactly what a client has to get right (see `policy.denial_code`).
+                    if step.raw_body is not None:
+                        payload = step.raw_body
+                    elif step.body_override is not None:
+                        payload = json.dumps(step.body_override, ensure_ascii=False).encode("utf-8")
+                    else:
+                        payload = json.dumps(
+                            {"error": {"type": "overloaded_error", "message": "scripted upstream error"}}
+                        ).encode()
                     self.send_response(step.status)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Content-Length", str(len(payload)))

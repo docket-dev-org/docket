@@ -26,6 +26,13 @@ venv/
 mutation-report.json
 mutation-report.md
 
+# load and soak measurements (regenerate with `make load` / `make soak`)
+load-report.json
+load-report.md
+soak-report.json
+soak-report.md
+.docket-soak/
+
 # editors / OS
 .vscode/
 .idea/

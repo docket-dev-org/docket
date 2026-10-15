@@ -46,6 +46,7 @@ worse than one that fails predictably. What each one is for:
 
 from __future__ import annotations
 
+import math
 import random
 import threading
 import time
@@ -194,6 +195,45 @@ class CircuitBreaker:
             return any(state.state == OPEN for state in self._states.values())
 
 
+def _rate(value: object, *, what: str) -> float:
+    """A positive, finite rate as a ``float``, or a ``ValueError`` naming what was given.
+
+    Coercion is deliberate: ``Decimal("0.5")`` is a reasonable thing to configure and the policy
+    loader hands Decimals to this class, so refusing the type would be pedantry. What is *not*
+    acceptable is where the failure used to happen — ``elapsed * self.per_second`` raised
+    ``TypeError: float * Decimal`` inside a request, which surfaced as an HTTP 502 in the middle of
+    a run. A configuration mistake must be a ``ValueError`` at construction, before the first call.
+    ``nan`` and ``inf`` are refused for the sharper reason that launched this check: every
+    comparison against ``nan`` is false, so a ``nan`` rate silently *disables* the limiter — the
+    single failure class this project exists to make impossible.
+    """
+    if isinstance(value, bool):
+        raise ValueError(f"{what} must be a number, not a bool: {value!r}")
+    try:
+        number = float(value)  # type: ignore[arg-type] - anything with __float__, checked next
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{what} must be a number, not {type(value).__name__}: {value!r}") from exc
+    if not math.isfinite(number) or number <= 0:
+        raise ValueError(f"{what} must be positive and finite, not {value!r}")
+    return number
+
+
+def _count(value: object, *, what: str, minimum: int = 1) -> int:
+    """A whole number of at least ``minimum``, or a ``ValueError`` naming what was given."""
+    if isinstance(value, bool):
+        raise ValueError(f"{what} must be a whole number, not a bool: {value!r}")
+    try:
+        number = int(value)  # type: ignore[arg-type]
+        exact = float(value) == number  # type: ignore[arg-type] - rejects 2.5, accepts "2"
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{what} must be a whole number, not {type(value).__name__}: {value!r}") from exc
+    if not exact:
+        raise ValueError(f"{what} must be a whole number, not {value!r}")
+    if number < minimum:
+        raise ValueError(f"{what} must be at least {minimum}, not {value!r}")
+    return number
+
+
 def _seconds(value: float) -> int | str:
     """Seconds for a hashed structure: integers stay integers (no floats, §3.3)."""
     from .canon import num
@@ -223,13 +263,15 @@ class RateLimiter:
         burst: int | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        if per_second is not None and per_second <= 0:
-            raise ValueError("per_second must be positive")
-        if per_minute is not None and per_minute < 1:
-            raise ValueError("per_minute must be at least 1")
-        self.per_second = per_second
-        self.per_minute = per_minute
-        self.capacity = float(burst if burst is not None else (per_second or 1.0))
+        self.per_second = None if per_second is None else _rate(per_second, what="per_second")
+        self.per_minute = None if per_minute is None else _count(per_minute, what="per_minute")
+        if burst is None:
+            # Default capacity is one second of steady traffic — the shape the docs promise.
+            self.capacity = self.per_second if self.per_second is not None else 1.0
+        else:
+            # A burst of zero would refuse every call forever, which is a way of switching a
+            # limiter on in order to switch a service off; leave the limiter unset instead.
+            self.capacity = float(_count(burst, what="burst"))
         self.clock = clock
         self._tokens = self.capacity
         self._last = clock()

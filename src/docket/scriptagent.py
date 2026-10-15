@@ -49,6 +49,7 @@ import urllib.request
 from typing import Any
 
 from .canon import num
+from .policy import denial_code
 from .util import http_url, local_http_url
 
 DEFAULT_PROMPT = "Summarise the failing test and propose the smallest fix."
@@ -102,10 +103,9 @@ def _one_call(base: str, model: str, prompt: str, timeout: float) -> tuple[int, 
             response.read()
             return response.status, "", None
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", "replace")
-        code = ""
-        with contextlib.suppress(json.JSONDecodeError, KeyError, TypeError):
-            code = json.loads(detail)["error"].get("code") or ""
+        # One reader for "the boundary refused this", shared with the load driver: the two clients
+        # have to agree about what a refusal is, and the boundary relays provider errors verbatim.
+        code = denial_code(exc.read())
         return exc.code, code, _retry_after(exc)
     except Exception as exc:  # noqa: BLE001 - the boundary can fail in interesting ways
         return 0, f"{type(exc).__name__}: {exc}", None

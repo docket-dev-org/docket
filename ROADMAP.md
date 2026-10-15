@@ -39,6 +39,17 @@ is deliberately refused with a reason. The short version, as of this commit:
       purpose — and none of them executed, because no container runtime exists here
 - [x] an invariant suite: one writer per ledger, 200 events from 8 threads, a replayed call recorded
       twice, a killed agent, a clock that lies
+- [x] **load and endurance measured, not estimated**: `make load` (2,000 calls over 8 threads →
+      175.93 calls/s, client p50 44 ms) and `make soak` (12,002 calls paced over ten minutes, 0 drops,
+      receipt still verifying), with the boundary's memory measured at ≈1.1 KiB per recorded event —
+      and a control run at half the duration showing the same per-event cost, so the growth is the
+      event list rather than a leak. Reports in
+      [`docs/measurements/2026-10-15-2core/`](docs/measurements/2026-10-15-2core/README.md); the
+      harness refuses to call a run evidence when the client's count and the ledger disagree
+- [x] `policy.denial_code`: one reader for "the boundary refused this", shared by the reference agent
+      and the load driver, which fixed a real defect (a provider's own `error.code` was being read as
+      a Docket refusal) and closed a 502 in `RateLimiter` (a `Decimal` rate used to fail inside the
+      request; `nan` silently disabled the limiter)
 
 ## 0.2 — make it easy to adopt — *target: 6 weeks*
 

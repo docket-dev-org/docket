@@ -322,6 +322,7 @@ no network, ~90 s).
 | [Integrations](docs/integrations.md) | Claude Code, Codex, Gemini CLI, opencode, aider, SDKs, HTTP |
 | [Threat model and limits](docs/threat-model.md) | what Docket does not defend against |
 | [Testing](docs/testing.md) | what is tested, by kind, and what is deliberately not |
+| [Measurements](docs/measurements/2026-10-15-2core/README.md) | throughput, client latency and memory from three real runs, with the host and the limits stated |
 | [Resilience](docs/resilience.md) | breakers, throttles, timeouts, caps, the evidence guard — and what each one records |
 | [Deployment](docs/deployment.md) | containers, pods, the Helm chart, and what the deploy check does and does not prove |
 | [Production coverage](docs/production-coverage.md) | ~110 production-engineering concepts, each with what exists here and where |

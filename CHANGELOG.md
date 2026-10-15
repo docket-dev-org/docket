@@ -10,6 +10,22 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **A load point and a soak, as real supervised runs** (`python -m docket.loaddriver`,
+  `tools/loadtest.py`, `make load`, `make soak`). The driver is a supervised child like any other
+  agent: it goes through `DOCKET_PROXY_URL`, so every call it makes is metered, capped, recorded
+  and verifiable afterwards, and a load generator that talked to a provider directly would be
+  measuring something else. It separates *refusals* (the boundary enforcing a limit, with the code
+  it sent) from *errors*, paces itself to a target rate so an endurance run lasts the whole window,
+  and summarises client latency with the receipt's own nearest-rank rule. The orchestrator starts a
+  scripted provider as a service, runs `docket run`, samples the supervisor's RSS once a second
+  (plus `VmHWM` for the peak a sample can miss), then reads the receipt and the ledger back and
+  **refuses to call the run usable as evidence** if the client's count and the ledger's rows
+  disagree, if any response row lacks a latency, or if the receipt no longer verifies. `make load`
+  and `make soak` are opt-in targets: a shared CI runner's throughput would be a fact about the
+  runner, so CI runs this harness's tests instead.
+- **`docs/testing.md` states the measured numbers** — throughput, client-latency percentiles and
+  memory over ten minutes, with the host, the exact commands and the two things the measurement
+  cannot support (a provider's latency, and any claim about another machine).
 - **Snapshots and rollback** (`--snapshot`, `--rollback-on-breach`, `docket restore`): a
   content-addressed copy of the watched tree's *contents*, taken before the agent starts, with
   a manifest of path, digest, size, mode and mtime (`docket/snapshot/v1`). A breached run
@@ -126,6 +142,22 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Fixed
 
+- **`RateLimiter` accepted numbers it could not honour, and failed inside a request.**
+  `RateLimiter(per_second=Decimal("0.5"))` — which is exactly what the policy loader produces —
+  passed construction and then raised `TypeError: float * Decimal` on the first call, surfacing as
+  an HTTP 502 in the middle of a run. Worse, `per_second=float("nan")` was accepted and *silently
+  disabled the limiter*: every comparison against NaN is false, so `tokens < 1.0` was never true
+  and every call was allowed. `per_second`, `per_minute` and `burst` are now coerced and validated
+  at construction (positive, finite, whole where a count is meant) with a `ValueError` naming the
+  value and the type; a `burst` of zero is refused rather than becoming a limiter that refuses
+  everything forever.
+- **A provider's error code was read as a Docket refusal.** The reference agent took any
+  `error.code` from a non-2xx body as the boundary's refusal code, but the boundary relays upstream
+  error bodies verbatim and providers use `error.code` for their own codes (`invalid_api_key`):
+  a rejected credential would have been recorded as the boundary enforcing a limit, and the agent
+  would have backed off politely instead of surfacing a broken key. There is now one reader
+  (`policy.denial_code`) that identifies a refusal by the envelope's `type` and nothing else, used
+  by both the reference agent and the load driver so the two cannot drift.
 - **`docket init` emitted a policy pointing at a document that did not exist** (`docs/resilience.md`),
   and `deploy/` would have shipped referencing two more. `references.resolve` now fails the deploy
   check on any referenced path that is missing, and the link is real.

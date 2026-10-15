@@ -34,6 +34,7 @@ See ``docs/threat-model.md``.
 from __future__ import annotations
 
 import fnmatch
+import json
 import tomllib
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
@@ -66,6 +67,39 @@ DEFAULT_EGRESS_ALLOW = [
     "localhost",
     "127.0.0.1",
 ]
+
+
+#: The ``error.type`` the boundary stamps on every refusal it makes itself. A client telling a
+#: refusal apart from a *provider's* error has to use this: the boundary relays upstream error
+#: bodies verbatim — that is the honest thing to do — and providers put their own codes in
+#: ``error.code`` too, so the type, not the status, is what identifies Docket as the author.
+DENIAL_TYPE = "docket_policy_denied"
+
+
+def denial_code(body: bytes | bytearray | str | object) -> str:
+    """The code of a Docket *refusal*, or ``""`` when this payload is not one.
+
+    One reader, two clients: the reference agent and the load driver both have to answer "was the
+    boundary enforcing a limit, or did something break?", and if they answered it differently the
+    same run would be described two ways — one of them wrong. Returns the code the boundary put in
+    the envelope (``max_usd``, ``max_model_calls``, ``max_tokens``, ``model_policy``,
+    ``rate_limited``, …), or an empty string for anything else: a relayed provider error, a
+    malformed body, a payload that is not JSON at all.
+    """
+    if isinstance(body, bytes | bytearray):
+        body = bytes(body).decode("utf-8", "replace")
+    if isinstance(body, str):
+        try:
+            body = json.loads(body)
+        except ValueError:
+            return ""
+    if not isinstance(body, dict):
+        return ""
+    error = body.get("error")
+    if not isinstance(error, dict) or error.get("type") != DENIAL_TYPE:
+        return ""
+    code = error.get("code")
+    return code if isinstance(code, str) else ""
 
 
 @dataclass

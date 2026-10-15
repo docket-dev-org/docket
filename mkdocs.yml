@@ -84,6 +84,10 @@ nav:
   - Project:
       - Architecture: docs/architecture.md
       - Testing: docs/testing.md
+      - Measurements (one host, 2026-10-15): docs/measurements/2026-10-15-2core/README.md
+      - Resilience: docs/resilience.md
+      - Deployment: docs/deployment.md
+      - Production coverage: docs/production-coverage.md
       - Comparison: docs/comparison.md
       - Roadmap: ROADMAP.md
       - Governance: GOVERNANCE.md

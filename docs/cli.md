@@ -299,6 +299,73 @@ directory writability, price table load, optional signing support. First line of
 
 ---
 
+## Other entry points
+
+There are three ways to run Docket's own components without `docket run` driving them, and they are
+documented here because the CLI is not the whole tool. All three are modules in the shipped package,
+so they are present wherever `docket` is installed.
+
+### `python -m docket.scriptagent` — the reference agent
+
+The bounded agent the demo, the game day and `make demo` use. It reads its boundary from
+`DOCKET_PROXY_URL` (set by the supervisor), so it refuses to run unsupervised with exit `2`.
+
+| variable | meaning |
+| --- | --- |
+| `DOCKET_AGENT_CALLS` | how many model calls to make (default 6) |
+| `DOCKET_AGENT_MODE` | `bounded`, `runaway` (never stops) or `backoff` (honours `Retry-After` with full jitter) |
+| `DOCKET_AGENT_MAX_SLEEP` | ceiling for a backoff sleep, in seconds (default 5) |
+| `DOCKET_AGENT_SEED` | seed for the jitter, so a backoff sequence is reproducible |
+| `DOCKET_AGENT_MODEL` | model name to ask for |
+
+### `python -m docket.fakeupstream` — a scripted provider, as a service
+
+Serves provider-shaped responses on loopback for tests, containers and game days: `--steps N`
+scripts responses (the last repeats forever), `--input-tokens` / `--output-tokens` set the usage
+reported, `--delay-ms` adds latency, `--model` sets the model name. It prints
+`{"listening": "http://127.0.0.1:9100", …}` on stdout so a script can read the port, exits `2` on a
+taken port, and warns on stderr if asked to bind anything but loopback. `GET /healthz` answers
+`{"status": "ok", …}` for a container healthcheck.
+
+```
+docket run --upstream openai=http://127.0.0.1:9100 --max-usd 1 -- python -m docket.scriptagent
+```
+
+### `python -m docket.loaddriver` — the load generator
+
+Drives N calls across C threads *through the boundary* — it reads `DOCKET_PROXY_URL` and exits `2`
+without it — so the load it generates is metered, capped and recorded like any other agent's, and
+it separates refusals (with the code the boundary sent) from errors. Flags: `--calls`,
+`--concurrency`, `--seconds` (endurance mode), `--rate` (paced, in calls per second across all
+workers), `--route`, `--timeout`, `--report PATH`. It exits `3` if any call failed, so a load test
+that dropped calls cannot leave a receipt that reads like a clean run.
+
+It is normally driven by `tools/loadtest.py`, which starts the scripted provider, supervises the
+run, samples the supervisor's memory, then reads the receipt and the ledger back and refuses to
+call the result usable evidence when the two sides disagree:
+
+```bash
+make load   # 2,000 calls, 8 threads — throughput and client latency
+make soak   # 12,000 calls paced over ten minutes — memory and drift
+```
+
+Both write a report (`--report` / `--markdown`) next to the run's ledger and receipt. The measured
+numbers, the host they came from and the limits of the method are in
+[`docs/measurements/2026-10-15-2core/`](measurements/2026-10-15-2core/README.md).
+
+## Development tools (not installed with the package)
+
+| tool | what it does | how it can fail |
+| --- | --- | --- |
+| `tools/deploy_check.py` | statically validates `deploy/`: renders the Helm chart through a declared subset of the template language (refusing any construct it does not implement), then checks hardening, probes, image pinning, one-writer-per-volume, the compose wait-and-read-only contract, the policy inside every ConfigMap (parsed by Docket's own loader), and that workflows parse | exits `1` on any finding, `2` when its YAML reader is missing — it never passes without running. `tests/test_deploy_check.py` breaks each invariant on purpose |
+| `tools/loadtest.py` | runs the load point and the soak described above | exits `1` when the run is not usable as evidence, `2` when the run cannot start |
+| `tools/mutate.py` | seeded single-site mutation of a source file, with the tests that must kill each mutant; reports every survivor classified as a gap or an equivalent mutant (`make mutation`) | non-zero when the score is under `--min-score`; a survivor with a subset that never touches the file is the artefact the tool warns about |
+| `tools/fuzz.py` | time-boxed property tests over the parsers and the canonicaliser (`--target`, `--seconds`, `--seed`, `-n`) | non-zero on a counterexample, naming the target and the input text that produced it |
+| `tools/transcript_run.py` | runs the exact command a transcript was captured from, against a scripted provider, and prints the real output (the README's transcripts were produced this way and pasted verbatim) | non-zero if the run fails; nothing here writes documentation, so a stale transcript stays visible in the diff instead of being silently refreshed |
+| `tools/build_docs_site.py` | builds the documentation site strictly (`make site-check`) | non-zero on a broken link or a page missing from the nav |
+
+---
+
 ## Recipe: CI
 
 ```yaml

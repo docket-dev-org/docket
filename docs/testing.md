@@ -61,11 +61,11 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | sanity | `docket doctor` and `docket selftest` (16 probes) before anything else, when something looks wrong |
 | regression | `test_fuzz_regressions.py`: 98 named tests, each reproducing one defect that was found and fixed |
 | end-to-end | `tools/transcript_run.py`: supervisor → proxy → child agent → ledger → receipt → verifier, offline |
-| performance / load / stress | the game-day `rate-limit` and `ledger-pressure` phases, plus the concurrency files; no throughput target is claimed (see *Not covered*) |
-| endurance / soak | **not covered** — see below |
+| performance / load / stress | `tools/loadtest.py`, which drives a real supervised run under load (2,000 calls over 8 threads, and a paced soak), plus the game-day `rate-limit` and `ledger-pressure` phases and the concurrency files — numbers below |
+| endurance / soak | `tools/loadtest.py --seconds`: a paced run against a real boundary, RSS sampled once a second — ten minutes is the longest run in the suite (`make soak`). Bound in the section below |
 | spike | `test_proxy_concurrency.py`: a burst of parallel calls against a one-call cap |
 | volume | the game day's ledger-pressure phase grows a ledger to its ceiling and asserts the run stops rather than dropping events |
-| scalability | one process, threads rather than workers; the ledger is the only shared resource and it is serialised deliberately |
+| scalability | one process, threads rather than workers; the ledger is the only shared resource, serialised deliberately by one append lock — and the load point is where that serialisation becomes a number |
 | security | `test_security.py` (red team) + `bandit` in CI + the URL-guard walk |
 | penetration | the red team's forgery cases: a doctored receipt, a doctored ledger, a doctored manifest, a path traversal, a setuid mode, a swapped blob |
 | usability | the transcripts are the usability test; a change that makes the output harder to read shows up in the golden files |
@@ -93,6 +93,45 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | visual | `test_render_golden.py`: the receipt, the markdown report and the diff, byte-for-byte |
 | API | the boundary's HTTP surface (`test_proxy.py`) and the SDK's event API (`test_cli_sdk_demo.py`) |
 | database | **not applicable** — there is no database; the ledger is a JSONL file by design (ADR 0001) |
+
+## Measured: throughput, latency and memory
+
+`tools/loadtest.py` generates load the way the boundary is actually used — a supervisor process, a
+boundary inside it, a scripted provider behind it, and an agent child in front — and then reads the
+evidence back. Its full reports, including the host line, are in
+[`docs/measurements/2026-10-15-2core/`](measurements/2026-10-15-2core/README.md); the table here is a
+summary of the same files, and every number in it was produced by the command beside it.
+
+| run | shape | calls | wall clock | throughput | client p50 / p95 / p99 | boundary RSS | receipt |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| load point | `make load` — 2,000 calls, 8 threads, unpaced | 2,000 | 11.368 s | **175.93 calls/s** | 44 / 48 / 53 ms | +4,188 KiB | verifies |
+| soak | `make soak` — 12,000 calls at 20/s for ten minutes | 12,002 | 600.166 s | 20.00 calls/s (paced) | 4 / 5 / 7 ms | +27,180 KiB | verifies |
+| soak control | the same rate, half the time | 6,002 | 300.083 s | 20.00 calls/s (paced) | 4 / 5 / 8 ms | +13,720 KiB | verifies |
+
+Three things this table says, and two it does not:
+
+* **The recorder's cost is the write, not the CPU.** Unpaced, 8 threads push
+  175.93 calls/s through the boundary on 2 vCPUs, with a client p50 of
+  44 ms — an order of magnitude more than the paced run's 4 ms, because under
+  concurrency every event waits behind the append lock and its `fsync`. That is the design
+  decision in ADR 0005 showing up as the only throughput number the tool has.
+* **Nothing drifts for ten minutes.** 12,002 calls, 0 refusals, 0 errors, 0 dropped events, and the
+  receipt from the loaded run verifies afterwards with the same checks a quiet run passes.
+* **Memory tracks events, not time.** Ten minutes added
+  27,180 KiB and half the duration added
+  13,720 KiB: the same ~1.1 KiB per recorded event in both, which is
+  the in-memory event list the Merkle root and the receipt are derived from — bounded by the run's
+  own `max_events` and `max_ledger_bytes` ceilings rather than by a timer.
+* **It is not a provider benchmark.** The upstream is scripted and local. Nothing here says anything
+  about a real model API's latency, and the reports say so themselves.
+* **It is not a load curve.** One concurrency point, one paced rate, one machine. No saturation
+  knee, no scaling plot, no claim about another host.
+
+The harness is tested the same way everything else is: `tests/test_loadtest.py` asserts that a
+dropped call, a missing latency, a disagreement between the client's count and the ledger's rows, a
+receipt that no longer verifies, or a ledger that does not hash to the receipt's own claim all make
+a run **not usable as evidence**. A load tool whose output cannot be wrong would be a marketing
+statement, not a measurement.
 
 ## Reliability and chaos
 
@@ -247,13 +286,15 @@ none is unaccounted for".
   modules, so a future run of `supervisor.py` or `scriptagent.py` starts from a subset that can
   actually fail. What *has* been run, and what every survivor turned out to be, is in *Mutation
   testing* below.
-- **Endurance and soak.** The longest run under test is seconds, not hours. Nothing in the
-  design grows with wall-clock time — no caches, no unbounded buffers, the ledger is
-  append-only and its ceiling is enforced — but that is an argument, not a measurement, and the
-  argument rests on a suite that has never run for an hour.
-- **Throughput.** No requests-per-second or tokens-per-second target exists, and none is
-  claimed: Docket sits in the request path of a *bounded* agent, where the interesting number is
-  cost, not speed.
+- **Endurance beyond ten minutes, and at scale.** `make soak` runs a real boundary for ten
+  minutes at a paced 20 calls/s and shows memory tracking events rather than time (≈1.1 KiB per
+  event, both at 6,002 and at 12,002 calls). That is a bounded soak on one 2-vCPU host: it cannot
+  speak to hours, to a slower filesystem, or to the ten-million-event ledger whose in-memory cost
+  the same arithmetic predicts (~11 GB, against `max_ledger_bytes` as the ceiling that stops it).
+- **Throughput as a curve.** There is one measured point, not a curve: 8 threads unpaced on 2
+  vCPUs, where the append lock and its `fsync` are the bottleneck. No requests-per-second target
+  is claimed for a production agent, no tokens/s number exists, and no concurrency sweep has been
+  run — a single point is what the reports contain and all they are used for.
 - **Live providers.** CI never calls Anthropic, OpenAI or Google. The wire format is exercised
   against a scripted upstream; a provider-side change to a router, a header or a usage field
   would be caught by a user, not by CI. `--online` exists for that, and is deliberately not

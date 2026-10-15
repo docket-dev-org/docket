@@ -167,6 +167,62 @@ def test_limiter_snapshot_is_receipt_safe_and_reports_tokens_as_decimal_strings(
     assert snapshot["allowed"] == 1
 
 
+def test_a_decimal_rate_behaves_like_the_float_it_equals():
+    """The regression test for a real 502.
+
+    The policy loader hands this class Decimals; ``elapsed * self.per_second`` then raised
+    ``TypeError: float * Decimal`` *inside a request*, which the boundary reported as an internal
+    error and recorded in the ledger — a configuration value turning into a failed call. Both
+    spellings must now behave identically, token for token.
+    """
+    from decimal import Decimal
+
+    now = {"t": 0.0}
+    decimal_limiter = RateLimiter(per_second=Decimal("2"), burst=Decimal("2"), clock=lambda: now["t"])
+    float_limiter = RateLimiter(per_second=2.0, burst=2, clock=lambda: now["t"])
+    for _ in range(6):
+        now["t"] += 0.25
+        assert decimal_limiter.acquire() == float_limiter.acquire()
+    assert decimal_limiter.snapshot() == float_limiter.snapshot()
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"per_second": float("nan")}, "per_second must be positive and finite"),
+        ({"per_second": float("inf")}, "per_second must be positive and finite"),
+        ({"per_second": 0}, "per_second must be positive and finite"),
+        ({"per_second": -1.5}, "per_second must be positive and finite"),
+        ({"per_second": True}, "per_second must be a number, not a bool"),
+        ({"per_second": "fast"}, "per_second must be a number, not str"),
+        ({"per_minute": 0}, "per_minute must be at least 1"),
+        ({"per_minute": 2.5}, "per_minute must be a whole number"),
+        ({"per_minute": True}, "per_minute must be a whole number, not a bool"),
+        ({"burst": 0}, "burst must be at least 1"),
+        ({"burst": 1.5}, "burst must be a whole number"),
+        ({"burst": False}, "burst must be a whole number, not a bool"),
+    ],
+)
+def test_a_rate_limiter_refuses_configuration_it_cannot_honour(kwargs, message):
+    """Every one of these used to be accepted and then misbehave at request time.
+
+    ``nan`` is the sharpest of them: every comparison against NaN is false, so a NaN rate compared
+    false against ``tokens < 1.0`` and the limiter allowed *everything* — a guard that silently
+    stops guarding, which is the exact failure this project exists to prevent.
+    """
+    with pytest.raises(ValueError, match=message):
+        RateLimiter(**kwargs)
+
+
+def test_a_limiter_that_cannot_be_serialised_cannot_be_recorded_so_it_cannot_be_built():
+    """The snapshot lands in a ledger event, so it must be strict JSON — no NaN, no Infinity."""
+    import json
+    from decimal import Decimal
+
+    limiter = RateLimiter(per_second=Decimal("0.5"), burst=1)
+    json.dumps(limiter.snapshot(), allow_nan=False)
+
+
 def test_limiter_counts_refusals_across_threads_without_losing_any():
     limiter = RateLimiter(per_minute=1)
 

@@ -1,4 +1,4 @@
-.PHONY: help test demo lint fmt audit mutation verify-js vectors wheel clean check site site-check deploy-check
+.PHONY: help test demo lint fmt audit mutation verify-js vectors wheel clean check site site-check deploy-check load soak
 
 help:
 	@echo "make test       run the full test suite (offline, no API keys)"
@@ -13,6 +13,8 @@ help:
 	@echo "make site       build the docs site (needs mkdocs-material)"
 	@echo "make site-check build the docs site to a temp dir, strict: catches broken links"
 	@echo "make deploy-check check deploy/ statically (no container runtime needed; none is present)"
+	@echo "make load       measure throughput and latency through a real boundary (a number about this host)"
+	@echo "make soak       measure memory and drift over 10 minutes (same caveat, longer)"
 
 test:
 	PYTHONPATH=src python3 -m pytest tests -q
@@ -57,6 +59,16 @@ mutation:
 # not run must never look like a check that passed.
 deploy-check:
 	PYTHONPATH=src python3 tools/deploy_check.py
+
+# A load point and a soak are measurements, not assertions: the number depends on the host, and a
+# shared CI runner's throughput would be a fact about the runner. So they are opt-in targets whose
+# reports land in a file, and CI runs the *tests* of the harness instead.
+load:
+	python3 tools/loadtest.py --calls 2000 --concurrency 8 --report load-report.json --markdown load-report.md
+
+soak:
+	python3 tools/loadtest.py --calls 200000 --concurrency 2 --seconds 600 --rate 20 \
+		--work-dir .docket-soak --report soak-report.json --markdown soak-report.md
 
 check: lint audit test verify-js deploy-check
 
