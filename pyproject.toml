@@ -60,7 +60,10 @@ Sponsor = "https://github.com/sponsors/docket-dev"
 packages = ["src/docket"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "spec", "tests", "docs", "examples", "verify-js", "README.md", "LICENSE", "CHANGELOG.md"]
+# `tools/` is in the sdist because `docs/testing.md` (also shipped) documents the mutation
+# sweep and the fuzz harness by path: a source distribution whose own docs point at files it
+# does not contain is a small lie, and the tools are the evidence for two of its claims.
+include = ["src", "spec", "tests", "docs", "examples", "verify-js", "tools", "README.md", "LICENSE", "CHANGELOG.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
