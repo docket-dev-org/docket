@@ -34,7 +34,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | `test_snapshot_restore.py` | 25 | snapshot, plan, apply, the CLI, idempotence, the restore record |
 | `test_snapshot_confinement.py` | 25 | hostile documents: paths, digests, modes, symlinks, keys |
 | `test_fsdiff.py` | 5 | what the file diff sees, with a relative and an absolute cwd |
-| `test_chaos.py` | 28 | the fault grammar, `audit_run`, the game-day phases |
+| `test_chaos.py` | 29 | the fault grammar, `audit_run`, the game-day phases |
 | `test_security.py` | 40 | red team: forgery, injection, bypass, confinement, secret capture |
 | `test_cli_input.py` | 36 | numeric flags: every cap, every way to spell it wrong |
 | `test_cli_sdk_demo.py` | 17 | the commands end to end, the SDK, the demo |
@@ -97,7 +97,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | phase | what it does | expectation |
 | --- | --- | --- |
 | `baseline` | a well-behaved agent, nothing broken | every call recorded, receipt verifies |
-| `upstream-failure` | the provider fails some calls and serves others | failures are `model.error`, never `model.response`; denials are refused before forwarding |
+| `upstream-failure` | the provider fails some calls and serves others | failures are `model.error`, never `model.response`; denials are refused before forwarding. The audit's breaker check *skips* here (the fault rate never reaches the threshold) and says why — its condition is exercised by the `circuit-breaker` phase, and `tests/test_chaos.py` pins that a conditional check never reports a vacuous pass |
 | `circuit-breaker` | the upstream fails repeatedly | the breaker opens, refuses by name, records the opening |
 | `upstream-latency` | slow responses | latency is recorded, the run still finishes or stops legibly |
 | `rate-limit` | a fast agent against `max_calls_per_second` | exactly the budget is admitted, each refusal is recorded, HTTP 429 |

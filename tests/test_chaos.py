@@ -265,6 +265,27 @@ def test_the_circuit_breaker_phase_proves_the_breaker_opens_by_name(tmp_path: Pa
     assert breaker["total_failures"] >= 5
 
 
+def test_a_breaker_check_that_could_not_run_skips_with_a_reason_never_passes(tmp_path: Path):
+    """A conditional check must not pass vacuously.
+
+    The audit verifies the breaker's story *when one opened*. In a phase whose fault rate never
+    reaches the threshold, "did an opened breaker refuse calls by name?" has no answer — and the
+    honest answer is `skip` with the reason, not `pass`. The opening itself is covered by the
+    `circuit-breaker` phase; what this test pins is the shape of the other outcome.
+    """
+    phase = next(p for p in GAME_DAY_PHASES if p.name == "upstream-failure")
+    record = run_phase(phase, root=tmp_path)
+    check = next(c for c in record["checks"] if c["name"] == "an opened breaker refused calls by name")
+    if check["status"] == "skip":
+        assert check["detail"].strip(), "a skip without a reason is indistinguishable from a bug"
+        assert "circuit_open" not in record["facts"]["denial_codes"]
+    else:
+        # The injector is seeded, so this branch is the one the current fault plan takes when it
+        # does reach the threshold — in which case the check must be a real pass, with evidence.
+        assert check["status"] == "pass", check
+        assert "circuit_open" in record["facts"]["denial_codes"]
+
+
 def test_the_rate_limit_phase_records_the_limiter_state_and_a_retry_hint(tmp_path: Path):
     phase = next(p for p in GAME_DAY_PHASES if p.name == "rate-limit")
     record = run_phase(phase, root=tmp_path)

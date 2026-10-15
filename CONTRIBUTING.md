@@ -20,7 +20,7 @@ git clone https://github.com/docket-dev/docket
 cd docket
 python3 -m venv .venv && . .venv/bin/activate      # or any 3.11+ interpreter
 pip install -e '.[dev,sign]'
-make test          # 530 tests, fully offline, ~90 s
+make test          # 531 tests, fully offline, ~90 s
 make demo          # the runaway-agent demo
 make verify-js     # independent Node verifier against the committed vectors
 ```
