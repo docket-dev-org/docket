@@ -16,6 +16,9 @@ funding has consequences that can be checked.
 - [x] filesystem snapshots and diffs, egress decisions, SDK + raw-HTTP recording
 - [x] offline demo with a scripted provider, and a tamper demonstration
 - [x] zero runtime dependencies; format specification `docket/receipt/v1`
+- [x] mutation testing of the cryptographic modules and the ledger (`tools/mutate.py`), with
+      every survivor classified as a gap or an equivalent mutant — scores in
+      [`docs/testing.md`](docs/testing.md#mutation-testing)
 
 ## 0.2 — make it easy to adopt — *target: 6 weeks*
 
