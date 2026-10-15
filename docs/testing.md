@@ -12,7 +12,7 @@ and can be told to fail on cue.
 ## The suite
 
 ```console
-$ make test          # 670 tests, ~90 s, no network
+$ make test          # 700 tests, ~105 s, no network
 $ make check         # + ruff, + bandit, + the independent Node verifier
 ```
 
@@ -23,6 +23,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | `test_ledger.py` | 12 | append/read, chain resumes, ceilings, `unwritten` bookkeeping |
 | `test_ledger_faults.py` | 22 | a ledger on a failing filesystem: ENOSPC, EIO, a closed handle, an OS error while opening |
 | `test_ledger_concurrency.py` | 4 | one ledger, eight writer threads: order, chain, agreement, file digest |
+| `test_latency.py` | 21 | the percentile rule, hostile row values, the verifier's recomputation, the report's tail line |
 | `test_receipt_verify.py` | 19 | the receipt and every verification check, plus one name to one verdict |
 | `test_proxy.py` | 15 | pass-through, streaming, policy enforcement, what is never recorded |
 | `test_proxy_concurrency.py` | 6 | parallel calls through the real boundary: chain, totals, limiter, breaker, cap |
@@ -34,6 +35,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | `test_snapshot_restore.py` | 25 | snapshot, plan, apply, the CLI, idempotence, the restore record |
 | `test_snapshot_confinement.py` | 25 | hostile documents: paths, digests, modes, symlinks, keys |
 | `test_fsdiff.py` | 5 | what the file diff sees, with a relative and an absolute cwd |
+| `test_invariants.py` | 14 | executed properties: one writer per ledger, 200 events from 8 threads, no deduplication of a replayed call, socket and thread release, a SIGKILLed agent, a clock that steps forwards or backwards |
 | `test_chaos.py` | 29 | the fault grammar, `audit_run`, the game-day phases |
 | `test_security.py` | 40 | red team: forgery, injection, bypass, confinement, secret capture |
 | `test_cli_input.py` | 36 | numeric flags: every cap, every way to spell it wrong |
@@ -80,7 +82,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | monkey / gorilla | `docket game-day` kills the supervisor with SIGKILL mid-run and asserts what survives |
 | boundary-value | every cap: 0, 1, exactly at the limit, one over; every ceiling in `pricing`/`policy` |
 | equivalence partitioning | the fault grammar, the policy validators, the URL guards (loopback vs not, scheme by scheme) |
-| mutation | `tools/mutate.py`: seeded single-site mutation of `canon.py`, `verify.py` and `ledger.py`, with every survivor classified — see *Mutation testing* |
+| mutation | `tools/mutate.py`: seeded single-site mutation of `canon.py`, `verify.py`, `ledger.py` and `latency.py`, with every survivor classified — see *Mutation testing* |
 | static | `ruff check`, `ruff format --check`, `bandit -q -c pyproject.toml -r src tools` |
 | dynamic | `tools/fuzz.py`: six property-based targets, time-boxed, seeded and reproducible |
 | alpha / beta | **not applicable yet** — no release channel beyond the source tree |
@@ -168,6 +170,19 @@ because the sample differs, and the candidate count changes with the source.
 | `src/docket/verify.py` | 95 | 95 | 94 | 1 | 0 | **98.9%** | 66 s | 42 |
 | `src/docket/canon.py` | 63 | 63 | 58 | 1 | 4 | **98.3%** ([^timeouts]) | 209 s | 42 |
 | `src/docket/ledger.py` | 171 | 171 | 143 | 28 | 0 | **83.6%** | 276 s | 11 |
+| `src/docket/latency.py` | 21 | 21 | 21 | 0 | 0 | **100%** | 12 s | 0 |
+
+`latency.py` was written *after* the harness existed, and the harness earned its keep immediately:
+its first run left one survivor — the `return problems` inside the "the receipt states a latency
+summary but no usage row carries `latency_ms`" branch, replaced by `return None`. Nothing noticed,
+because `verify.py` reads a falsy return as "no disagreement", so a receipt could state **any**
+p99 as long as its rows carried no measurement: a false *pass* in the feature whose entire point is
+that a stated measurement must be recomputable. The fix was a test for the branch, not a change to
+the branch. The same module's first candidate list also contained an unkillable `min(max(rank, 1),
+len(ordered))` clamp — unreachable given `percentile_ms`'s own guards — which was deleted rather
+than explained, and the subset it needs is a reminder of the same lesson in the other direction:
+run with only `test_receipt_verify.py` and the score reads **4.2%**, because that file does not
+touch the module at all.
 
 Started from 67.5% (canon + verify, 80-mutant sample, seed 3) and 50.0% (ledger, 70 of 153
 candidates, seed 11). The ledger number moved because the *tests* moved: the first run wrote no
@@ -207,6 +222,7 @@ Writing the tests that kill a mutant is where the defects were:
 | --- | --- |
 | a test for a surviving `return` | `quarantine_torn_tail` reported `performed: true` having moved **zero bytes** when the interrupted write had landed its partial line *with* a newline: the split took everything after the last newline, which is empty, and the ledger was left exactly as damaged as it was found — an operator's repair that repairs nothing, and says it worked. It now splits by the reader's own measurement of the torn tail. |
 | reading a survivor in a Windows branch | `_pid_alive` probed with `os.kill(pid, 0)`. On Windows Python's `os.kill` *is* `TerminateProcess`, so the liveness check for a stale lock would have **killed the process holding the lock** — the opposite of the check, with a blast radius that reaches another run. Windows now asks the process table (`OpenProcess`/`GetExitCodeProcess`) and answers "alive" when it cannot tell. |
+| a test for a stated-but-unmeasurable latency | `check_summary`'s "no usage row carries `latency_ms`" branch returned a list nobody had ever asserted on; mutating it to `return None` changed no test, and the verifier reads a falsy return as agreement, so a fabricated summary verified. (Found by mutating the new module, not by reading it.) |
 | a test for the diagnostics' shape | `read_with_diagnostics` promised "the same keys on every path" in a comment while the missing-file path returned nine of eleven: `healthy` and `chain_error` raised `KeyError` for a caller that had only ever seen a healthy ledger. |
 | a test for the ceiling's error | `LedgerFullError`'s byte ceiling collapsed to `0` under a mutated `or`, and the reported usage shifted under a mutated index, and nothing read either field. |
 | reading a ledger's repr | the repr carried a descriptor, a lock handle and a memory address into CI logs. |
@@ -223,10 +239,13 @@ none is unaccounted for".
 ## Not covered, and why
 
 - **A full mutation score over the whole source tree.** `tools/mutate.py` runs over three
-  modules — the two whose promises are cryptographic (`canon.py`, `verify.py`) and the one that
-  holds the evidence (`ledger.py`). The rest of `src/docket` is not mutated: a score for
-  `proxy.py` or `cli.py` would be a much larger run, and a number nobody has run is not a
-  number. What *has* been run, and what every survivor turned out to be, is in *Mutation
+  modules — the two whose promises are cryptographic (`canon.py`, `verify.py`), the one that
+  holds the evidence (`ledger.py`), and the measurement added on top of them (`latency.py`). The
+  rest of `src/docket` is not mutated: a score for `proxy.py` or `cli.py` would be a much larger
+  run, and a number nobody has run is not a number. The harness's per-module test subsets now name
+  the files each module's promises are made in, including the invariant suite for the lifecycle
+  modules, so a future run of `supervisor.py` or `scriptagent.py` starts from a subset that can
+  actually fail. What *has* been run, and what every survivor turned out to be, is in *Mutation
   testing* below.
 - **Endurance and soak.** The longest run under test is seconds, not hours. Nothing in the
   design grows with wall-clock time — no caches, no unbounded buffers, the ledger is

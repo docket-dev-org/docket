@@ -40,6 +40,7 @@ as data:
 | `cost-recomputation` | every row's cost equals `f(input, cached_input, output)` under the embedded price table | the arithmetic is transparent and reproducible | that the *prices* are right — compare `price_table.digest` against a copy you trust |
 | `totals` | the receipt's totals equal the sum of recomputed rows | internal consistency | — |
 | `token-totals` | token sums match the appendix | nothing was quietly excluded from the sums | that the provider's counts are honest |
+| `latency-summary` | the stated `latency` (§6.2) is recomputed from the `latency_ms` values of the rows it summarises, by the method it names | the percentiles in the receipt describe *these* calls, not a memory of them | that the clock is accurate, that the recorder was the only thing in the request path, or that the provider's own timing is visible — latency is a wall-clock observation and the member says so |
 | `seal` | HMAC-SHA256 verifies with the supplied key | integrity to whoever holds the key | third-party verifiability (a seal is not a signature, and receipts say so) |
 | `signature` | Ed25519 verifies against the embedded (or supplied-out-of-band) public key | the holder of the signing key attested to this record | *when* they attested it: there is no trusted timestamp |
 | `limits-disclosure` | the receipt states its own scope and trust assumptions | the reader cannot be misled by omission | — |
@@ -61,25 +62,33 @@ names, and a test (`test_no_check_reports_two_verdicts`) that keeps it that way.
 
 ```console
 $ docket demo --tamper
-VERIFIED  DKT-20261013-746EF4
-  PASS  ledger-chain: 61 events, every hash and link recomputed
+VERIFIED  DKT-20261015-746EF4
+  PASS  ledger-chain: 62 events, every hash and link recomputed
   ...
 
   Now tampering with one byte of the ledger and verifying again:
-NOT VERIFIED  DKT-20261014-746EF4
+NOT VERIFIED  DKT-20261015-746EF4
   PASS  format: docket/receipt/v1
   FAIL  ledger-chain: broken at event #6: content hash mismatch (event was modified after it was written)
   SKIP  head: not checked: the chain is broken at event #6
   PASS  event-count: 62 events
-  FAIL  merkle-root: recomputed 8ea3a22368ffe0f6… != receipt 87799e8e5a1ea1a5…
+  FAIL  merkle-root: recomputed 8792629ac9da7829… != receipt 6103dbfd35035efc…
   FAIL  usage-rows-rebound: usage row 0 (seq 6) does not match the recomputed ledger event
   PASS  usage-inclusion-proofs: 15 usage rows proven against the receipt's claimed Merkle root
   FAIL  usage-rows-rebound: 1 of 15 usage rows are not the events the recomputed ledger has at
         those sequence numbers (14 re-bound)
   PASS  cost-recomputation: 15 calls recomputed from token counts
+  PASS  latency-summary: p50 12 ms · p99 23 ms over 15 measured call(s), nearest-rank
   SKIP  seal: receipt is not sealed
   SKIP  signature: receipt is not signed
 ```
+
+`latency-summary` is the one check above that a flipped byte in the *events* cannot turn red: the
+measured times sit in the usage rows, the summary is recomputed from those same rows, and so it
+still agrees with itself. That is not a weakness, it is the boundary of the claim — the line says
+"these percentiles describe these rows", not "the ledger is intact". Keeping the two claims apart
+is what `ledger-chain` and `usage-rows-rebound` are for, and it is why the check is recomputed
+rather than trusted: a receipt whose percentiles contradict its own appendix does fail.
 
 (One real capture, lightly trimmed. The docket number is reproducible — `docket demo` seeds its
 own random source — but the Merkle roots are not: they cover the session's own fields, including

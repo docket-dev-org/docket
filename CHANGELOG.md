@@ -55,6 +55,59 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   finding is either fixed or has one written-down reason in `[tool.bandit]` (`"PASS"` as an
   output word, seeded `random`, list-argv `subprocess`); nothing is suppressed without a reason.
 
+### Added
+
+- **Per-call latency, and a verifier that recomputes it.** Every usage row may now carry
+  `latency_ms` — the round trip the recorder measured, in whole milliseconds — and the receipt
+  derives `latency` from those rows: `{"method": "nearest-rank", "measured_calls", "total_rows",
+  "total_ms", "max_ms", "p50_ms", "p95_ms", "p99_ms"}`. The rule is stated because a percentile
+  without its rule is not a fact: the samples are sorted ascending and the rank is
+  `ceil(p/100 · n)`, clamped into the sample, so p99 of 15 calls is the 15th value and p99 of 200
+  is the 198th. Both verifiers recompute the summary from the same rows and **fail** on a member
+  that disagrees, a `method` this verifier does not implement, a member the format does not
+  define, a row value that is not a whole non-negative count, an unreadable appendix, or a
+  summary stated over rows that carry no measurement at all — the last one being a false-pass
+  hole that mutation testing found in this feature rather than a reviewer
+  ([`docs/verification.md`](docs/verification.md), spec §6.2). A receipt with no measurement says
+  nothing rather than zero, and coverage is explicit: `measured_calls` of `total_rows`.
+- **`tests/test_invariants.py`: the properties no single-feature test can state.** Fourteen
+  executed invariants over the places an operations reader worries about — two writers on one
+  ledger are *refused* rather than interleaved (a file holding two chains is a file that accuses
+  an honest run of tampering); eight threads appending 200 events through one handle produce one
+  event per sequence number, in order, with no partial line; a replayed request is recorded as
+  **two** calls and never deduplicated, because collapsing a duplicate would report a run that
+  did not happen; a stopped boundary releases its socket and its thread; a supervised agent killed
+  with `SIGKILL` leaves a readable prefix and no receipt that claims a clean exit; a wall-clock
+  cap is measured on the monotonic clock, so a clock that jumps forwards cannot extend a run; a
+  clock that jumps *backwards* cannot turn a bad clock into a false breach.
+- **`DOCKET_AGENT_MODE=backoff`** in the reference adversarial agent, plus `Retry-After` parsing
+  (`DOCKET_AGENT_MAX_SLEEP`, `DOCKET_AGENT_SEED`): full jitter under a ceiling, doubling per
+  refusal, with the wait and the hint the boundary asked for written into the ledger as `note`
+  events. This is the client's half of the rate-limit contract, and without it the boundary's
+  `Retry-After` was a promise nothing in the repository ever exercised.
+
+### Fixed
+
+- **The supervisor printed a negative duration when the clock stepped backwards.** `elapsed` and
+  the receipt's `duration_seconds` were computed as `monotonic() - started`, and a monotonic
+  source that steps back — a VM restored from a snapshot, a container sharing a stale clock, a
+  bug in a caller's injected clock — made both negative. A negative duration is a claim no clock
+  can support: a reader comparing it to the cap has to invent a rule for what a negative budget
+  means. Both are clamped at zero now, and `test_invariants.py` drives the case. The direction is
+  deliberate: a clock that steps backwards can never *raise* the elapsed reading, so it cannot
+  manufacture a breach, and the child's lifetime still bounds the run.
+- **A receipt that *stated* a latency summary over untimed rows could pass.** `check_summary`
+  returned "this claim cannot be recomputed" in that one branch, the verifier read a falsy return
+  as "no disagreement", and a receipt could therefore claim any p99 at all as long as its usage
+  rows carried no `latency_ms`. Found by mutating the new module (`return problems` → `return
+  None` survived) rather than by reading it; the branch now has the test that proves it is
+  reachable, and `latency.py` scores 21/21 killed.
+- **`latency.py` shipped an unkillable clamp.** `rank = min(max(rank, 1), len(ordered))` could
+  never bind: `percentile_ms` raises on an empty sample and on a percentage outside 1..100, and
+  `1 <= ceil(p·n/100) <= n` follows from those two guards. The clamp was unreachable code whose
+  mutants nothing could kill, so it is gone, with the proof in a comment and two tests that pin
+  the extremes of the interval (`p1` and `p100` of every sample size from 1 to 11).
+
 ### Fixed
 
 - **`quarantine_torn_tail` could report a repair it had not performed.** When the interrupted

@@ -70,6 +70,22 @@ def render_receipt(receipt: dict[str, Any], *, color: bool = True, show_findings
             color,
         )
     )
+    latency = receipt.get("latency") or {}
+    if latency.get("measured_calls"):
+        measured = int(latency.get("measured_calls") or 0)
+        total_rows = int(latency.get("total_rows") or measured)
+        coverage = "" if total_rows == measured else f" of {human_int(total_rows)} call(s)"
+        lines.append(
+            _row(
+                "latency",
+                f"p50 {human_duration(int(latency.get('p50_ms') or 0) / 1000)}"
+                f" · p95 {human_duration(int(latency.get('p95_ms') or 0) / 1000)}"
+                f" · p99 {human_duration(int(latency.get('p99_ms') or 0) / 1000)}"
+                f" · max {human_duration(int(latency.get('max_ms') or 0) / 1000)}"
+                f"  ({human_int(measured)} call(s){coverage}, nearest-rank)",
+                color,
+            )
+        )
     lines.append(
         _row(
             "tokens",
@@ -247,6 +263,17 @@ def render_markdown(receipt: dict[str, Any]) -> str:
         f"| files changed | {files.get('changed', 0)} (+{files.get('added', 0)} ~{files.get('modified', 0)} -{files.get('removed', 0)}) |",
         f"| deny-write violations | {files.get('violations', 0)} |",
         f"| ledger | {receipt.get('ledger', {}).get('events', 0)} events · root `{str(receipt.get('ledger', {}).get('merkle_root'))[:16]}…` |",
+        *(
+            [
+                f"| latency | p50 {human_duration(int(latency.get('p50_ms') or 0) / 1000)}, "
+                f"p95 {human_duration(int(latency.get('p95_ms') or 0) / 1000)}, "
+                f"p99 {human_duration(int(latency.get('p99_ms') or 0) / 1000)}, "
+                f"max {human_duration(int(latency.get('max_ms') or 0) / 1000)} over "
+                f"{int(latency.get('measured_calls') or 0)} measured call(s), nearest-rank |"
+            ]
+            if (latency := receipt.get("latency") or {}).get("measured_calls")
+            else []
+        ),
         "",
     ]
     ops = receipt.get("ops") or {}

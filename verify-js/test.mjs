@@ -14,7 +14,18 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { canonical, canonicalDigest, formatMicros, merkleRoot, micros, verifyInclusion, verifyLedgerChain, verifyReceipt } from "./verify.mjs";
+import {
+  canonical,
+  canonicalDigest,
+  formatMicros,
+  latencySummary,
+  merkleRoot,
+  micros,
+  percentileMs,
+  verifyInclusion,
+  verifyLedgerChain,
+  verifyReceipt,
+} from "./verify.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const VECTORS = join(HERE, "..", "spec", "vectors");
@@ -104,6 +115,65 @@ check("a mid-file edit breaks the chain", status("ledger-chain") === "fail");
 check("a mid-file edit skips the head check", status("head") === "skip", "stored tail hash is intact; claiming a pass would mislead");
 check("a mid-file edit fails the Merkle root", status("merkle-root") === "fail");
 check("a mid-file edit invalidates usage rows", status("usage-inclusion-proofs") === "fail");
+
+console.log("latency (the one measured claim)");
+check("nearest-rank always returns a measured value", percentileMs([40, 10, 30, 20], 50) === 20);
+check("percentile of one sample is that sample", percentileMs([7], 99) === 7);
+const latencyVector = latencySummary([10, 20, 30, 40, 5000], 5);
+check(
+  "summary carries its method and both counts",
+  latencyVector.method === "nearest-rank" &&
+    latencyVector.measured_calls === 5 &&
+    latencyVector.total_rows === 5 &&
+    latencyVector.p50_ms === 30 &&
+    latencyVector.p99_ms === 5000 &&
+    latencyVector.max_ms === 5000 &&
+    latencyVector.total_ms === 5100,
+  JSON.stringify(latencyVector),
+);
+
+const withLatency = JSON.parse(JSON.stringify(receipt));
+withLatency.appendix.usage = withLatency.appendix.usage.map((row) => ({ ...row, latency_ms: 100 + row.seq * 10 }));
+withLatency.latency = latencySummary(withLatency.appendix.usage.map((row) => row.latency_ms), withLatency.appendix.usage.length);
+const latencyOk = verifyReceipt(withLatency, { ledgerEvents: ledger.events });
+check("an honest latency summary verifies", latencyOk.ok, latencyOk.failures.join("; "));
+check(
+  "the summary is recomputed, not trusted",
+  (latencyOk.checks.find((check) => check.name === "latency-summary") ?? {}).status === "pass",
+);
+
+const fakedLatency = JSON.parse(JSON.stringify(withLatency));
+fakedLatency.latency.p99_ms = 1;
+const fakedResult = verifyReceipt(fakedLatency, { ledgerEvents: ledger.events });
+check(
+  "a faked p99 fails verification",
+  !fakedResult.ok && fakedResult.failures.some((failure) => failure.includes("p99_ms")),
+  fakedResult.failures.join("; "),
+);
+
+const wrongRule = JSON.parse(JSON.stringify(withLatency));
+wrongRule.latency.method = "linear-interpolation";
+check(
+  "a summary computed by another rule is refused, not reinterpreted",
+  !verifyReceipt(wrongRule, { ledgerEvents: ledger.events }).ok,
+);
+
+const inventedMember = JSON.parse(JSON.stringify(withLatency));
+inventedMember.latency.stddev_ms = 3;
+check("an undefined latency member is refused", !verifyReceipt(inventedMember, { ledgerEvents: ledger.events }).ok);
+
+const fractional = JSON.parse(JSON.stringify(withLatency));
+fractional.appendix.usage[0].latency_ms = 12.5;
+check(
+  "a fractional latency in a row is a failure, not a silent drop",
+  !verifyReceipt(fractional, { ledgerEvents: ledger.events }).ok,
+);
+
+const noLatency = verifyReceipt(receipt, { ledgerEvents: ledger.events });
+check(
+  "a receipt with no latency skips rather than passing",
+  (noLatency.checks.find((check) => check.name === "latency-summary") ?? {}).status === "skip",
+);
 
 console.log("money");
 check("2-decimal canonical form", formatMicros(micros("0.018000")) === "0.018000");

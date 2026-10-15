@@ -177,6 +177,7 @@ A receipt is a JSON object with these members:
 | `ledger` | `{format, events, head, genesis, merkle_root, file_sha256, chain}` |
 | `price_table` | `{schema, as_of, digest, document}` — the exact table used |
 | `appendix` | `{usage[], proof_included, note}` |
+| `latency` | §6.2 summary of the per-call latencies in `appendix.usage`, or absent when none was measured |
 | `findings` | analytic results, each with `rule`, `severity`, `confidence`, `usd_impact`, `evidence`, `remedy` |
 | `limits_disclosure` | §9 statement, copied verbatim from the policy in force |
 | `seal` | `null` or `{alg: "hmac-sha256", key_id, value}` |
@@ -191,9 +192,14 @@ Each row binds one metered call to the ledger:
   "input_tokens": <int>, "cached_input_tokens": <int>, "output_tokens": <int>,
   "usage_source": "reported" | "estimated",
   "cost_usd": "0.018000",
+  "latency_ms": <int milliseconds, optional — §6.2>,
   "event_hash": <hash of the model.response event>,
   "merkle_path": [ ... ] }
 ```
+
+`latency_ms` is optional and appears only when the call was timed. A row MUST NOT carry `0` to
+mean "not measured": the member is absent, and `latency.measured_calls` (§6.2) states how many
+rows had one.
 
 `usage_source` is normative: `"estimated"` means the provider returned no usage and the
 numbers were derived by heuristics. A consumer MUST NOT present estimated usage as metered.
@@ -201,7 +207,41 @@ Rows are limited to a documented maximum (`MAX_PROVEN_USAGE_ROWS` = 4000 in the 
 implementation); above that, proofs are omitted and `proof_included` is `false`, so a
 verifier knows to demand the ledger instead of assuming coverage.
 
-### 6.2 Findings
+### 6.2 Latency
+
+`latency` is **optional and derived**: it is present when at least one usage row carries
+`latency_ms`, and it MUST be the summary of exactly those values. It is the only member of a
+receipt that summarises a *measurement* rather than an arithmetic result, so both the method and
+the coverage are part of it:
+
+```
+{ "method": "nearest-rank",
+  "measured_calls": <int>, "total_rows": <int>,
+  "total_ms": <int>, "max_ms": <int>,
+  "p50_ms": <int>, "p95_ms": <int>, "p99_ms": <int> }
+```
+
+* A usage row MAY carry `latency_ms`: a whole, non-negative number of milliseconds measured
+  around that call. It MUST NOT be a float, a boolean or a negative number; a row without a
+  measurement MUST omit the member rather than substitute `0`.
+* `method` names the percentile rule so that two receipts can be compared. The only value defined
+  by this version is `"nearest-rank"`: sort the samples ascending, take
+  `rank = ceil(p / 100 × n)` clamped into `[1, n]`, and read the `rank`-th smallest (1-indexed).
+  This rule always returns a value that was actually measured. A verifier MUST refuse to compare
+  a summary whose `method` it does not implement.
+* `measured_calls` is the number of rows carrying `latency_ms`; `total_rows` is the number of rows
+  in `appendix.usage`. They differ when only some calls were timed, and a consumer MUST NOT read a
+  percentile as covering the whole session when they do.
+* `total_ms` and `max_ms` are the sum and the maximum of the measured values.
+* A verifier that recomputes the cost of the appendix SHOULD also recompute this summary from the
+  same rows and fail on any disagreement. A receipt whose stated percentiles contradict the rows
+  beside them is a fabricated measurement, which is worse than a missing one.
+
+Latency is wall-clock time observed by the recorder, not by the provider: it includes the
+boundary, the network and the provider's queue. It is not a claim about the provider's own
+timing, and no member of this format reports a *trusted* timestamp.
+
+### 6.3 Findings
 
 Findings are derived arithmetic, not testimony. Each one MUST carry `confidence` of
 `"deterministic"` (recomputed from events alone) or `"heuristic"` (a model of what could
@@ -233,10 +273,13 @@ checked:
 5. the cost of every usage row is recomputed from `input_tokens`, `cached_input_tokens`,
    `output_tokens` and the embedded `price_table`, and compared with `cost_usd`; the sum is
    compared with `totals.cost_usd`; token totals likewise;
-6. `ledger.file_sha256` matches the supplied file;
-7. `seal` verifies with the supplied key; `signature` verifies with the embedded or
+6. `latency`, when present, is recomputed from the `latency_ms` values of the rows it summarises
+   (§6.2) and must agree with them in every member; a row whose `latency_ms` is not a whole,
+   non-negative number is a failure;
+7. `ledger.file_sha256` matches the supplied file;
+8. `seal` verifies with the supplied key; `signature` verifies with the embedded or
    supplied public key;
-8. `limits_disclosure` is present.
+9. `limits_disclosure` is present.
 
 Failure of any item makes the receipt **not verified**. Items that cannot be checked are
 reported as such; a verifier that reports success without checking is non-conforming.

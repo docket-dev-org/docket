@@ -43,13 +43,14 @@ why a receipt is bound to a *specific* run:
 
   running (real supervisor, real boundary, scripted provider)…
 
-┌─ DOCKET DKT-20261014-746EF4 ───────────────────────────────────────────────┐
+┌─ DOCKET DKT-20261015-746EF4 ───────────────────────────────────────────────┐
 │ /usr/local/bin/python3 -m docket.demo --child                              │
 └────────────────────────────────────────────────────────────────────────────┘
   exit       42  (stopped: max_usd)
   duration   160ms
   spend      $2.00 of $2.00 cap
   calls      15   denied: 1
+  latency    p50 12ms · p95 23ms · p99 23ms · max 23ms  (15 call(s), nearest-rank)
   tokens     647,420 (in 642,900 · cached 0 · out 4,520)
   files      3 changed (+2 ~1 -0)  1 deny-write violation(s)
   tools      1 (read_file)
@@ -76,26 +77,28 @@ FINDINGS  (deterministic unless marked heuristic)
   attributed impact: $4.89
 
 WHAT THIS RECEIPT PROVES
-  ✓ 61 ledger events in order, hash-chained and Merkle-rooted
+  ✓ 62 ledger events in order, hash-chained and Merkle-rooted
   ✓ $2.00 recomputable from provider token counts and the embedded price table
   ✓ 3 filesystem change(s) with content digests
   ✗ does not observe: traffic that does not pass through the Docket boundary (e.g. an agent configured with a direct provider URL, or HTTPS tunnels when egress.mode = tunnel)
   ✗ does not observe: prompts, completions or file contents unless --record-bodies is enabled
 
 VERIFY IT YOURSELF (offline, no account)
-  docket verify DKT-20261014-746EF4.receipt.json
-  node verify-js/verify.mjs DKT-20261014-746EF4.receipt.json
+  docket verify DKT-20261015-746EF4.receipt.json
+  node verify-js/verify.mjs DKT-20261015-746EF4.receipt.json
 
-VERIFIED  DKT-20261014-746EF4
+VERIFIED  DKT-20261015-746EF4
   PASS  format: docket/receipt/v1
-  PASS  ledger-chain: 61 events, every hash and link recomputed
-  PASS  head: head matches receipt (d30a13b1f0bc894c…)
-  PASS  event-count: 61 events
-  PASS  merkle-root: 451bdfccfea74097…
-  PASS  usage-inclusion-proofs: 15 usage rows proven against the Merkle root and re-bound to the recomputed ledger
+  PASS  ledger-chain: 62 events, every hash and link recomputed
+  PASS  head: head matches receipt (39ebf3716d8dee52…)
+  PASS  event-count: 62 events
+  PASS  merkle-root: 6103dbfd35035efc…
+  PASS  usage-inclusion-proofs: 15 usage rows proven against the receipt's claimed Merkle root and re-bound to the recomputed ledger
+  PASS  usage-rows-rebound: 15 usage rows re-bound to the recomputed ledger
   PASS  cost-recomputation: 15 calls recomputed from token counts
   PASS  totals: total 2.000500 agrees with recomputation
   PASS  token-totals: 647,420 tokens
+  PASS  latency-summary: p50 12 ms · p99 23 ms over 15 measured call(s), nearest-rank
   SKIP  seal: receipt is not sealed
   SKIP  signature: receipt is not signed
   PASS  limits-disclosure: receipt states what Docket could and could not observe
@@ -107,12 +110,12 @@ Then break it on purpose — one byte, in the middle of the ledger:
 $ docket demo --tamper
 …
   Now tampering with one byte of the ledger and verifying again:
-NOT VERIFIED  DKT-20261014-746EF4
+NOT VERIFIED  DKT-20261015-746EF4
   PASS  format: docket/receipt/v1
   FAIL  ledger-chain: broken at event #6: content hash mismatch (event was modified after it was written)
   SKIP  head: not checked: the chain is broken at event #6
   PASS  event-count: 62 events
-  FAIL  merkle-root: recomputed 8ea3a22368ffe0f6… != receipt 87799e8e5a1ea1a5…
+  FAIL  merkle-root: recomputed 8792629ac9da7829… != receipt 6103dbfd35035efc…
   FAIL  usage-rows-rebound: usage row 0 (seq 6) does not match the recomputed ledger event
   PASS  usage-inclusion-proofs: 15 usage rows proven against the receipt's claimed Merkle root
   FAIL  usage-rows-rebound: 1 of 15 usage rows are not the events the recomputed ledger has at those
@@ -120,6 +123,7 @@ NOT VERIFIED  DKT-20261014-746EF4
   PASS  cost-recomputation: 15 calls recomputed from token counts
   PASS  totals: total 2.000500 agrees with recomputation
   PASS  token-totals: 647,420 tokens
+  PASS  latency-summary: p50 12 ms · p99 23 ms over 15 measured call(s), nearest-rank
   SKIP  seal: receipt is not sealed
   SKIP  signature: receipt is not signed
   PASS  limits-disclosure: receipt states what Docket could and could not observe
@@ -303,7 +307,7 @@ pipx install docket         # or keep it out of your project venvs
 uvx docket demo             # or run it without installing anything
 ```
 
-From source: `git clone … && cd docket && make check` (670 tests, fully offline — no API keys,
+From source: `git clone … && cd docket && make check` (700 tests, fully offline — no API keys,
 no network, ~90 s).
 
 ## Documentation

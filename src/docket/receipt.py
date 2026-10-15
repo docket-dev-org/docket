@@ -24,6 +24,8 @@ from typing import Any
 from . import events as ev
 from .canon import digest_of, merkle_proof, usd
 from .explain import analyse
+from .latency import is_latency
+from .latency import summary as latency_summary
 from .ledger import FORMAT as LEDGER_FORMAT
 from .ledger import GENESIS, Event, Ledger
 from .policy import Policy
@@ -58,6 +60,12 @@ def _usage_rows(events: list[Event], proofs: dict[int, list[dict[str, str]]] | N
         # Provenance of the numbers themselves: a row asserted by the agent under
         # supervision is a claim, not a boundary observation. A reader must be able to
         # tell the two apart, so the label travels with the row.
+        # Latency is carried when the call was *measured* (the boundary and the SDK time their own
+        # round trips; an agent-asserted event may not have one). `is_latency` refuses floats,
+        # bools and negatives: a measurement that is not a whole, non-negative millisecond count
+        # is not a measurement, and the row simply does not claim one.
+        if is_latency(data.get("latency_ms")):
+            row["latency_ms"] = int(data["latency_ms"])
         if data.get("reported_by") == "agent":
             row["asserted_by"] = "agent"
         if proofs is not None and event.seq in proofs:
@@ -331,6 +339,13 @@ def build_receipt(
         "findings": findings,
         "limits_disclosure": policy.limits_disclosure(),
     }
+    # The latency summary is *derived*, and placed last so it cannot be read as a measurement made
+    # by the receipt writer: it is the summary of the `latency_ms` values in `appendix.usage`, and
+    # `docket verify` recomputes it from those rows. Absent when nothing was measured, which is
+    # the honest state for a session recorded through an SDK that did not time its calls.
+    measured = [row["latency_ms"] for row in usage_rows if "latency_ms" in row]
+    if measured:
+        receipt["latency"] = latency_summary(measured, total_rows=len(usage_rows))
     if proxy_stats is not None:
         receipt["proxy"] = {
             "bytes_from_upstream": proxy_stats.bytes_from_upstream,

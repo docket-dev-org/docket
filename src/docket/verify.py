@@ -31,10 +31,14 @@ from pathlib import Path
 from typing import Any
 
 from .canon import merkle_root, sha256_hex, verify_merkle_proof
+from .latency import REPORTED, check_summary, is_latency
 from .ledger import Event, Ledger
 from .pricing import recompute_totals
 from .receipt import receipt_core, receipt_signable
 from .signing import verify_seal, verify_signature
+
+#: Distinguishes an absent receipt member from one that is present and null.
+_ABSENT = object()
 
 
 @dataclass
@@ -512,6 +516,54 @@ def verify_receipt(
                     add("token-totals", "pass", f"{recomputed['total_tokens']:,} tokens")
                 else:
                     add("token-totals", "fail", "receipt token totals do not match the usage appendix")
+
+    # -- 6. the latency summary ------------------------------------------- #
+    # Every other number in a receipt is arithmetic that a verifier can redo from first
+    # principles. Latency is the exception: it is a *measurement* taken around a call, so the
+    # only honest thing a verifier can do with it is check that the summary is the summary of
+    # the rows beside it — the same rows that are already bound to the Merkle tree. A summary
+    # that disagrees with its own rows is a fabricated measurement inside a tamper-evident
+    # document, which is worse than no measurement at all.
+    # Absent and present-but-null are different statements: an absent member says "nothing was
+    # timed", while `"latency": null` is a malformed claim in a document that is supposed to be
+    # checkable. The sentinel keeps the distinction, so the second one fails instead of skipping.
+    stated_latency = receipt.get("latency", _ABSENT)
+    if stated_latency is _ABSENT:
+        add("latency-summary", "skip", "the receipt carries no per-call latency")
+    elif not appendix_ok:
+        add(
+            "latency-summary",
+            "fail",
+            "cannot recompute the latency summary: the receipt's usage appendix is not readable",
+        )
+    else:
+        malformed = [
+            row.get("latency_ms")
+            for row in rows
+            if isinstance(row, dict) and "latency_ms" in row and not is_latency(row.get("latency_ms"))
+        ]
+        if malformed:
+            add(
+                "latency-summary",
+                "fail",
+                f"a usage row carries a latency that is not a whole, non-negative millisecond count: "
+                f"{malformed[0]!r} ({type(malformed[0]).__name__})",
+            )
+        else:
+            measured = [
+                row["latency_ms"] for row in rows if isinstance(row, dict) and is_latency(row.get("latency_ms"))
+            ]
+            problems = check_summary(stated_latency, measured, len(rows))
+            if problems:
+                add("latency-summary", "fail", "; ".join(problems[:3]))
+            else:
+                add(
+                    "latency-summary",
+                    "pass",
+                    f"p50 {measured and stated_latency.get('p50_ms')} ms · "
+                    f"p{REPORTED[-1]} {stated_latency.get(f'p{REPORTED[-1]}_ms')} ms over "
+                    f"{len(measured)} measured call(s), nearest-rank",
+                )
 
     # -- 7. sealing and signing ------------------------------------------- #
     # Presence, not truthiness: a receipt carrying ``"signature": 0`` or ``"seal": {}`` has a

@@ -519,7 +519,10 @@ class Supervisor:
             for item in self.rollback.get("refused") or []:
                 self._say(f"NOT rolled back: {item['path']} — {item['reason']}")
 
-        duration = self.monotonic() - started_mono
+        # Same clamp, same reason as the cap check: the receipt's `duration_seconds` is read by
+        # people and compared against the wall-clock cap, and a negative duration is a claim no
+        # clock can support.
+        duration = max(0.0, self.monotonic() - started_mono)
         if breach_state["cap"]:
             exit_code = EXIT_CAP_EXCEEDED
         ledger.append(
@@ -743,7 +746,14 @@ class Supervisor:
                 breach_state["cap"] = (
                     "max_events" if getattr(ledger, "max_events", None) is not None else "max_ledger_bytes"
                 )
-            elapsed = self.monotonic() - started_mono
+            # `max(0.0, ...)` is not decoration. `monotonic` is an injectable source (tests and
+            # embedders supply their own), and a source that steps *backwards* — a VM restored from
+            # a snapshot, a container sharing a stale clock, a caller's own bug — would make
+            # `elapsed` negative, which is a duration the receipt must never print: nothing can
+            # spend a negative number of seconds, and a downstream reader comparing it to the cap
+            # has to decide what a negative budget means. Clamping states the invariant instead:
+            # elapsed time is a quantity, and quantities of time are not negative.
+            elapsed = max(0.0, self.monotonic() - started_mono)
             if wall_limit is not None and elapsed >= wall_limit and breach_state["cap"] is None:
                 breach_state["cap"] = "max_wall_seconds"
                 ledger.append(

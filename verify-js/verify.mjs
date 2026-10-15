@@ -18,8 +18,9 @@
  *   4. every usage row proven present in the receipt's Merkle tree
  *   5. cost recomputed from token counts using the price table embedded in the receipt
  *   6. the ledger file digest, when the ledger is supplied
- *   7. the receipt core digest, when a digest vector is supplied
- *   8. seal (HMAC-SHA256) and signature (Ed25519), when present and keys are available
+ *   7. the latency summary, recomputed from the usage rows it claims to summarise
+ *   8. the receipt core digest, when a digest vector is supplied
+ *   9. seal (HMAC-SHA256) and signature (Ed25519), when present and keys are available
  */
 
 import { createHash, createHmac, createPublicKey, verify as cryptoVerify } from "node:crypto";
@@ -120,6 +121,69 @@ function formatMicros(value) {
 // --------------------------------------------------------------------------- //
 // Price table + glob matching (§6 of the spec)
 // --------------------------------------------------------------------------- //
+
+// --------------------------------------------------------------------------- //
+// Latency summary (§6.3)
+//
+// The one claim in a receipt that is a measurement rather than arithmetic. A verifier
+// cannot re-time a call, so it recomputes the summary from the `latency_ms` values in
+// the rows it is already checking, using the method the summary names. "Nearest-rank"
+// is spelled out in the spec because p99 over fifteen samples is a different number
+// under a different rule, and a reader comparing two receipts must not be comparing
+// two definitions.
+// --------------------------------------------------------------------------- //
+
+const LATENCY_METHOD = "nearest-rank";
+const LATENCY_PERCENTILES = [50, 95, 99];
+
+function isLatency(value) {
+  return Number.isInteger(value) && value >= 0;
+}
+
+function percentileMs(values, percent) {
+  const ordered = [...values].sort((a, b) => a - b);
+  const rank = Math.min(Math.max(Math.ceil((percent / 100) * ordered.length), 1), ordered.length);
+  return ordered[rank - 1];
+}
+
+function latencySummary(values, totalRows) {
+  if (values.length === 0) return null;
+  const summary = {
+    method: LATENCY_METHOD,
+    measured_calls: values.length,
+    total_rows: totalRows === undefined ? values.length : totalRows,
+    total_ms: values.reduce((a, b) => a + b, 0),
+    max_ms: Math.max(...values),
+  };
+  for (const percent of LATENCY_PERCENTILES) summary[`p${percent}_ms`] = percentileMs(values, percent);
+  return summary;
+}
+
+function latencyProblems(stated, values, totalRows) {
+  if (stated === null || typeof stated !== "object" || Array.isArray(stated)) {
+    return [`the receipt's latency is not an object: ${Array.isArray(stated) ? "array" : typeof stated}`];
+  }
+  const problems = [];
+  if (stated.method !== LATENCY_METHOD) {
+    problems.push(
+      `latency.method is ${JSON.stringify(stated.method)}; this verifier recomputes ${JSON.stringify(LATENCY_METHOD)} and will not compare a summary computed some other way`,
+    );
+  }
+  const expected = latencySummary(values, totalRows);
+  if (expected === null) {
+    problems.push("the receipt states a latency summary but no usage row carries latency_ms");
+    return problems;
+  }
+  const keys = ["measured_calls", "total_rows", "total_ms", "max_ms", ...LATENCY_PERCENTILES.map((p) => `p${p}_ms`)];
+  for (const key of keys) {
+    if (!(key in stated)) problems.push(`latency.${key} is missing`);
+    else if (stated[key] !== expected[key]) problems.push(`latency.${key} is ${JSON.stringify(stated[key])} but the rows give ${JSON.stringify(expected[key])}`);
+  }
+  for (const key of Object.keys(stated)) {
+    if (!(key in expected)) problems.push(`latency.${key} is not a member this format defines`);
+  }
+  return problems;
+}
 
 function globToRegExp(pattern) {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".");
@@ -366,6 +430,32 @@ function verifyReceipt(receipt, options = {}) {
     }
   }
 
+  // The latency summary: recomputed from the same rows whose costs were just checked,
+  // so a summary that disagrees with its own appendix is caught here rather than
+  // believed by the person reading the receipt.
+  if (receipt.latency === undefined || receipt.latency === null) {
+    add("latency-summary", "skip", "the receipt carries no per-call latency");
+  } else if (rows.some((row) => row && "latency_ms" in row && !isLatency(row.latency_ms))) {
+    const bad = rows.find((row) => row && "latency_ms" in row && !isLatency(row.latency_ms));
+    add(
+      "latency-summary",
+      "fail",
+      `a usage row carries a latency that is not a whole, non-negative millisecond count: ${JSON.stringify(bad.latency_ms)}`,
+    );
+  } else {
+    const measured = rows.filter((row) => row && isLatency(row.latency_ms)).map((row) => row.latency_ms);
+    const problems = latencyProblems(receipt.latency, measured, rows.length);
+    if (problems.length > 0) {
+      add("latency-summary", "fail", problems.slice(0, 3).join("; "));
+    } else {
+      add(
+        "latency-summary",
+        "pass",
+        `p50 ${receipt.latency.p50_ms} ms · p99 ${receipt.latency.p99_ms} ms over ${measured.length} measured call(s), nearest-rank`,
+      );
+    }
+  }
+
   if (options.ledgerFileBytes) {
     const digest = sha256Hex(options.ledgerFileBytes);
     add(
@@ -518,7 +608,19 @@ function main(argv) {
   return result.ok ? 0 : 1;
 }
 
-export { canonical, canonicalDigest, formatMicros, merkleRoot, micros, verifyInclusion, verifyLedgerChain, verifyReceipt };
+export {
+  canonical,
+  canonicalDigest,
+  formatMicros,
+  latencyProblems,
+  latencySummary,
+  merkleRoot,
+  micros,
+  percentileMs,
+  verifyInclusion,
+  verifyLedgerChain,
+  verifyReceipt,
+};
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop());
 if (isMain) process.exit(main(process.argv.slice(2)));

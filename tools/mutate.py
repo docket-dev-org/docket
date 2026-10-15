@@ -94,7 +94,17 @@ DEFAULT_TESTS: dict[str, list[str]] = {
         "tests/test_ledger_contracts.py",
         "tests/test_diagnostics.py",
         "tests/test_vectors.py",
+        "tests/test_invariants.py",
     ],
+    # The latency rule is checked from two sides: the rule itself, and the verifier that recomputes a
+    # receipt's summary from the rows it cites. Without the second file, every mutant in
+    # `check_summary` survives and the score reads 0.04 — a survivor that is an artefact of the
+    # subset, not a gap in the tests.
+    "src/docket/latency.py": ["tests/test_latency.py", "tests/test_receipt_verify.py"],
+    # The invariants file drives real supervised runs (locking, killing, clock stepping), so it
+    # belongs to any module whose promises are about lifecycle or concurrency.
+    "src/docket/supervisor.py": ["tests/test_supervisor.py", "tests/test_invariants.py"],
+    "src/docket/scriptagent.py": ["tests/test_invariants.py", "tests/test_chaos.py"],
     "src/docket/util.py": ["tests/test_url_guards.py", "tests/test_cli_input.py"],
     "src/docket/policy.py": ["tests/test_policy.py", "tests/test_cli_input.py"],
     "src/docket/pricing.py": ["tests/test_pricing.py"],

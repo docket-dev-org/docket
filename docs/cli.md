@@ -186,6 +186,11 @@ Renders the newest receipt (or the one you pass) as a human summary. `--markdown
 version suitable for a pull request, incident ticket or client email — the shape people
 actually need when they have to explain an agent run to someone else.
 
+When the run's calls were timed, the summary carries `latency  p50 … · p95 … · p99 … · max …`
+with the percentile method named (`nearest-rank`, spec §6.2) and the number of calls it covers;
+`docket verify` recomputes those percentiles from the receipt's own usage rows, so the line is a
+claim a third party can check rather than a number the tool asks to be believed.
+
 ## `docket explain [receipt] [--ledger PATH] [--json]`
 
 Analyses a ledger and prints findings — where the money and the risk went — each with
