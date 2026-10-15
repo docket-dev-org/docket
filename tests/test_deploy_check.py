@@ -14,12 +14,21 @@ standard as everything else: a tool that cannot fail proves nothing. Two kinds o
 The renderer is tested directly as well: it implements a *subset* of Helm's language, and the
 property that makes that acceptable is that it refuses anything outside the subset by name rather
 than rendering around it.
+
+The checker reads YAML with PyYAML, which is a dependency of the *tool* and not of `docket`. That
+makes it optional, and optional in this repository has a defined meaning: the tests that need it
+**skip with the reason**, the way the Ed25519 tests skip without `cryptography`, rather than failing
+and making a bare clone look broken. The one test that must run either way is the last one in the
+file: with the import shadowed, the checker has to exit 2 with a reason, because a check that
+cannot run must never be readable as a check that passed.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -27,6 +36,18 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKER = ROOT / "tools" / "deploy_check.py"
+
+#: Why the checker cannot run here, or `None` if it can. Kept separate from the fixture so the
+#: reason is stated once and a reader of the skip line learns what to install.
+YAML_MISSING = (
+    None
+    if importlib.util.find_spec("yaml") is not None
+    else (
+        "needs PyYAML, which tools/deploy_check.py reads the manifests with. The checker exits 2 "
+        "with that reason rather than passing, so there is nothing here to assert: "
+        "`pip install pyyaml` (or `pip install -e '.[deploy]'`) and re-run"
+    )
+)
 
 
 def _load():
@@ -43,6 +64,17 @@ def _load():
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _require_yaml() -> None:
+    """Skip *only* the tests that need the checker to read a file.
+
+    The renderer tests below exercise the template subset directly and never open a manifest, so
+    they keep running in an environment with no PyYAML: skipping them would be a skip that hides
+    coverage rather than a skip that reports a missing tool.
+    """
+    if YAML_MISSING is not None:
+        pytest.skip(YAML_MISSING)
 
 
 @pytest.fixture()
@@ -126,6 +158,7 @@ def test_a_quoted_number_is_refused_rather_than_coerced(checker):
 
 
 def test_every_check_passes_on_this_repository(checker):
+    _require_yaml()
     results, rendered = checker.run(None)
     failures = {result.name: result.problems for result in results if not result.ok}
     assert not failures, failures
@@ -150,6 +183,7 @@ def test_the_check_names_are_stable(checker):
 
 
 def test_the_rendered_chart_is_a_deployment_a_pod_and_a_policy(checker):
+    _require_yaml()
     rendered = checker.render_chart(ROOT / "deploy" / "helm" / "docket")
     text = "\n---\n".join(text for name, text in rendered.items() if name.endswith(".yaml"))
     kinds = {document.get("kind") for document in checker.documents(text, "chart")}
@@ -164,6 +198,7 @@ def test_the_rendered_chart_is_a_deployment_a_pod_and_a_policy(checker):
 
 
 def _fail(checker, root: Path, name: str) -> list[str]:
+    _require_yaml()
     checker.set_root(root)
     try:
         results, _ = checker.run([name])
@@ -326,6 +361,7 @@ def test_an_undeclared_value_is_caught(checker, tree: Path):
 def test_a_template_that_cannot_render_does_not_hide_the_other_checks(checker, tree: Path):
     """A render failure is one check's problem, not a traceback that skips the rest: the run has to
     finish, name the construct, and still report on the artefacts it could read."""
+    _require_yaml()
     _edit(
         tree / "deploy" / "helm" / "docket" / "templates" / "pvc.yaml",
         "{{ if .Values.persistence.enabled }}",
@@ -393,3 +429,42 @@ def test_a_document_without_a_kind_is_caught(checker, tree: Path):
     _edit(tree / "deploy" / "kubernetes" / "deployment.yaml", "kind: ServiceAccount", "kind0: ServiceAccount")
     problems = _fail(checker, tree, "documents.are-declarations")
     assert any("apiVersion/kind" in problem for problem in problems), problems
+
+
+# --------------------------------------------------------------------------- #
+# The dependency itself, which has to fail loudly rather than quietly
+# --------------------------------------------------------------------------- #
+
+
+def test_a_missing_pyyaml_is_exit_2_with_a_reason_never_a_pass(tmp_path: Path):
+    """The checker's dependency is optional, so the dangerous failure is the quiet one.
+
+    Uninstalling PyYAML to test this would be a test that mutates the machine it runs on, so the
+    import is *shadowed* instead: a `yaml.py` that raises `ImportError` earlier on `sys.path`. The
+    checker must then exit 2 — "could not run", distinct from 1 — and say so on stderr, because a
+    deployment check that silently passes when it read nothing is worse than no check at all.
+    """
+    blocker = tmp_path / "blocker"
+    blocker.mkdir()
+    (blocker / "yaml.py").write_text('raise ImportError("blocked by the test")\n', encoding="utf-8")
+
+    env = os.environ.copy()
+    # The checker bootstraps its own `sys.path` from its location, so replacing PYTHONPATH here
+    # affects only the `import yaml` under test.
+    env["PYTHONPATH"] = str(blocker)
+    done = subprocess.run(
+        [sys.executable, str(CHECKER)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert done.returncode == 2, f"exit {done.returncode}\n{done.stdout}{done.stderr}"
+    message = done.stderr.lower()
+    assert "pyyaml is not installed" in message, done.stderr
+    assert "not a pass" in message, done.stderr
+    assert "pip install pyyaml" in message, done.stderr
+    assert "ok" not in done.stdout.lower(), f"a check reported a pass with no YAML reader:\n{done.stdout}"

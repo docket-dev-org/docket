@@ -279,6 +279,31 @@ def test_the_rss_series_keeps_its_start_its_peak_and_its_sample_count(monkeypatc
     assert report.rss_samples == 3
 
 
+def test_the_rss_sentinel_is_ignored_and_a_reading_is_not(monkeypatch):
+    """`UNMEASURABLE` means "the platform would not say", and it is not a reading of zero.
+
+    Both halves matter. A sampler that records the sentinel invents a measurement (the reports
+    would show a process using -1 KiB); a sampler that discards a *real* reading loses one, and the
+    start of the series is the number the "memory tracks events" claim is computed from.
+    """
+    from docket import loaddriver
+
+    assert loaddriver.UNMEASURABLE < 0, "the sentinel has to be distinguishable from a reading"
+    report = loaddriver.Report(concurrency=1, target_rate=0.0, seconds=0.0, calls=1)
+    start = report.rss_start_kib
+
+    monkeypatch.setattr(loaddriver, "_rss_kib", lambda: loaddriver.UNMEASURABLE)
+    report.note_rss()
+    assert report.rss_samples == 0, "the sentinel is not a sample"
+    assert report.rss_end_kib == start, "the sentinel must not move the end of the series"
+    assert report.rss_max_kib == start, "the sentinel must not move the peak"
+
+    monkeypatch.setattr(loaddriver, "_rss_kib", lambda: 4096)
+    report.note_rss()
+    assert report.rss_samples == 1
+    assert report.rss_start_kib == 4096 and report.rss_end_kib == 4096
+
+
 def test_the_call_budget_and_the_deadline_both_stop_the_run(monkeypatch):
     """Two ceilings, each of which must be exact: one call too many is a load test that lied."""
     from docket import loaddriver
@@ -303,20 +328,38 @@ def test_the_call_budget_and_the_deadline_both_stop_the_run(monkeypatch):
 def test_a_target_rate_is_actually_honoured(ledger, fake_upstream):
     """Pacing is the difference between a soak and a burst wearing a soak's name.
 
-    With a 0.1 s pace per worker, five calls cannot finish in under 0.4 s. The mutant this pins
-    (`max` -> `min` in the schedule) does not slow the driver down, it removes the wait entirely
-    and turns a paced run into a flat-out one that still reports the target rate.
+    Each paced run is checked against the floor its own schedule implies: `n` calls at `r` per
+    second cannot be issued inside `(n - 1) / r` seconds, whatever the machine is doing, because the
+    driver sleeps the remainder of each interval by construction. The assertion is therefore
+    one-sided, and contention can only make the run longer — a threshold that noise could push a
+    *correct* run past would be a flaky test, and a test that fails on a slow box teaches people to
+    re-run it.
+
+    Two rates are driven rather than one, because a single floor proves the wait exists and two
+    prove it is the *rate* that decides how long it is. The mutant this catches (`max` → `min` in
+    the schedule) removes the waits entirely: both runs finish in the time the calls take and both
+    floors fail.
+
+    The warm-up call is not padding. The first call through a fresh boundary pays for the ledger,
+    the price table and the key file, and an earlier version of this test measured that instead of
+    the schedule — it passed with the mutant applied, because startup alone cleared the threshold.
     """
     proxy, base = _boundary(ledger, fake_upstream.url)
-    started = time.monotonic()
     try:
-        report = run_load(base, calls=5, concurrency=1, rate=10.0)
+        run_load(base, calls=1, concurrency=1, timeout=10.0)  # warm-up: not part of the measurement
+        slow = time.monotonic()
+        run_load(base, calls=5, concurrency=1, rate=10.0, timeout=10.0)
+        slow = time.monotonic() - slow
+        fast = time.monotonic()
+        report = run_load(base, calls=5, concurrency=1, rate=20.0, timeout=10.0)
+        fast = time.monotonic() - fast
     finally:
         proxy.stop()
-    elapsed = time.monotonic() - started
+
     assert report["calls_ok"] == 5
-    assert elapsed >= 0.4, f"five calls at 10/s took {elapsed:.3f}s, which is not pacing"
-    assert report["target_rate_per_second"] == "10.00"
+    assert report["target_rate_per_second"] == "20.00"
+    assert slow >= 0.4 * 0.9, f"five calls at 10/s took {slow:.3f}s, against a floor of 0.400s"
+    assert fast >= 0.2 * 0.9, f"five calls at 20/s took {fast:.3f}s, against a floor of 0.200s"
 
 
 def test_a_single_call_is_a_perfectly_valid_run(ledger, fake_upstream):
@@ -346,8 +389,13 @@ def test_a_run_with_no_measured_call_has_an_empty_summary_not_an_exception(ledge
     proxy.stop()
     report = run_load(base, calls=2, concurrency=1, timeout=2.0)
     assert report["calls_ok"] == 0
+    assert report["bytes_read"] == 0, "no wire bytes were read, and a counter is not a placeholder"
     assert report["client_latency"]["measured_calls"] == 0
     assert report["client_latency"]["p50_ms"] == 0 and report["client_latency"]["p99_ms"] == 0
+    # Every percentile follows the same rule on an empty list, and the maximum is the list's last
+    # element rather than a percentile at all: each of the three is a separate way to raise.
+    assert report["client_latency"]["p95_ms"] == 0
+    assert report["client_latency"]["max_ms"] == 0
     assert report["client_latency"]["total_ms"] == 0
 
 
@@ -577,3 +625,86 @@ def test_a_step_that_delays_is_waited_for_rather_than_dropped(ledger):
         server.stop()
     assert report["calls_ok"] == 3
     assert report["client_latency"]["p50_ms"] >= 50
+
+
+def test_the_arguments_are_validated_at_the_door(ledger, fake_upstream):
+    """A run that cannot be executed must fail before it starts, not by dividing by nothing.
+
+    `run_load` is also a library call — `tools/loadtest.py` and the game day both use it — so the
+    guard has to be here and not only in the argument parser.
+    """
+    from docket import loaddriver
+
+    with pytest.raises(ValueError, match="at least 1"):
+        run_load("http://127.0.0.1:1", calls=0)
+    with pytest.raises(ValueError, match="at least 1"):
+        run_load("http://127.0.0.1:1", concurrency=0)
+    with pytest.raises(ValueError, match="at least 1"):
+        run_load("http://127.0.0.1:1", concurrency=-3)
+    # A URL with no port is not a boundary this driver can reach, and saying so is better than a
+    # connection error five seconds later that names the socket instead of the argument.
+    with pytest.raises(ValueError, match="not an http boundary URL"):
+        loaddriver._parts("http://127.0.0.1")
+    with pytest.raises(ValueError, match="not an http boundary URL"):
+        loaddriver._parts("file:///etc/passwd")
+
+
+def test_a_zero_length_run_summarises_to_zero_rather_than_raising():
+    """The rate is `ok / elapsed`, so the guard against a zero clock is the guard against a crash.
+
+    Unreachable through `run_load` — a run that returns at all has taken measurable time — and kept
+    for exactly that reason: the summary is also built from rows a test or a tool can hand it, and
+    a division by zero there would take down a report that had already been paid for.
+    """
+    from docket import loaddriver
+
+    report = loaddriver.Report(concurrency=1, target_rate=0.0, seconds=0.0, calls=0)
+    summary = loaddriver._summarise(report, "http://127.0.0.1:1", "/openai/v1/chat/completions", 0.0)
+    assert summary["achieved_calls_per_second"] == "0.00"
+    assert summary["seconds"] == "0.000"
+
+
+def test_the_report_is_written_with_sorted_keys(tmp_path, monkeypatch, ledger, fake_upstream):
+    """The report is evidence, so its bytes are canonical: the file is the sorted form of itself.
+
+    `sort_keys=True` is the whole of that property. Without a test it is one keyword away from
+    `False`, and a diff of two reports would then show key order rather than what changed.
+    """
+    monkeypatch.setenv("DOCKET_PROXY_URL", "http://127.0.0.1:1")  # replaced below; keeps the env set
+    proxy, base = _boundary(ledger, fake_upstream.url)
+    monkeypatch.setenv("DOCKET_PROXY_URL", base)
+    written = tmp_path / "one.json"
+    other = tmp_path / "two.json"
+    try:
+        assert driver_main(["--calls", "2", "--report", str(written)]) == 0
+        assert driver_main(["--calls", "2", "--report", str(other)]) == 0
+    finally:
+        proxy.stop()
+
+    text = written.read_text(encoding="utf-8")
+    assert text.strip() == json.dumps(
+        json.loads(text), sort_keys=True
+    ), "the report on disk is not the sorted form of itself"
+    pairs = json.loads(text, object_pairs_hook=lambda items: items)  # keeps the byte order
+    keys = [key for key, _ in pairs]
+    assert keys == sorted(keys), f"top-level keys are in insertion order, not sorted: {keys}"
+    assert [key for key, _ in json.loads(other.read_text(encoding="utf-8"), object_pairs_hook=lambda i: i)] == keys
+
+
+def test_the_help_text_is_the_module_docstring(tmp_path, capsys):
+    """`--help` is the only place the driver explains itself to someone who typed `-h`.
+
+    The description is the docstring's *first* line — an index into the split, which is easy to
+    change by accident and invisible to every other test.
+    """
+    from docket import loaddriver
+
+    with pytest.raises(SystemExit) as exited:
+        driver_main(["--help"])
+    assert exited.value.code == 0
+    # argparse re-wraps the description to the terminal width, so the comparison is made on
+    # whitespace-normalised text: the sentence has to be there, its line breaks are not ours.
+    printed = " ".join(capsys.readouterr().out.split())
+    first_line = loaddriver.__doc__.split("\n")[0].strip()
+    assert first_line in printed, f"the help does not open with the module's own summary: {first_line!r}"
+    assert "usage: python -m docket.loaddriver" in printed

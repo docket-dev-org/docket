@@ -99,3 +99,60 @@ def test_the_reference_scanner_notices_a_missing_document(tmp_path, monkeypatch)
             if not (tmp_path / match.group(1)).exists():
                 missing.setdefault(match.group(1), []).append(path.name)
     assert missing == {"docs/absent.md": ["code.py"]}
+
+
+# --------------------------------------------------------------------------- #
+# The site build, which stages the tree before mkdocs sees it
+# --------------------------------------------------------------------------- #
+
+INLINE_LINK = re.compile(r"\]\(([^)\s]+)\)")
+EXTERNAL = ("http://", "https://", "mailto:", "//", "#")
+
+
+def _staged_site(tmp_path: Path) -> Path:
+    """Stage the repository the way `tools/build_docs_site.py` does, and return the staged root.
+
+    Imported by path for the same reason the other tools are: it is a script, not a package.
+    """
+    import importlib.util
+    import sys
+
+    name = "build_docs_site_under_test"
+    spec = importlib.util.spec_from_file_location(name, REPO / "tools" / "build_docs_site.py")
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    site = tmp_path / "site"
+    module.stage(site)
+    return site
+
+
+def test_every_relative_link_in_the_docs_resolves_inside_the_staged_site(tmp_path):
+    """`mkdocs build --strict` fails on a relative link whose target the staging step did not copy.
+
+    That is not hypothetical: the first strict build of this repository aborted with two warnings,
+    both links from the documentation to `tools/*.py` — real files, referenced the way every other
+    repository path is referenced, that `stage()` did not carry. The property is checked here rather
+    than only in the docs CI job so that it needs no `mkdocs-material` install to run, and so a
+    link added to a page cannot pass review by being reasonable.
+
+    Anchor-only links, external URLs and mail links are not this test's business; a target that is a
+    directory counts as resolving, because that is how mkdocs treats it.
+    """
+    site = _staged_site(tmp_path)
+    missing: list[str] = []
+    seen = 0
+    for page in sorted((site / "docs").rglob("*.md")):
+        for target in INLINE_LINK.findall(page.read_text(encoding="utf-8")):
+            if target.startswith(EXTERNAL):
+                continue
+            seen += 1
+            path = (page.parent / target.split("#", 1)[0]).resolve()
+            if not path.exists():
+                missing.append(f"{page.relative_to(site).as_posix()} -> {target}")
+
+    # 49 at the time of writing, across the guides and the measurements. The floor is a canary for
+    # a matcher that has stopped matching, not a count to keep in step with the documentation.
+    assert seen >= 40, f"only {seen} relative links were scanned; the matcher has stopped working"
+    assert not missing, "links that the staged site cannot resolve: " + repr(missing)

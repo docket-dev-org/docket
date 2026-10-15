@@ -37,11 +37,28 @@ def stage(destination: Path) -> None:
         if path.is_dir():
             continue
         relative = path.relative_to(ROOT)
-        # Documents link to real repository files (pyproject.toml, example policies), so the
-        # staging step has to carry those too or the link checker reports false breakage.
-        keep = path.suffix in {".md", ".png", ".svg", ".jpg", ".webp", ".toml", ".json", ".yml", ".yaml"} or (
-            relative.name in {"mkdocs.yml", "LICENSE", "Makefile"}
-        )
+        # Documents link to real repository files — `pyproject.toml`, example policies, and the
+        # tools they are describing (`tools/deploy_check.py`, `tools/loadtest.py`) — so the staging
+        # step carries the file kinds they name. It is not cosmetic: `mkdocs build --strict` treats
+        # a link to a file it cannot find as a warning and *aborts*, so a document that points at a
+        # `tools/*.py` is a red build until that file is staged. The kinds below are the ones the
+        # documentation actually references; `tests/test_doc_links.py` stages this tree in a test and
+        # resolves every relative link against it, so a new kind of link fails there rather than in
+        # the docs job.
+        keep = path.suffix in {
+            ".md",
+            ".png",
+            ".svg",
+            ".jpg",
+            ".webp",
+            ".toml",
+            ".json",
+            ".yml",
+            ".yaml",
+            ".py",
+            ".sh",
+            ".txt",
+        } or (relative.name in {"mkdocs.yml", "LICENSE", "Makefile", "Dockerfile", ".dockerignore", ".gitignore"})
         if not keep:
             continue
         target = destination / relative

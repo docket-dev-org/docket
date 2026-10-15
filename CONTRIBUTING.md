@@ -19,8 +19,8 @@ clearer, more correct or more portable are the ones that matter most.
 git clone https://github.com/docket-dev/docket
 cd docket
 python3 -m venv .venv && . .venv/bin/activate      # or any 3.11+ interpreter
-pip install -e '.[dev,sign]'
-make test          # 700 tests, fully offline, ~105 s
+pip install -e '.[dev,sign]'   # dev: pytest, ruff (pinned), mkdocs, pyyaml — sign: cryptography
+make test          # 834 tests, fully offline, ~126 s
 make demo          # the runaway-agent demo
 make verify-js     # independent Node verifier against the committed vectors
 ```
@@ -77,6 +77,8 @@ feature — CI runs both implementations against the vectors on every pull reque
 ## Style
 
 - `ruff check` and `ruff format` (config in `pyproject.toml`, 120 columns); imports sorted.
+  The `dev` extra pins ruff to the version CI installs, because its formatter changes between
+  releases — see the comment beside the pin. `make lint` checks formatting without writing it.
 - Type annotations on public functions; `from __future__ import annotations` at the top.
 - Comments explain *why*, especially where a decision looks strange. The honest-limits
   wording, the float rule and the "skip is not a pass" behaviour all have reasons worth

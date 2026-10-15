@@ -73,6 +73,12 @@ The checker is itself tested, which is the part that makes it more than decorati
 unpinned image, an undeclared value, a `range` construct the renderer does not implement — and
 asserts that the checker fails with a message naming the problem.
 
+It needs a YAML reader, and it is built so that not having one is never a pass: `pip install pyyaml`
+(or `pip install -e '.[deploy]'`) if the command reports it is missing. The exit codes separate the
+two failures an operator cares about — **`1`** when a check failed, **`2`** when the check could not
+run at all — and a test pins that distinction by shadowing the import rather than uninstalling
+anything. `make deploy-check` deliberately does not install it for you.
+
 ## What the deploy check does not verify
 
 Stated as plainly as the list above, because the difference between "checked" and "ran" is the whole

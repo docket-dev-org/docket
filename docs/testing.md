@@ -12,40 +12,64 @@ and can be told to fail on cue.
 ## The suite
 
 ```console
-$ make test          # 700 tests, ~105 s, no network
+$ make test          # 834 tests, ~126 s, no network
 $ make check         # + ruff, + bandit, + the independent Node verifier
 ```
 
 | file | tests | what it pins |
 | --- | --- | --- |
-| `test_canon.py` | 28 | canonical JSON, Merkle trees and proofs, the no-floats rule |
+| `test_canon.py` | 44 | canonical JSON, Merkle trees and proofs, the no-floats rule |
 | `test_vectors.py` | 9 | the committed conformance vectors, including that regenerating them changes nothing |
-| `test_ledger.py` | 12 | append/read, chain resumes, ceilings, `unwritten` bookkeeping |
-| `test_ledger_faults.py` | 22 | a ledger on a failing filesystem: ENOSPC, EIO, a closed handle, an OS error while opening |
+| `test_policy.py` | 12 | accept and reject paths for every policy key |
+| `test_pricing.py` | 19 | price table, cost arithmetic, the missing-model path, ceilings |
+| `test_ledger.py` | 18 | append/read, chain resumes, ceilings, `unwritten` bookkeeping |
+| `test_ledger_contracts.py` | 33 | the ledger's caller-facing contracts: event dicts, byte accounting, ceilings, a file that grew behind the writer, the lock file, the repair sidecar |
+| `test_ledger_faults.py` | 29 | a ledger on a failing filesystem: ENOSPC, EIO, a closed handle, an OS error while opening |
 | `test_ledger_concurrency.py` | 4 | one ledger, eight writer threads: order, chain, agreement, file digest |
 | `test_latency.py` | 21 | the percentile rule, hostile row values, the verifier's recomputation, the report's tail line |
-| `test_receipt_verify.py` | 19 | the receipt and every verification check, plus one name to one verdict |
-| `test_proxy.py` | 15 | pass-through, streaming, policy enforcement, what is never recorded |
+| `test_receipt_verify.py` | 96 | the receipt and every verification check, plus one name to one verdict |
+| `test_proxy.py` | 16 | pass-through, streaming, policy enforcement, what is never recorded |
 | `test_proxy_concurrency.py` | 6 | parallel calls through the real boundary: chain, totals, limiter, breaker, cap |
-| `test_resilience.py` | 24 | breaker, limiter, fault injection grammar, evidence guard |
-| `test_policy.py` | 11 | accept and reject paths for every policy key |
-| `test_pricing.py` | 19 | price table, cost arithmetic, the missing-model path, ceilings |
+| `test_resilience.py` | 38 | breaker, limiter, fault injection grammar, evidence guard |
 | `test_explain.py` | 13 | analysis rules and their attributed impact |
 | `test_supervisor.py` | 11 | the run lifecycle, exit codes, the evidence directory exclusion |
 | `test_snapshot_restore.py` | 25 | snapshot, plan, apply, the CLI, idempotence, the restore record |
 | `test_snapshot_confinement.py` | 25 | hostile documents: paths, digests, modes, symlinks, keys |
 | `test_fsdiff.py` | 5 | what the file diff sees, with a relative and an absolute cwd |
-| `test_invariants.py` | 14 | executed properties: one writer per ledger, 200 events from 8 threads, no deduplication of a replayed call, socket and thread release, a SIGKILLed agent, a clock that steps forwards or backwards |
+| `test_invariants.py` | 16 | executed properties: one writer per ledger, 200 events from 8 threads, no deduplication of a replayed call, socket and thread release, a SIGKILLed agent, a clock that steps forwards or backwards |
 | `test_chaos.py` | 29 | the fault grammar, `audit_run`, the game-day phases |
 | `test_security.py` | 40 | red team: forgery, injection, bypass, confinement, secret capture |
-| `test_cli_input.py` | 36 | numeric flags: every cap, every way to spell it wrong |
+| `test_cli_input.py` | 51 | numeric flags: every cap, every way to spell it wrong |
 | `test_cli_sdk_demo.py` | 17 | the commands end to end, the SDK, the demo |
 | `test_i18n.py` | 16 | locale independence, Unicode round trips, non-ASCII paths |
-| `test_url_guards.py` | 28 | the two URL guards, and a syntax-tree walk that every `urlopen` uses one |
+| `test_url_guards.py` | 43 | the two URL guards, and a syntax-tree walk that every `urlopen` uses one |
 | `test_diagnostics.py` | 8 | the self-test's probes against a working installation |
 | `test_signing_and_attach.py` | 8 | HMAC sealing, Ed25519 signing, agent-asserted events |
 | `test_render_golden.py` | 3 | the rendered receipt, report and diff, against golden files |
+| `test_loadtest.py` | 37 | the load harness: refusal classification, the pacing schedule, the RSS sentinel, and the orchestrator refusing to call a self-inconsistent run evidence |
+| `test_deploy_check.py` | 40 | the static deployment checker, one broken fixture per invariant it claims to enforce — a checker that cannot fail is decoration |
+| `test_doc_links.py` | 4 | every `docs/…md` reference in the tree resolves, every page is in the nav, and the scanner itself can fail |
 | `test_fuzz_regressions.py` | 98 | one test per defect a fuzzer found (see below) |
+
+Counts are collected (`pytest --collect-only`), not remembered, and they are checked by the CI
+run rather than by a reader: a test file that grows without the number changing is a document that
+has started to lie.
+
+Two options are not required to use Docket — the core has **zero runtime dependencies** — and the
+suite says so by *skipping with a reason* rather than failing, because a bare clone that goes red
+looks like a broken project:
+
+| installed | result | the skips |
+| --- | --- | --- |
+| `pytest` alone (`make test`) | 796 passed, 33 skipped | 28 need PyYAML, 5 need `cryptography` |
+| `+ cryptography` | 801 passed, 28 skipped | the 28 are `tools/deploy_check.py`'s |
+| `+ pyyaml` | 824 passed, 5 skipped | the 5 are Ed25519 sealing and signing |
+| `pip install -e '.[dev,sign]'` (**the documented dev setup**) | **834 passed, 0 skipped** | none |
+
+The skips are not a way of hiding a defect: the checker these 28 cover **exits 2 with a reason**
+when PyYAML is absent — "could not run", a different code from the 1 that means "found a problem" —
+and `tests/test_deploy_check.py` includes the test that pins exactly that, on a machine that *has*
+PyYAML, by shadowing the import rather than uninstalling anything.
 
 ## By kind
 
@@ -72,7 +96,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | accessibility | the terminal output is plain UTF-8 box drawing with a `NO_COLOR` path, and the machine-readable form (`--json`, the markdown report) carries the same content — so nothing is *only* conveyed by colour |
 | compatibility | CI matrix: Python 3.11, 3.12, 3.13; Node 20 for the independent verifier |
 | reliability | `chaos.py` + the eight game-day phases; a broken ledger tails off, a full one is declared |
-| maintainability | ruff (lint **and** format), bandit, and the seam rule in CONTRIBUTING (each claim has one test file) |
+| maintainability | ruff (lint **and** format, **pinned** to one version in both the `dev` extra and CI: the formatter rewrites different files in 0.17 than in 0.6.9), bandit, and the seam rule in CONTRIBUTING (each claim has one test file) |
 | localisation / i18n | `test_i18n.py`: identical digests under `C`, `de_DE`, `tr_TR`, `ja_JP`; NFC ≠ NFD; non-ASCII paths round-trip |
 | black / white / grey box | black: the CLI and the JS verifier; white: internals such as `_open_ledger_handle`; grey: the red team, which reads the code and then attacks the interface |
 | manual | the game-day post-mortem is read by a person; the record it writes is for that person |
@@ -82,7 +106,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | monkey / gorilla | `docket game-day` kills the supervisor with SIGKILL mid-run and asserts what survives |
 | boundary-value | every cap: 0, 1, exactly at the limit, one over; every ceiling in `pricing`/`policy` |
 | equivalence partitioning | the fault grammar, the policy validators, the URL guards (loopback vs not, scheme by scheme) |
-| mutation | `tools/mutate.py`: seeded single-site mutation of `canon.py`, `verify.py`, `ledger.py` and `latency.py`, with every survivor classified — see *Mutation testing* |
+| mutation | `tools/mutate.py`: seeded single-site mutation of `canon.py`, `verify.py`, `ledger.py`, `latency.py` and `loaddriver.py`, with every survivor classified — see *Mutation testing* |
 | static | `ruff check`, `ruff format --check`, `bandit -q -c pyproject.toml -r src tools` |
 | dynamic | `tools/fuzz.py`: six property-based targets, time-boxed, seeded and reproducible |
 | alpha / beta | **not applicable yet** — no release channel beyond the source tree |
@@ -165,6 +189,9 @@ with a named regression test in `test_fuzz_regressions.py` or the relevant file:
 | repeating an action | `docket restore` failing on the second run and blaming the operator for Docket's own edit |
 | the conformance check | `spec/vectors` going stale after a policy change (the digest bound into every event) |
 | re-reading the spec against the implementation | `NaN`/`Infinity` are read by Python and rejected by `JSON.parse`: a request body carrying one became `502 docket internal error` in the run's own evidence, a ledger line carrying one was reported as "cannot be canonicalised" instead of "not JSON", and a hand-written `Infinity` on the last line claimed the torn-tail crash-recovery path |
+| reading the artefacts the way CI would | `mkdocs build --strict` aborted on this repository — the documentation links to `tools/deploy_check.py` and `tools/loadtest.py`, and the staging step that feeds mkdocs did not copy `.py` files, so the docs job would have failed for anyone who enabled it. The staging step carries them now, and a test stages the tree and resolves every relative link in the docs against it, without needing `mkdocs-material` installed |
+| installing the documented dev setup | `pip install -e '.[dev,sign]'` pulled the newest formatted, while CI pins `0.6.9` — and the two disagree about seventeen files of this tree, so a contributor's `make lint` could fail on files CI calls formatted. The extra pins the version CI installs |
+| installing the package the way a user would | `tools/deploy_check.py` needs PyYAML, and the suite around it *failed* — 28 tests, not skipped — when it was absent, so a bare clone was red while the README promised a green suite (`pip install -e '.[dev]'` did not pull it in either). The same tool also exited `1` when it could not run, which is the code it uses for "found a problem"; its own docstring promised `2`. Both are fixed, and the exit code now has a test that blocks the import rather than uninstalling anything |
 
 ## Mutation testing
 
@@ -192,6 +219,13 @@ Properties of the harness itself, because a mutation score is only as good as it
   *no source was changed* it reported 2.
 - **Duplicate keys are not identities.** Two mutants at one line with the same operator (two
   `False -> True` on a single line) are separate mutants: report and compare them as such.
+- **The mutant must actually be the code that runs.** A mutation whose replacement has the same
+  file size as the original — `0` → `1`, `max` → `min` — and lands within the same clock second can
+  be masked by a stale `__pycache__` entry, because CPython's cache key is (mtime seconds, size).
+  The harness already runs its subset with `PYTHONDONTWRITEBYTECODE=1` and `-p no:cacheprovider`
+  and copies the sandbox without `__pycache__`, so a *reported* survivor is a real survivor; anyone
+  reproducing a survivor by hand has to clear `src/docket/__pycache__` between edits or they will be
+  measuring the previous program.
 - **A survivor in a branch nothing can reach is not a gap.** Two of this round's survivors were
   mutants of dead defensive code — a second `torn_tail is None` check under a guard that had
   already returned, and an `events is None` check the reader cannot produce. They were deleted,
@@ -210,6 +244,8 @@ because the sample differs, and the candidate count changes with the source.
 | `src/docket/canon.py` | 63 | 63 | 58 | 1 | 4 | **98.3%** ([^timeouts]) | 209 s | 42 |
 | `src/docket/ledger.py` | 171 | 171 | 143 | 28 | 0 | **83.6%** | 276 s | 11 |
 | `src/docket/latency.py` | 21 | 21 | 21 | 0 | 0 | **100%** | 12 s | 0 |
+| `src/docket/loaddriver.py` (first) | 63 | 60 | 45 | 12 | 3 | **78.9%** | 822 s | 0 |
+| `src/docket/loaddriver.py` (after the tests below) | 61 | 60 | 55 | 2 | 3 | **96.5%** | 783 s | 0 |
 
 `latency.py` was written *after* the harness existed, and the harness earned its keep immediately:
 its first run left one survivor — the `return problems` inside the "the receipt states a latency
@@ -246,6 +282,9 @@ why; an equivalent mutant is not a defect and no test pretends otherwise.
 | `ledger.py:365` | `__exit__` returning `False` → `None` | **equivalent.** The `with` statement tests truthiness; both let an exception through. |
 | `ledger.py:406` | the diagnostics skeleton's `trailing_newline: True` → `False` | **equivalent.** Every path that reads bytes overwrites it; it is readable only for a file that does not exist, where neither value is a claim about bytes. |
 | `ledger.py:628-646` | six mutants: the `and`/`not` of the stale-lock test, `unlink(missing_ok=True)` in both the stale branch and the release path, and the two `return`s of that branch | **unreachable here.** Those branches are the `else` of `fcntl is not None`, so on any platform with `flock` they cannot run at all; the POSIX equivalents are killed. `missing_ok=False` is additionally covered by the surrounding `contextlib.suppress(OSError)`. |
+| `loaddriver.py:216` | `if next_call > now` → `>=` | **equivalent.** At `next_call == now` the mutant calls `time.sleep(0.0)` where the original skips the call; a zero-length sleep does not move the schedule. |
+| `loaddriver.py:265` | `while time.monotonic() < due` → `<=` | **equivalent.** A single extra poll iteration on the instant the sample is due, whose body is a 20 ms sleep and whose condition is then false; the only statement that records anything sits in the outer loop. |
+| `loaddriver.py:130,132,133` | `return False` → `True` on the call budget and on the deadline, and `issued += 1` → `+= 0` | **non-terminating, all three.** Remove the guard that stops a run and the run does not stop, so the test that drives it never returns within the 45 s per-mutant timeout. Reported as timeouts, never as kills — same family as the `merkle_root` mutants above. |
 | `ledger.py:664-672` | ten mutants in the Windows process-liveness probe (both `if not …` guards, both `return`s, the exit-code comparison, the `OpenProcess` arguments) | **unreachable here.** Exercised on Windows only, where the process table is asked directly — see *Windows* below. |
 | `ledger.py:680` | `except (ValueError, OverflowError)` → the two mutants of its `return False` | **unreachable on this kernel.** `os.kill` reports a pid no kernel would hand out as `ESRCH`, which is an `OSError` and is handled (and killed) by the branch above; this guard is for the platforms that raise `OverflowError` instead. |
 
@@ -265,6 +304,8 @@ Writing the tests that kill a mutant is where the defects were:
 | a test for the diagnostics' shape | `read_with_diagnostics` promised "the same keys on every path" in a comment while the missing-file path returned nine of eleven: `healthy` and `chain_error` raised `KeyError` for a caller that had only ever seen a healthy ledger. |
 | a test for the ceiling's error | `LedgerFullError`'s byte ceiling collapsed to `0` under a mutated `or`, and the reported usage shifted under a mutated index, and nothing read either field. |
 | reading a ledger's repr | the repr carried a descriptor, a lock handle and a memory address into CI logs. |
+| a test for a surviving `max` → `min` | the existing rate test **passed with the mutant applied**: it measured total wall clock through a *cold* boundary, where the first call's own cost cleared the 0.4 s threshold, so the soak's central claim ("the load is paced") was pinned by nothing. It now warms up first, asserts the schedule's floor, and compares against an unpaced run. |
+| a surviving sentinel comparison | `note_rss` compared a bare `-1` against a bare `0` in the same expression, and both mutants survived. The answer is now a named constant (`UNMEASURABLE`) with a test that feeds the sampler the sentinel and a real reading. |
 
 ### Not claimed
 
@@ -277,11 +318,11 @@ none is unaccounted for".
 
 ## Not covered, and why
 
-- **A full mutation score over the whole source tree.** `tools/mutate.py` runs over three
+- **A full mutation score over the whole source tree.** `tools/mutate.py` has been run over five
   modules — the two whose promises are cryptographic (`canon.py`, `verify.py`), the one that
-  holds the evidence (`ledger.py`), and the measurement added on top of them (`latency.py`). The
-  rest of `src/docket` is not mutated: a score for `proxy.py` or `cli.py` would be a much larger
-  run, and a number nobody has run is not a number. The harness's per-module test subsets now name
+  holds the evidence (`ledger.py`), the measurement added on top of them (`latency.py`), and the
+  load driver (`loaddriver.py`). The rest of `src/docket` is not mutated: a score for `proxy.py`
+  or `cli.py` would be a much larger run, and a number nobody has run is not a number. The harness's per-module test subsets now name
   the files each module's promises are made in, including the invariant suite for the lifecycle
   modules, so a future run of `supervisor.py` or `scriptagent.py` starts from a subset that can
   actually fail. What *has* been run, and what every survivor turned out to be, is in *Mutation
@@ -305,6 +346,15 @@ none is unaccounted for".
 - **Accessibility beyond the terminal.** There is no GUI to test. The `NO_COLOR` path, the
   monochrome golden files and the markdown report are what "nothing is only conveyed by colour"
   means here.
+- **A suite that has been proved to hold under heavy CPU contention.** Under artificial load —
+  two busy loops on a two-core box, a third process's worth of oversubscription — `test_chaos.py`'s
+  rollback drill failed once: it drives a whole game-day phase as a subprocess with a wall-clock
+  budget, and it prints the phase's record when it fails, which is how the next occurrence would
+  name the field that moved. It did not reproduce in three attempts under the same load, and the
+  unloaded suite is green on every run recorded here, so this is written down as an observed
+  sensitivity rather than a diagnosis. The pacing test was rewritten for the same reason after a
+  run at load showed its margin was 5%: it now asserts the schedule's floor, which contention can
+  only move in the safe direction.
 - **Windows.** There is no Windows in this environment or in CI, so nothing Windows-specific is
   claimed: the `O_EXCL` lock fallback, the `OpenProcess` liveness probe and the process-group kill
   are written, are the reason those code paths are marked `# pragma: no cover`, and have never

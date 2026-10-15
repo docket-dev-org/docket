@@ -44,9 +44,11 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install test dependencies
-        # cryptography is optional for users but required for the signing tests to run
-        # rather than skip in CI.
-        run: pip install pytest cryptography
+        # Both are optional for *users* and required for the whole suite to run here rather than
+        # skip: cryptography for the Ed25519 tests, PyYAML for tests/test_deploy_check.py (the tool
+        # it covers exits 2 without it, which is a failed run, never a silent pass). Installing them
+        # keeps this job at 0 skips, so a skip in CI means something changed.
+        run: pip install pytest cryptography pyyaml
       - run: PYTHONPATH=src python -m pytest tests -q
 
   conformance:

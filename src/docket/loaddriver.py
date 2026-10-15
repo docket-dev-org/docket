@@ -54,13 +54,20 @@ DEFAULT_ROUTE = "/openai/v1/chat/completions"
 #: honest target: this is a test of the recorder, not of a model API.
 BODY = {"model": "claude-sonnet-5", "messages": [{"role": "user", "content": "load"}]}
 
+#: The reader's "the platform would not say" answer, named rather than written as a bare ``-1``.
+#: A sentinel that is spelled out where it is produced *and* where it is consumed is a sentinel a
+#: test can pin; a bare negative literal in two places is a comparison that a mutation can flip
+#: without any test noticing, which is how this constant came to exist.
+UNMEASURABLE = -1
+
 
 def _rss_kib() -> int:
-    """This process's resident set size in KiB, or -1 when the platform will not say.
+    """This process's resident set size in KiB, or :data:`UNMEASURABLE` when the platform will not
+    say.
 
-    ``/proc`` is Linux-only. Returning -1 rather than 0 matters: 0 would read as "measured, and
-    the process used no memory", and a memory claim is exactly the kind of number that must not be
-    invented when the platform cannot supply it.
+    ``/proc`` is Linux-only. Answering ``UNMEASURABLE`` rather than ``0`` matters: ``0`` would read
+    as "measured, and the process used no memory", and a memory claim is exactly the kind of number
+    that must not be invented when the platform cannot supply it.
     """
     try:
         with open("/proc/self/status", encoding="utf-8") as handle:
@@ -68,8 +75,8 @@ def _rss_kib() -> int:
                 if line.startswith("VmRSS:"):
                     return int(line.split()[1])
     except OSError:  # pragma: no cover - non-Linux
-        return -1
-    return -1  # pragma: no cover - /proc without VmRSS
+        return UNMEASURABLE
+    return UNMEASURABLE  # pragma: no cover - /proc without VmRSS
 
 
 class Report:
@@ -100,9 +107,15 @@ class Report:
         self.deadline = time.monotonic() + seconds if seconds else 0.0
 
     def note_rss(self) -> None:
+        """Take one reading, ignoring the sentinel.
+
+        The comparison is *equality with the sentinel*, not "below zero": every other answer from
+        the reader is a measurement, and a measurement of zero would be a fact (an impossible one
+        for a running process, and still not this function's business to discard).
+        """
         with self.lock:
             current = _rss_kib()
-            if current < 0:
+            if current == UNMEASURABLE:
                 return
             if self.rss_samples == 0:
                 self.rss_start_kib = current

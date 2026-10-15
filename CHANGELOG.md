@@ -140,7 +140,39 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   out of scope, in a controlled vocabulary (*built*, *measured*, *modelled*, *reasoned*, *out of
   scope*). It states the three kinds of absence separately instead of blurring them.
 
+- **The docs site builds, strictly, from a staging step that carries what the docs link to.**
+  `mkdocs build --strict` aborted on this repository: `docs/deployment.md` and the measurements
+  README link to `tools/deploy_check.py` and `tools/loadtest.py`, which are real files, referenced
+  the way every other repository path is referenced — and which `tools/build_docs_site.py` did not
+  copy. The staging step now carries them, and `tests/test_doc_links.py` stages the tree in a test
+  and resolves every relative link in the docs against it, so this needs no `mkdocs-material` to
+  check.
+- **`deploy` extra, and the load driver's own guards.** `pip install -e '.[deploy]'` installs the
+  checker's YAML reader on its own; `tests/test_loadtest.py` gained tests for the argument guards
+  (`calls`/`concurrency` below one, a boundary URL the driver cannot parse), the zero-length
+  summary, the report's sorted-key byte-stability, the driver's `--help` text, and the RSS
+  sentinel (`UNMEASURABLE`, now a named constant rather than a literal `-1` compared twice).
+
 ### Fixed
+- **The deployment checker exited `1` when it could not run, which is the code it uses for "found a
+  problem".** Its docstring, `docs/cli.md` and the operator's own reading all say `2` — "could not
+  run" and "found a defect" are the two answers a check has to keep apart. `raise SystemExit("text")`
+  exits `1`; the reason now goes to stderr and the code is `2`, and the test that pins it shadows the
+  `yaml` import instead of uninstalling anything.
+- **Twenty-eight tests failed — did not skip — when PyYAML was absent**, so a bare clone ran red
+  while the documentation promised a green suite, and the CI `test` job (which installed only
+  `pytest` and `cryptography`) could not have passed on any of its three interpreters. The manifest
+  tests now skip with the reason the way the Ed25519 tests do; the renderer tests, which never read a
+  manifest, keep running without it; and CI installs `pyyaml` so the job stays at zero skips.
+- **The test that claimed to pin the load driver's pacer passed with the pacer mutated.** It
+  measured total wall clock through a cold boundary, where the first call's own cost cleared the
+  threshold — so `max` → `min` in the schedule survived a test written to catch it, and the soak's
+  central claim ("the load is paced") was pinned by nothing. It warms up first now and asserts the
+  schedule's floor *and* the ratio against an unpaced run.
+- **`ruff` was floored, not pinned, in the `dev` extra, while CI pinned `0.6.9`.** The formatter's
+  output is not stable between releases — 0.17 rewrites seventeen files in this tree that `0.6.9`
+  leaves alone — so the documented setup could fail `make lint` on files CI calls formatted, and
+  `make fmt` could rewrite seventeen unrelated files. The extra now pins the version CI installs.
 
 - **`RateLimiter` accepted numbers it could not honour, and failed inside a request.**
   `RateLimiter(per_second=Decimal("0.5"))` — which is exactly what the policy loader produces —

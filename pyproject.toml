@@ -42,8 +42,25 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
+# Nothing here is needed to *use* docket: `dependencies` above is empty and stays empty. These are
+# the three ways the project is developed, and each one is optional on its own terms.
 sign = ["cryptography>=42"]
-dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "mkdocs-material>=9.5"]
+# tools/deploy_check.py reads the manifests and the CI workflows with PyYAML. Without it the checker
+# exits 2 with a reason (never a silent pass) and its 40 tests skip with the same reason.
+deploy = ["pyyaml>=6"]
+dev = [
+  "pytest>=8",
+  "pytest-cov>=5",
+  # Pinned, not floored, and to the same version `.github/workflows/ci.yml` installs. Ruff's
+  # formatter is not stable between releases: 0.17 rewrites 17 files in this tree that 0.6.9 leaves
+  # alone (it joins implicitly concatenated string literals), so a floored requirement would give a
+  # contributor a `make lint` that fails on files CI calls formatted — and a `make fmt` that
+  # rewrites seventeen of them. Moving the pin is a deliberate change: reformat, then bump both
+  # places together.
+  "ruff==0.6.9",
+  "mkdocs-material>=9.5",
+  "pyyaml>=6",
+]
 
 [project.scripts]
 docket = "docket.cli:main"

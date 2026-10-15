@@ -33,7 +33,9 @@ fixture per check, and asserts the tool notices; a checker that cannot fail is d
 
 Exit codes: ``0`` all checks passed, ``1`` at least one failed, ``2`` the check could not run
 (missing dependency, unreadable tree). A check never reports success for work it did not do — an
-absent PyYAML is a ``2`` with the reason on stderr, never a silent pass.
+absent PyYAML is a ``2`` with the reason on stderr, never a silent pass, and
+``tests/test_deploy_check.py`` skips with that same reason instead of failing, so a bare clone's
+suite is green-with-skips rather than red.
 """
 
 from __future__ import annotations
@@ -284,13 +286,24 @@ def load_yaml(path: Path) -> Any:
 def _yaml(where: str | None):
     try:
         import yaml  # noqa: PLC0415 - the dependency is optional and the failure is reported
-    except ImportError as exc:  # pragma: no cover - environment dependent
-        raise SystemExit(
+    except ImportError as exc:  # pragma: no cover - covered in a subprocess: see the test named
+        # `test_a_missing_pyyaml_is_exit_2_with_a_reason_never_a_pass`, which shadows this import
+        # rather than uninstalling the package.
+        # `raise SystemExit("text")` prints the text and exits **1** — the code this tool uses for
+        # "a check failed". That would make "could not run" indistinguishable from "found a
+        # defect", which is the one distinction an operator script has to get right, so the code is
+        # set explicitly and the reason is written to stderr.
+        print(
             "deploy_check: PyYAML is not installed, so the deployment artefacts cannot be read.\n"
-            "This is not a pass: install it (`pip install pyyaml`) or run `make deploy-check`, "
-            "which installs it into the check environment.\n"
-            f"({exc})"
-        ) from exc
+            + (f"(while reading {where})\n" if where else "")
+            + "This is not a pass: install it (`pip install pyyaml`, or `pip install -e '.[deploy]'`) "
+            "and run this again.\n"
+            "Neither this script nor `make deploy-check` installs it for you, deliberately: a check "
+            "that fetches its own dependencies is a check whose result depends on what it fetched.\n"
+            f"({exc})",
+            file=sys.stderr,
+        )
+        raise SystemExit(2) from exc
     return yaml
 
 
