@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import fnmatch
 import hashlib
+import json
 import os
 import secrets
 import shutil
@@ -13,8 +14,94 @@ import time
 from collections.abc import Iterable
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from .canon import usd
+
+
+class NonStandardJSONError(ValueError):
+    """Base for values a JSON *reader* accepts and a JSON *format* does not define.
+
+    Everything in this family has the same shape of danger: two correct-looking
+    implementations disagree, so the document stops being evidence and becomes an argument
+    about parsers. Docket refuses all of them and names which one it found.
+    """
+
+    #: A short, stable identifier for the refusal, used in records and HTTP error bodies.
+    code = "non_standard_json"
+
+
+class NonFiniteJSONError(NonStandardJSONError):
+    """Raised when a document contains ``NaN``, ``Infinity`` or ``-Infinity``.
+
+    Those three tokens are *not* JSON. They are a Python extension that ``json.loads``
+    accepts by default and RFC 8259 forbids; ``JSON.parse`` in JavaScript rejects them, so a
+    document carrying one is accepted by exactly one of Docket's two reference implementations.
+    A distinct type (rather than a bare ``ValueError``) lets a caller say "this file is not JSON"
+    instead of "this file is damaged" — the two want different sentences in a report.
+    """
+
+    code = "non_finite_number"
+
+    def __init__(self, token: str) -> None:
+        super().__init__(
+            f"{token} is not a JSON number (RFC 8259 allows neither NaN nor Infinity); "
+            "if a real number was meant, write it as a finite decimal"
+        )
+        self.token = token
+
+
+class DuplicateJSONKeyError(NonStandardJSONError):
+    """Raised when one object names the same key twice.
+
+    RFC 8259 says the behaviour of a parser meeting duplicate keys is *undefined*. In practice
+    almost every parser keeps the last one — including both of Docket's — but "almost every" is
+    the wrong foundation for a digest: a document whose meaning depends on which parser read it
+    is not a document two parties can agree about, and the disagreement would surface as a
+    verification failure rather than as the malformed input it is.
+    """
+
+    code = "duplicate_object_key"
+
+    def __init__(self, key: str) -> None:
+        super().__init__(
+            f"the object names the key {key!r} twice; RFC 8259 leaves the result undefined "
+            "and Docket will not guess which of the two values was meant"
+        )
+        self.key = key
+
+
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    seen: set[str] = set()
+    for key, _value in pairs:
+        if key in seen:
+            raise DuplicateJSONKeyError(key)
+        seen.add(key)
+    return dict(pairs)
+
+
+def reject_json_constant(token: str) -> Any:
+    """A ``json.loads`` hook (``parse_constant=``) that refuses the JSON non-extensions.
+
+    Pass it at every site that parses a document Docket did not write, or that writes a
+    document itself: a non-finite number that gets far enough to be recorded cannot be
+    canonicalised, so it becomes an internal error inside the run's own evidence instead of a
+    legible refusal. ``parse_constant`` is called only for ``NaN``/``Infinity``/``-Infinity``,
+    never for ordinary numbers or for the words inside strings.
+    """
+    raise NonFiniteJSONError(token)
+
+
+def loads_json(data: str | bytes, *, what: str = "document") -> Any:
+    """Parse JSON strictly: the JSON extensions and duplicate keys are refused.
+
+    Both refusals are about the same thing — a document must mean the same thing to every
+    implementation that reads it. `NaN`/`Infinity` are not spellable in RFC 8259 JSON, and the
+    meaning of a repeated key is left undefined; either one turns a record into something two
+    verifiers can disagree about. Called at every site that reads a document Docket did not
+    itself write, or that is about to write one.
+    """
+    return json.loads(data, parse_constant=reject_json_constant, object_pairs_hook=_reject_duplicate_keys)
 
 
 def atomic_write(path: str | os.PathLike[str], data: str | bytes) -> None:

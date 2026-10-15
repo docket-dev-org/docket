@@ -51,6 +51,22 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Fixed
 
+- **A document with `NaN` or `Infinity` in it was read by Docket and refused by every JavaScript
+  verifier.** Those two tokens (and `-Infinity`) are a Python extension: RFC 8259 has no spelling
+  for them, `json.loads` accepts them, and `JSON.parse` rejects them. A request body carrying one
+  reached the recorder, could not be canonicalised, and the boundary answered
+  `502 docket_internal_error` — a value the client chose made the run's own evidence read
+  "internal error". A ledger, manifest or receipt containing one was *accepted* by the reader and
+  then failed the chain check with "the event's data cannot be canonicalised", a confusing verdict
+  for what is really "this file is not JSON"; and a hostile `Infinity` on the last line of a
+  ledger was filed as a *torn tail*, i.e. it claimed the ordinary crash-recovery path. Now every
+  parse of a document Docket did not write goes through `util.loads_json`, which refuses the
+  non-extensions by name (`Infinity is not a JSON number (RFC 8259 allows neither NaN nor
+  Infinity)`), a request body carrying one is refused at the boundary with `400
+  docket_bad_request`/`non_finite_number`, recorded as `net.denied`, and never forwarded — a body
+  Docket cannot record is a body it must not forward — and a non-finite line is classified as
+  damage (`bad_lines`), never as a torn write. `spec` §3.2 now states the rule normatively, since
+  it is an interoperability rule and not an implementation detail.
 - **Parallel model calls could write the ledger out of order.** The boundary is a
   `ThreadingHTTPServer`, so two calls in flight are two `append` calls: the sequence number,
   the `prev` link, the digest and the write were computed as separate steps, and a burst of

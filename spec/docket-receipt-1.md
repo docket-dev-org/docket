@@ -63,6 +63,14 @@ fail in another — the single most common way a "tamper-evident" record quietly
 unverifiable. Implementations MUST reject a hashed structure containing a non-integral
 float rather than guessing at a representation.
 
+**A document MUST NOT contain `NaN`, `Infinity` or `-Infinity`.** Those three tokens are not
+JSON: RFC 8259 has no way to spell them, and `JSON.parse` rejects them, while Python's
+`json.loads` accepts them as an extension — so a document carrying one is a document that one
+reference implementation reads and the other refuses. An implementation that *reads* this
+format MUST reject them (rather than rewriting them), because a value with no JSON form cannot
+be canonicalised, and a digest computed over a value only one runtime can express is exactly
+the failure this section exists to prevent. `null` is the only JSON spelling of "no value".
+
 ### 3.3 Decimal strings
 
 Amounts of money and other fractional values use a decimal string with at most six

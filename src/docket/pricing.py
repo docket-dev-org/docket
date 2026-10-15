@@ -18,7 +18,6 @@ Three rules keep this honest:
 from __future__ import annotations
 
 import fnmatch
-import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from decimal import Context, Decimal, DecimalException, InvalidOperation, localcontext
@@ -26,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from .canon import canonical_bytes, digest_of, sha256_hex, usd
+from .util import loads_json
 
 BUNDLED = Path(__file__).with_name("prices.json")
 MICROS = Decimal("0.000001")
@@ -104,7 +104,7 @@ class PriceTable:
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> PriceTable:
-        raw = json.loads(Path(path or BUNDLED).read_text(encoding="utf-8"))
+        raw = loads_json(Path(path or BUNDLED).read_text(encoding="utf-8"), what=str(path or BUNDLED))
         families = raw.get("families", [])
         prices: list[Price] = []
         for entry in families:

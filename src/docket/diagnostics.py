@@ -52,7 +52,7 @@ from .policy import Caps, Policy
 from .pricing import CostMeter, PriceTable
 from .receipt import build_receipt
 from .resilience import CircuitBreaker, FaultInjector, HealthState, RateLimiter, parse_fault_spec
-from .util import local_http_url
+from .util import loads_json, local_http_url
 
 BUNDLE_EXCLUDES = ("*.jsonl", "*.receipt.json", "*.torn-*", "*.lock")
 
@@ -109,7 +109,7 @@ def _ledger_health(path: Path) -> dict[str, Any]:
 
 def _receipt_summary(path: Path) -> dict[str, Any]:
     try:
-        receipt = json.loads(path.read_text(encoding="utf-8"))
+        receipt = loads_json(path.read_text(encoding="utf-8"), what=str(path))
     except (OSError, json.JSONDecodeError) as exc:
         return {"name": path.name, "unreadable": f"{type(exc).__name__}: {exc}"}
     return {

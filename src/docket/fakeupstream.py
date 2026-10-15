@@ -36,6 +36,10 @@ class Step:
     #: hostile response: a usage block full of strings, a forty-digit token count, a body of
     #: the wrong type entirely. Non-streaming responses only.
     body_override: dict[str, Any] | None = None
+    #: Return exactly these bytes, parsed by nobody. `body_override` is serialised with
+    #: `json.dumps`, which cannot express a document with a repeated key or a non-finite number
+    #: — the very documents worth scripting — so those cases are written here as wire bytes.
+    raw_body: bytes | None = None
 
 
 @dataclass
@@ -84,7 +88,11 @@ class FakeUpstream:
                 if body.get("stream"):
                     self._stream(step, model, anthropic)
                     return
-                payload = json.dumps(_response_payload(step, model, anthropic), ensure_ascii=False).encode("utf-8")
+                payload = (
+                    step.raw_body
+                    if step.raw_body is not None
+                    else json.dumps(_response_payload(step, model, anthropic), ensure_ascii=False).encode("utf-8")
+                )
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))

@@ -45,6 +45,7 @@ from typing import Any
 
 from .canon import canonical_bytes, merkle_root, sha256_hex
 from .resilience import EvidenceGuard
+from .util import NonStandardJSONError, loads_json
 
 GENESIS = sha256_hex("docket/genesis/v1")
 FORMAT = "docket/ledger/v1"
@@ -135,7 +136,13 @@ class Event:
 
 @dataclass
 class Ledger:
-    """Append-only ledger writer/reader backed by a JSONL file."""
+    """Append-only ledger writer/reader backed by a JSONL file.
+
+    **Thread-safety.** `append` is atomic per instance (`_append_lock`): sequence allocation,
+    `prev` link, digest and the write to disk happen as one step, so a file written by parallel
+    threads is still one contiguous chain in sequence order. `read`/`close` are not
+    concurrency-safe against a live writer and are not meant to be — see ADR 0005.
+    """
 
     path: Path | None = None
     clock: Callable[[], str] = _now_rfc3339
@@ -417,7 +424,7 @@ class Ledger:
             if not stripped:
                 continue
             try:
-                payload = json.loads(stripped)
+                payload = loads_json(stripped, what="ledger line")
                 events.append(Event.from_dict(payload))
             except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
                 entry = {
@@ -426,6 +433,13 @@ class Ledger:
                     "bytes": len(line.encode("utf-8")),
                 }
                 is_last = index == len(lines) - 1
+                if isinstance(exc, NonStandardJSONError):
+                    # Not a torn write and not bit rot: the line is not JSON as the format
+                    # defines it (a non-finite number, or a key named twice), whether or not it
+                    # was the last line. Filing it as a crashed tail would let a hand-written
+                    # file claim the ordinary recovery path.
+                    diagnostics["bad_lines"].append(entry)
+                    continue
                 if is_last and (not diagnostics["trailing_newline"] or not diagnostics["bad_lines"]):
                     # The final line without a newline, or a final line that will not
                     # parse, is the signature of a process killed mid-write.

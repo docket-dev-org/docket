@@ -139,6 +139,7 @@ discussion, this is exactly what the anchoring work in the roadmap is for.
 | `/docket/*` recording endpoints | same | they append events to the *current* session only; they cannot read other sessions or write to another ledger |
 | ledger/receipt files | your filesystem | mode `0600`-friendly; no content by default; treat as sensitive metadata |
 | price table | a JSON file | a malicious table can skew `max_usd` enforcement downward (fails safe) or upward with a large cap (visible: it is embedded in the receipt) |
+| any document Docket reads | your filesystem, or the agent | parsed strictly: `NaN`/`Infinity`, duplicate-key ambiguity and non-UTF-8 bytes are refused rather than interpreted, and depth is bounded before parsing. A body carrying a non-finite number is refused at the boundary, not forwarded and not filed as an internal error |
 | seal key | `~/.docket/seal.key` | an HMAC key: whoever has it can produce a seal. It is not a signature; do not present it as one |
 | snapshot store | `.docket/snapshots/` | a copy of watched file *contents* — the most sensitive thing Docket writes. It inherits the watched tree's sensitivity: ignore secrets in `[files] ignore`, keep `.docket/` out of the agent's write scope, and treat the store like the source it mirrors |
 | `docket restore` | your working tree, opt-in via `--apply` | dry run by default; refuses paths that changed after the run unless `--force`; refuses anything outside the run's tree. The blast radius is the watched tree, which is the point |

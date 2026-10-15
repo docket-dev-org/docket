@@ -142,3 +142,16 @@ def test_price_table_digest_changes_with_content(tmp_path):
 def test_bundled_price_file_is_valid_json():
     path = Path(__file__).resolve().parents[1] / "src" / "docket" / "prices.json"
     json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_a_price_table_with_a_non_json_number_is_refused(tmp_path):
+    """The price table is an input like any other — bundled by default, but an operator can
+    point `--prices` (or `[pricing] table`) at their own file. A `NaN` rate would flow into
+    every cost in the run, so the reader refuses the document rather than reading the value."""
+    from docket.util import NonFiniteJSONError
+
+    hostile = tmp_path / "prices.json"
+    hostile.write_bytes(b'{"as_of": "2026-10-13", "families": [{"pattern": "*", "input": NaN}]}')
+    with pytest.raises(NonFiniteJSONError) as caught:
+        PriceTable.load(hostile)
+    assert "RFC 8259" in str(caught.value)

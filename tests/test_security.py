@@ -518,3 +518,196 @@ def test_a_receipt_with_an_edited_sealed_payload_fails_verification(make_receipt
     assert any(check.name == "seal" and check.status == "fail" for check in result.checks)
     wrong_key = verify_receipt(receipt, seal_key="cd" * 32)
     assert not wrong_key.ok, "a different key must not validate the seal"
+
+
+# --------------------------------------------------------------------------- #
+# Numbers that are not JSON: the non-extensions
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])
+def test_a_request_body_carrying_a_non_json_number_is_refused_by_name(live_proxy, token):
+    """`NaN` and `Infinity` parse in Python and are rejected by `JSON.parse`.
+
+    Before this was fixed, such a body reached the recorder, could not be canonicalised, and
+    the boundary answered `502 docket_internal_error`: a hostile or merely sloppy client could
+    decide that the run's own evidence read "docket internal error". The refusal now names the
+    token, is recorded, and never reaches the provider — because a body Docket cannot record is
+    a body it must not forward.
+    """
+    import urllib.error
+    import urllib.request
+
+    proxy, host, port, _ledger = live_proxy
+    body = f'{{"model": "claude-sonnet-5", "messages": [{{"content": "x"}}], "temperature": {token}}}'.encode()
+    request = urllib.request.Request(
+        f"http://{host}:{port}/openai/v1/chat/completions", data=body, headers={"Content-Type": "application/json"}
+    )
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        urllib.request.urlopen(request, timeout=10)
+    assert caught.value.code == 400
+    payload = json.loads(caught.value.read())
+    assert payload["error"]["type"] == "docket_bad_request"
+    assert payload["error"]["code"] == "non_finite_number"
+    assert token in payload["error"]["message"]
+    assert "RFC 8259" in payload["error"]["message"]
+
+    denial = next(event for event in proxy.ledger.events if event.type == "net.denied")
+    assert denial.data["code"] == "non_finite_number"
+    assert token in denial.data["reason"]
+    assert not [
+        event for event in proxy.ledger.events if event.type == "model.request"
+    ], "the body was refused before any upstream call was attempted"
+    assert not [
+        event for event in proxy.ledger.events if event.type == "model.error"
+    ], "a refusal is not an internal error: nothing here is a defect in the boundary"
+
+
+def test_an_agent_reported_event_cannot_smuggle_a_non_json_number(live_proxy):
+    """The instrumentation route takes the agent's word for the event; it must not take a value
+    the verifier cannot round-trip."""
+    import urllib.error
+    import urllib.request
+
+    proxy, host, port, _ledger = live_proxy
+    request = urllib.request.Request(
+        f"http://{host}:{port}/docket/note",
+        data=b'{"message": "all done", "confidence": Infinity}',
+        headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        urllib.request.urlopen(request, timeout=10)
+    assert caught.value.code == 400
+    assert "Infinity" in caught.value.read().decode()
+    assert not [event for event in proxy.ledger.events if event.type == "note"]
+
+
+def test_a_ledger_line_with_a_non_json_number_is_damage_and_not_a_crashed_tail(tmp_path: Path):
+    """A hand-written `Infinity` is not the signature of a process killed mid-write.
+
+    Classifying it as a torn tail would let a doctored file claim the ordinary recovery path —
+    "the supervisor was killed, recover the prefix" — for a file that no implementation of the
+    format would ever have produced.
+    """
+    path = tmp_path / "hostile.jsonl"
+    path.write_bytes(
+        b'{"seq":0,"ts":"2026-10-14T00:00:00Z","type":"note","data":{"v":Infinity},' b'"prev":null,"hash":"deadbeef"}'
+    )
+    _events, diagnostics = Ledger.read_with_diagnostics(path)
+    assert diagnostics["healthy"] is False
+    assert diagnostics["torn_tail"] is None, "a non-finite number is not a torn write"
+    assert diagnostics["bad_lines"] and diagnostics["bad_lines"][0]["line"] == 1
+    assert "RFC 8259" in diagnostics["bad_lines"][0]["error"]
+
+    with pytest.raises(ValueError) as caught:
+        Ledger.read(path)
+    assert "RFC 8259" in str(caught.value)
+
+
+def test_a_receipt_with_a_non_json_number_is_refused(tmp_path: Path):
+    """The verifier's input is a document anyone can edit; the reader refuses the non-extensions
+    before any check runs, so no check can be fooled by a value with no JSON form."""
+    from docket.receipt import load_receipt
+    from docket.util import NonFiniteJSONError
+
+    document = {
+        "format": "docket/receipt/v1",
+        "docket_number": "DKT-20260102-VECT01",
+        "totals": {"cost_usd": float("nan")},
+    }
+    path = tmp_path / "receipt.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(NonFiniteJSONError):
+        load_receipt(path)
+
+
+def test_a_request_body_that_names_a_key_twice_is_refused(live_proxy):
+    """RFC 8259 leaves duplicate keys undefined; both Docket and `JSON.parse` happen to keep the
+    last one, but "happens to agree" is not a foundation for a digest. The body is refused, so
+    the value Docket records can never differ from the value the provider acts on."""
+    import urllib.error
+    import urllib.request
+
+    proxy, host, port, _ledger = live_proxy
+    body = b'{"model": "gpt-4o", "model": "claude-sonnet-5", "messages": [{"content": "x"}]}'
+    request = urllib.request.Request(
+        f"http://{host}:{port}/openai/v1/chat/completions", data=body, headers={"Content-Type": "application/json"}
+    )
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        urllib.request.urlopen(request, timeout=10)
+    assert caught.value.code == 400
+    payload = json.loads(caught.value.read())
+    assert payload["error"]["code"] == "duplicate_object_key"
+    assert "'model'" in payload["error"]["message"]
+    denial = next(event for event in proxy.ledger.events if event.type == "net.denied")
+    assert denial.data["code"] == "duplicate_object_key"
+    assert not [event for event in proxy.ledger.events if event.type == "model.request"]
+
+
+def test_a_ledger_line_with_a_duplicate_key_is_damage_not_a_crashed_tail(tmp_path: Path):
+    path = tmp_path / "ambiguous.jsonl"
+    path.write_bytes(
+        b'{"seq":0,"ts":"2026-10-14T00:00:00Z","type":"note","data":{"v":1},"type":"model.response",'
+        b'"prev":null,"hash":"deadbeef"}'
+    )
+    _events, diagnostics = Ledger.read_with_diagnostics(path)
+    assert diagnostics["healthy"] is False
+    assert diagnostics["torn_tail"] is None
+    assert diagnostics["bad_lines"] and "twice" in diagnostics["bad_lines"][0]["error"]
+    with pytest.raises(ValueError) as caught:
+        Ledger.read(path)
+    assert "twice" in str(caught.value)
+
+
+def test_an_ambiguous_provider_response_is_billed_as_estimated_and_disclosed(tmp_path: Path):
+    """A provider response is the one document Docket reads *after* the call has happened.
+
+    There is no useful refusal here — the agent is waiting for bytes — so the boundary estimates
+    the tokens instead, and says so **on the event**. What must never happen is an estimate being
+    presented as a measurement, so the disclosure is what this test asserts.
+    """
+    import urllib.request
+
+    from docket.fakeupstream import FakeUpstream, Step
+
+    # A body with the usage block named twice and a non-JSON number: both refused by the strict
+    # reader, and neither expressible through `json.dumps`.
+    upstream = FakeUpstream(
+        steps=[
+            Step(
+                raw_body=(
+                    b'{"id": "x", "model": "claude-sonnet-5", "choices": [{"message": {"content": "ok"}}],'
+                    b' "usage": {"input_tokens": 10, "output_tokens": 2},'
+                    b' "usage": {"input_tokens": 10, "output_tokens": 2}, "score": NaN}'
+                )
+            )
+        ]
+    )
+    host, port = upstream.start()
+    ledger = Ledger.open(tmp_path / "runs" / "ambiguous.jsonl", max_bytes=None)
+    proxy = RecordingProxy(
+        ledger=ledger,
+        policy=Policy(name="strict json", caps=Caps(max_usd=None)),
+        meter=CostMeter(price_table=PriceTable.load()),
+        session_id="strict-json",
+        upstreams={"openai": f"http://{host}:{port}"},
+    )
+    proxy_host, proxy_port = proxy.start()
+    try:
+        request = urllib.request.Request(
+            f"http://{proxy_host}:{proxy_port}/openai/v1/chat/completions",
+            data=b'{"model": "claude-sonnet-5", "messages": [{"content": "x"}]}',
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            assert response.status == 200, "the call already happened; the bytes reach the agent"
+            response.read()
+        recorded = next(event for event in ledger.events if event.type == "model.response")
+        assert recorded.data["usage_source"] == "estimated"
+        note = recorded.data.get("usage_note", "")
+        assert "twice" in note or "not a JSON number" in note, note
+        assert "not reported" in note
+    finally:
+        proxy.stop()
+        ledger.close()
+        upstream.stop()

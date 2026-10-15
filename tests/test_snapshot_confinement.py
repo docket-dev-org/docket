@@ -338,3 +338,22 @@ def test_the_command_says_where_to_look_when_the_recorded_tree_is_gone(tree: Pat
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "not a directory" in captured.err and "--root" in captured.err
+
+
+def test_a_manifest_with_a_non_json_number_is_refused_by_the_reader(store: Path):
+    """The manifest is a document anyone who can write the store can edit.
+
+    `Infinity` parses in Python and not in JavaScript, and a size field carrying it would flow
+    into the plan and the report; the reader refuses the file instead of letting the value
+    travel. Hand-written text, not `json.dumps`, because `json.dumps` would refuse to write it.
+    """
+    from docket.util import NonFiniteJSONError
+
+    (store / "manifest.json").write_bytes(
+        b'{"format": "docket/snapshot/v1", "entries": [{"path": "notes.txt", '
+        b'"sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", '
+        b'"size": Infinity}]}'
+    )
+    with pytest.raises(NonFiniteJSONError) as caught:
+        read_manifest(store)
+    assert "RFC 8259" in str(caught.value)

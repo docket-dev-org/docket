@@ -30,7 +30,7 @@ from .policy import Policy
 from .pricing import CostMeter, PriceTable
 from .signing import seal as make_seal
 from .signing import sign as make_signature
-from .util import atomic_write
+from .util import atomic_write, loads_json
 
 FORMAT = "docket/receipt/v1"
 TOOL_VERSION = "0.1.0"
@@ -369,9 +369,7 @@ def write_receipt(receipt: dict[str, Any], path: str | Path) -> Path:
 
 
 def load_receipt(path: str | Path) -> dict[str, Any]:
-    import json
-
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    return loads_json(Path(path).read_text(encoding="utf-8"), what=str(path))
 
 
 def receipt_digest(receipt: dict[str, Any]) -> str:

@@ -56,6 +56,7 @@ from .resilience import (
     RateLimiter,
     readiness,
 )
+from .util import NonStandardJSONError, loads_json
 
 #: Free-space floor for the volume holding the ledger. A run that fills a disk turns a
 #: budget problem into an outage, so readiness reports it before it happens.
@@ -279,8 +280,14 @@ def _parse_sse_usage(
         if not body or body == "[DONE]":
             continue
         try:
-            payload = json.loads(body)
+            payload = loads_json(body, what="stream frame")
         except json.JSONDecodeError:
+            continue
+        except NonStandardJSONError as exc:
+            # A stream frame is read after the call has happened, so it is disclosed rather than
+            # refused: the numbers in it are unusable and the tokens fall back to an estimate,
+            # which the caller records as exactly that.
+            problems.append(str(exc))
             continue
         usage = _extract_usage(provider, payload, problems)
         if usage is None:
@@ -788,9 +795,24 @@ class _Handler(BaseHTTPRequestHandler):
             )
             return
         try:
-            parsed_body: dict[str, Any] | None = json.loads(body_bytes) if body_bytes else None
+            parsed_body: dict[str, Any] | None = loads_json(body_bytes, what="request body") if body_bytes else None
         except (json.JSONDecodeError, UnicodeDecodeError):
             parsed_body = None
+        except NonStandardJSONError as exc:
+            # Two bodies are refused here, for one reason. `NaN`/`Infinity` parse in Python and
+            # not in JavaScript, and nothing carrying one can be canonicalised — so the *event
+            # describing this call* could not be written and the run's own evidence would read
+            # `docket internal error`. A repeated key means the body has no single meaning: the
+            # value Docket records could differ from the value the provider acts on. A body the
+            # boundary cannot record unambiguously is a body it must not forward: refused by
+            # name, and the refusal is in the ledger.
+            proxy.stats.denied += 1
+            proxy.record(
+                "net.denied",
+                {"reason": str(exc), "code": exc.code, "path": self.path, "bytes": len(body_bytes)},
+            )
+            self._send_json(400, {"error": {"type": "docket_bad_request", "message": str(exc), "code": exc.code}})
+            return
         except RecursionError:
             # A deeply nested body is a way to make a parser die rather than a request to
             # forward. It is answered, not crashed into: the record keeps the reason.
@@ -1079,8 +1101,19 @@ class _Handler(BaseHTTPRequestHandler):
                 usage_source = "estimated"
         else:
             try:
-                parsed_response = json.loads(payload.get("bytes", b"").decode("utf-8", "replace"))
+                # Strict, like every other read of a document Docket did not write — with one
+                # deliberate difference: a provider response that is not unambiguous JSON is not
+                # refused, because the call has already happened and the agent is waiting for
+                # the bytes. The tokens are estimated instead and the reason is disclosed on the
+                # event (`usage_note`), which is the same treatment an unreadable usage block
+                # gets. A `*` here would turn a provider quirk into a lost call.
+                parsed_response = loads_json(
+                    payload.get("bytes", b"").decode("utf-8", "replace"), what="provider response"
+                )
             except (json.JSONDecodeError, UnicodeDecodeError):
+                parsed_response = None
+            except NonStandardJSONError as exc:
+                usage_problems.append(str(exc))
                 parsed_response = None
             if isinstance(parsed_response, dict):
                 usage = _extract_usage(provider, parsed_response, usage_problems)
@@ -1212,7 +1245,15 @@ class _Handler(BaseHTTPRequestHandler):
         boundary-observed ones.
         """
         try:
-            payload = json.loads(body_bytes) if body_bytes else {}
+            payload = loads_json(body_bytes, what="event body") if body_bytes else {}
+        except NonStandardJSONError as exc:
+            # An agent-reported event is data this boundary is asked to put its own signature
+            # behind, so a value with no JSON form — or a key named twice — is refused rather
+            # than recorded as something that would not survive a round trip through the
+            # verifier.
+            self.proxy.record("net.denied", {"reason": str(exc), "code": exc.code, "path": self.path})
+            self._send_json(400, {"error": {"type": "docket_bad_request", "message": str(exc), "code": exc.code}})
+            return
         except json.JSONDecodeError:
             self._send_json(400, {"error": {"type": "docket_bad_request", "message": "body must be JSON"}})
             return
@@ -1394,8 +1435,10 @@ def _sse_text(text: str) -> str:
         if not body or body == "[DONE]":
             continue
         try:
-            payload = json.loads(body)
-        except json.JSONDecodeError:
+            payload = loads_json(body, what="stream frame")
+        except (json.JSONDecodeError, NonStandardJSONError):
+            # Estimation only: a frame this reader cannot interpret contributes no text, and the
+            # tokens derived from the transcript are already labelled as estimated.
             continue
         for key in ("delta", "message", "content_block"):
             node = payload.get(key)

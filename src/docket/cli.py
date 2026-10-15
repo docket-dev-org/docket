@@ -23,7 +23,7 @@ from .receipt import load_receipt
 from .report import diff_receipts, render_diff, render_findings, render_markdown, render_receipt
 from .resilience import parse_fault_spec
 from .supervisor import Supervisor
-from .util import human_bytes
+from .util import NonStandardJSONError, human_bytes, loads_json
 from .verify import verify_receipt
 
 PROGRAM = "docket"
@@ -181,8 +181,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         # provider. Documented, single-purpose, and never set by Docket itself in normal
         # operation: the boundary is still the real boundary.
         try:
-            upstreams = json.loads(upstream_override)
-        except json.JSONDecodeError as exc:
+            upstreams = loads_json(upstream_override, what="DOCKET_GAME_DAY_UPSTREAM")
+        except (json.JSONDecodeError, NonStandardJSONError) as exc:
             _out(sys.stderr, f"{PROGRAM}: bad DOCKET_GAME_DAY_UPSTREAM: {exc}")
             return 43
         if not isinstance(upstreams, dict) or not all(

@@ -51,7 +51,7 @@ from pathlib import Path
 from typing import Any
 
 from .fsdiff import MAX_HASH_BYTES
-from .util import atomic_write, matches_any
+from .util import atomic_write, loads_json, matches_any
 
 #: Largest total size a snapshot may store, by default. An agent's working tree is usually
 #: small; a repository is not, and copying one into ``.docket`` on every run would be a
@@ -292,7 +292,9 @@ def take_snapshot(
         "entries": result.entries,
         "not_covered": result.not_covered,
     }
-    atomic_write(store_path / "manifest.json", json.dumps(manifest, indent=2, sort_keys=True))
+    # UTF-8 rather than `\uXXXX` escapes, matching the ledger and the receipt: one serialisation
+    # convention in the codebase, and a manifest a person can read when a path looks wrong.
+    atomic_write(store_path / "manifest.json", json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False))
     return result
 
 
@@ -301,7 +303,7 @@ def read_manifest(store: str | os.PathLike[str]) -> dict[str, Any]:
     path = Path(store) / "manifest.json" if Path(store).is_dir() else Path(store)
     if not path.exists():
         raise FileNotFoundError(f"no snapshot manifest at {path}")
-    document = json.loads(path.read_text(encoding="utf-8"))
+    document = loads_json(path.read_text(encoding="utf-8"), what=str(path))
     if not isinstance(document, dict) or document.get("format") != "docket/snapshot/v1":
         raise ValueError(f"{path} is not a docket snapshot manifest")
     return document

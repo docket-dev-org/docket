@@ -95,10 +95,16 @@ easier to write and less useful in an argument.
 
 You need SHA-256, JSON with sorted keys, and no network. The order of work:
 
-1. **Read §3** of the spec and implement the canonical form exactly. The two traps are
-   non-ASCII escaping and numbers: hashed structures contain integers only, and fractions are
-   decimal strings. If your language prints `5.0` where another prints `5`, you will produce
-   receipts that verify in one place and not the other.
+1. **Read §3** of the spec and implement the canonical form exactly. The three traps are
+   non-ASCII escaping, numbers, and the JSON non-extensions. Non-ASCII characters are emitted
+   literally (never as `\uXXXX`); hashed structures contain integers only, with fractions as
+   decimal strings, because if your language prints `5.0` where another prints `5` you will
+   produce receipts that verify in one place and not the other; and a document containing
+   `NaN`, `Infinity` or `-Infinity` is **not JSON** — RFC 8259 has no spelling for them,
+   `JSON.parse` rejects them and Python's `json.loads` accepts them, so a verifier that reads
+   one has accepted a document the other reference implementation cannot even parse. Docket
+   refuses them at every read (`util.loads_json`) rather than rewriting them, and so should a
+   verifier: **reject the file, do not repair it.**
 2. **Read §4–§5** and implement the chain and the RFC 6962 tree (leaf prefix `0x00`, node prefix
    `0x01`, promote unpaired nodes — do *not* duplicate the last node, which is a different tree
    with different roots).
