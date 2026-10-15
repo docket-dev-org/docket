@@ -197,6 +197,40 @@ def http_url(url: str) -> str:
     return str(url)
 
 
+def sanitize_url(url: str) -> str:
+    """``url`` with everything that can carry a secret removed: query, fragment, userinfo.
+
+    A base URL is recorded as *evidence* — the run's ledger says where model traffic was sent,
+    because "a call to a mock/gateway/self-hosted endpoint" is not the same claim as "a call to the
+    provider's own API". The path is kept (an OpenAI-compatible gateway lives at a path), the port
+    is kept, and the three components that routinely carry credentials — `?api_key=…`,
+    `#…`, `user:pass@host` — are dropped, so an operator who pasted a token into a URL does not
+    find it in a hash-chained file they may share.
+
+    An unparsable value is *reported as such* rather than silently normalised: the marker reads
+    ``<unparsable url>`` in the ledger, so a reader sees that a URL was configured and that Docket
+    could not summarise it. Dropping it entirely would be a quiet claim that no override existed.
+    """
+    from urllib.parse import urlsplit, urlunsplit
+
+    text = str(url)
+    try:
+        parts = urlsplit(text)
+        if not parts.scheme or not parts.hostname:
+            return "<unparsable url>"
+        host = parts.hostname or ""
+        if ":" in host:
+            # An IPv6 literal keeps its brackets: dropping them turns `http://[::1]:9000/v1` into
+            # `http://::1:9000/v1`, which is not a URL at all. (Found by a test, not by reading.)
+            host = f"[{host}]"
+        netloc = f"{host}:{parts.port}" if parts.port else host
+        return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+    except ValueError:
+        # A port that is not a number, an IPv6 literal with a typo — `urlsplit` defers some of
+        # these to attribute access, and the answer is the same as any other unparsable value.
+        return "<unparsable url>"
+
+
 def local_http_url(url: str) -> str:
     """Return ``url`` if it is an HTTP URL pointing at this machine, else raise ``ValueError``.
 

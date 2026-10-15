@@ -54,9 +54,6 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 - **`make audit`**: `bandit` over `src/` and `tools/`, also a CI step. Every remaining class of
   finding is either fixed or has one written-down reason in `[tool.bandit]` (`"PASS"` as an
   output word, seeded `random`, list-argv `subprocess`); nothing is suppressed without a reason.
-
-### Added
-
 - **Per-call latency, and a verifier that recomputes it.** Every usage row may now carry
   `latency_ms` — the round trip the recorder measured, in whole milliseconds — and the receipt
   derives `latency` from those rows: `{"method": "nearest-rank", "measured_calls", "total_rows",
@@ -85,9 +82,55 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   refusal, with the wait and the hint the boundary asked for written into the ledger as `note`
   events. This is the client's half of the rate-limit contract, and without it the boundary's
   `Retry-After` was a promise nothing in the repository ever exercised.
+- **A fixed boundary port, and evidence of which port it was.** `--port N` (`docket run`) binds the
+  boundary to a loopback port an orchestrator can probe; `0` (the default) still means any free
+  port. The requested port is recorded in `session.start.boundary.requested_port` and the port that
+  was *actually* bound in a note written once the socket exists, so the evidence never states a
+  guess as a fact. Privileged ports are refused at the flag with the range named.
+- **`--upstream NAME=URL`**, repeatable, for pointing a provider prefix at a container, a mock, an
+  OpenAI-compatible gateway or a self-hosted model. The override is recorded as evidence — name and
+  destination only, with query, fragment and userinfo stripped by `util.sanitize_url`, because a
+  token pasted into a base URL must never reach a hash-chained file (`tests/test_proxy.py` asserts
+  the secret is nowhere in the ledger's bytes). `docket init`'s emitted policy and this flag are the
+  two ways to configure a container; both are checked by `tools/deploy_check.py`.
+- **`python -m docket.fakeupstream <flags>`**: the scripted provider as a *service*, with `--host`,
+  `--port`, `--steps`, `--model`, `--input-tokens`, `--output-tokens`, `--delay-ms`, a JSON
+  handshake on stdout, a real `GET /healthz`, exit `2` when the port is taken, and a warning when
+  asked to bind beyond loopback. This is what makes the compose file and the Kubernetes manifest
+  produce a real receipt offline.
+- **The boundary's operations endpoints are documented** (`docs/cli.md`): `/docket/healthz`,
+  `/docket/readyz` (readiness is an *evidence* question — ledger writable, volume above its floor,
+  breaker shut) and `/docket/metrics` (Prometheus text). They are loopback-only by design, and
+  `docs/deployment.md` says what that means for probes and scrapers.
+- **`deploy/`**: a container recipe (`Dockerfile`: two stages, non-root, read-only-root-friendly, no
+  credentials, `STOPSIGNAL SIGTERM`), a compose smoke test whose verifier waits for the run and
+  mounts evidence read-only, a hardened pod topology (two containers sharing loopback, `Recreate`
+  strategy, probes on declared ports, default-deny NetworkPolicy), and a Helm chart in a **declared
+  template subset** so a deterministic renderer can check what it produces.
+- **`tools/deploy_check.py` and `make deploy-check`**: 16 static checks over those artefacts — no
+  `:latest`, non-root, no privilege escalation, all capabilities dropped, read-only root filesystem,
+  resource requests and limits, probe ports that are actually declared, one writer per evidence
+  volume, a ConfigMap policy parsed by Docket's *own* loader, default-deny networking, a compose
+  verifier that waits, and CI workflows that parse (a workflow with a YAML error runs nothing and
+  looks green — this check found exactly that in this repository's own CI). It exits `2` rather than
+  passing when its YAML reader is missing. `tests/test_deploy_check.py` breaks each invariant on
+  purpose, one fixture per check, so the checker cannot be decoration.
+- **`docs/resilience.md`** — what happens when the world misbehaves (breaker, throttle, timeouts,
+  caps, evidence guard, ceilings, readiness, clocks, interruption), each mechanism with how it is
+  proved, and the three things deliberately refused. `docket init` has pointed at this file since
+  0.1.0; it now exists.
+- **`docs/production-coverage.md`** — a map of ~110 production-engineering concepts, each cell
+  naming the code and tests behind it, or the document that argues the boundary, or the reason it is
+  out of scope, in a controlled vocabulary (*built*, *measured*, *modelled*, *reasoned*, *out of
+  scope*). It states the three kinds of absence separately instead of blurring them.
 
 ### Fixed
 
+- **`docket init` emitted a policy pointing at a document that did not exist** (`docs/resilience.md`),
+  and `deploy/` would have shipped referencing two more. `references.resolve` now fails the deploy
+  check on any referenced path that is missing, and the link is real.
+- **`util.sanitize_url` mangled IPv6 literals**: `http://[::1]:9000/v1` became `http://::1:9000/v1`,
+  which is not a URL. Found by the test that pins the port-and-path behaviour, not by reading it.
 - **The supervisor printed a negative duration when the clock stepped backwards.** `elapsed` and
   the receipt's `duration_seconds` were computed as `monotonic() - started`, and a monotonic
   source that steps back — a VM restored from a snapshot, a container sharing a stale clock, a
@@ -107,8 +150,6 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   `1 <= ceil(p·n/100) <= n` follows from those two guards. The clamp was unreachable code whose
   mutants nothing could kill, so it is gone, with the proof in a comment and two tests that pin
   the extremes of the interval (`p1` and `p100` of every sample size from 1 to 11).
-
-### Fixed
 
 - **`quarantine_torn_tail` could report a repair it had not performed.** When the interrupted
   write had landed its partial line *together with* the newline that closed it — a flush that

@@ -20,6 +20,26 @@ funding has consequences that can be checked.
       every survivor classified as a gap or an equivalent mutant — scores in
       [`docs/testing.md`](docs/testing.md#mutation-testing)
 
+## Shipped since 0.1 — what the "production engineering" list turned out to be
+
+A concept-by-concept answer to the usual checklist (rate limiting, breakers, Kubernetes, Helm,
+backpressure, exactly-once, p99, on-call, …) lives in
+[`docs/production-coverage.md`](docs/production-coverage.md): what is implemented and tested, what is
+recorded but not enforced, what is a validated artefact that has never been executed here, and what
+is deliberately refused with a reason. The short version, as of this commit:
+
+- [x] per-call latency recorded, summarised under a stated rule, and **recomputed by both verifiers**
+- [x] `--port` (a fixed loopback port an orchestrator can probe), `--upstream NAME=URL` (a mock,
+      gateway or self-hosted model, recorded as evidence without its query string), and the
+      boundary's `/docket/healthz`, `/docket/readyz`, `/docket/metrics` documented
+- [x] `DOCKET_AGENT_MODE=backoff`: full jitter, capped, honouring `Retry-After` — the client half of
+      the rate-limit contract
+- [x] a container recipe, a compose smoke test, a pod topology and a Helm chart, each checked
+      statically by `tools/deploy_check.py` (16 checks) whose own tests break every invariant on
+      purpose — and none of them executed, because no container runtime exists here
+- [x] an invariant suite: one writer per ledger, 200 events from 8 threads, a replayed call recorded
+      twice, a killed agent, a clock that lies
+
 ## 0.2 — make it easy to adopt — *target: 6 weeks*
 
 - [ ] `docket init --from <framework>` presets for Claude Code, Codex CLI, Gemini CLI, aider,

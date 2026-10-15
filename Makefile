@@ -1,4 +1,4 @@
-.PHONY: help test demo lint fmt audit mutation verify-js vectors wheel clean check site site-check
+.PHONY: help test demo lint fmt audit mutation verify-js vectors wheel clean check site site-check deploy-check
 
 help:
 	@echo "make test       run the full test suite (offline, no API keys)"
@@ -12,6 +12,7 @@ help:
 	@echo "make check      lint + audit + tests + verify-js"
 	@echo "make site       build the docs site (needs mkdocs-material)"
 	@echo "make site-check build the docs site to a temp dir, strict: catches broken links"
+	@echo "make deploy-check check deploy/ statically (no container runtime needed; none is present)"
 
 test:
 	PYTHONPATH=src python3 -m pytest tests -q
@@ -51,7 +52,13 @@ site-check:
 mutation:
 	python3 tools/mutate.py --json mutation-report.json --markdown mutation-report.md
 
-check: lint audit test verify-js
+# Static validation of the container/manifest/chart recipes. It deliberately passes --json so the
+# result is machine-readable, and it exits 2 rather than 0 when PyYAML is missing: a check that could
+# not run must never look like a check that passed.
+deploy-check:
+	PYTHONPATH=src python3 tools/deploy_check.py
+
+check: lint audit test verify-js deploy-check
 
 clean:
 	rm -rf dist build *.egg-info .pytest_cache .ruff_cache

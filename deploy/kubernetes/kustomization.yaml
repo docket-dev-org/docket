@@ -1,0 +1,13 @@
+# `kubectl apply -k deploy/kubernetes` applies the example topology in one go.
+#
+# The files are listed here rather than globbed so that the deploy check in tools/deploy_check.py
+# can verify that every referenced document exists — a kustomization that names a file nobody
+# created is a deployment that fails after the operator has already typed the command.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: docket

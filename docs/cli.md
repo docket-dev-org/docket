@@ -51,6 +51,12 @@ Runs a command under a policy, records everything observable, and writes a recei
 | `--snapshot` | off | copy the *contents* of watched files before the agent starts, so the run can be undone |
 | `--snapshot-max-bytes N` | `67108864` (64 MiB) | budget for that copy. Over it the run is refused before the agent starts (exit `43`) |
 | `--rollback-on-breach` | off | implies `--snapshot`: if the run breaches a cap, put the watched tree back from the snapshot and record what was restored |
+| `--upstream NAME=URL` | provider defaults | point a provider prefix at another base URL (repeatable). This is what a container, a mock provider or an OpenAI-compatible gateway needs. The override is **evidence**: the run records name and destination (scheme, host, port, path) in `session.start`, with query, fragment and userinfo stripped, because a token pasted into a URL must never reach a ledger. A malformed override is refused rather than ignored — silently falling back to the real API while the command line says otherwise is the failure mode this flag exists to prevent |
+| `--port N` | `0` (any free port) | bind the boundary to a fixed loopback port. A readiness probe, a metrics scrape or a sidecar that finds the boundary by address needs the port to be knowable; the run records the port it asked for (`session.start.boundary.requested_port`) and the port it actually bound (a `note`). `0`–`1023` are refused: needing root to listen is a deployment smell, and `--port` is about being findable, not about being hard to reach |
+
+The boundary always listens on **loopback**. `--port` chooses *which* loopback port, never whether
+the socket is reachable from a network: peers cannot post events into a run, and `/docket/metrics`
+is read from inside the host or pod (see [`docs/deployment.md`](deployment.md)).
 
 Environment injected into the child (in addition to provider base URLs):
 
@@ -75,6 +81,25 @@ Provider variables injected with `--profile full`: `OPENAI_BASE_URL`, `OPENAI_AP
 `--http-proxy`, or by calling `/docket/*` directly — and one that bypasses all of them is
 recorded as *missing*, not as *nothing happened*: the receipt's `limits_disclosure` states the
 boundary's scope, and the session event records which variables were set.
+
+### The boundary's operations endpoints
+
+While a run is in progress the boundary answers three endpoints of its own, on the loopback port it
+bound (the port is printed by `--report full`, recorded in the ledger, and fixed with `--port`):
+
+| endpoint | answers | what it is for |
+| --- | --- | --- |
+| `GET /docket/healthz` | `{"status": "ok", "session", "uptime_seconds", "events", "breached"}` | liveness: the process is up and its counters are moving |
+| `GET /docket/readyz` | `{"ready": true, ...}` or `503` with the reason | **readiness, which here is an evidence question**: is the ledger still writable, is the volume above `min_free_bytes`, is the breaker shut? A `503` means the run is still going and Docket can no longer promise to record it |
+| `GET /docket/metrics` | Prometheus text (`docket_boundary_requests_total`, `docket_model_calls_total`, `docket_model_denied_total`, `docket_cost_usd`, `docket_events_total`, `docket_rate_limited_total`, `docket_breaker_state`, `docket_ledger_degraded`, …) | the numbers a dashboard or an alert wants, in the format monitoring systems already read |
+
+They are on **loopback only**, like every other endpoint the boundary serves: a peer that can reach
+the boundary can post agent-asserted events into a live run, and nothing outside the host or pod
+should be able to do that. A readiness probe, a metrics scrape or a sidecar therefore runs *inside*
+the same container or pod — [`deploy/kubernetes/`](../deploy/kubernetes/deployment.yaml) and
+[`deploy/compose.yaml`](../deploy/compose.yaml) show both, and
+[`docs/deployment.md`](deployment.md#what-the-boundary-does-not-expose) explains why there is no
+Service to scrape.
 
 ### Rolling back a run
 

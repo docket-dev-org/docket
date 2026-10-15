@@ -68,6 +68,25 @@ jobs:
             exit 1
           }
 
+  deploy:
+    name: "deploy artefacts (static: no container runtime is used, and none is pretended)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the checker's dependency
+        # PyYAML reads the manifests. Without it tools/deploy_check.py exits 2 — a failed run, never a
+        # silent pass — and this step is what stops that from being discovered by a user.
+        run: pip install pyyaml
+      - name: Check deploy/ (manifests, chart, compose, Dockerfile)
+        run: make deploy-check
+      - name: The checker fails on a broken artefact
+        # The load-bearing half: tests/test_deploy_check.py breaks every invariant on purpose, one
+        # fixture per check, so a checker that cannot fail cannot pass this job either.
+        run: PYTHONPATH=src python -m pytest tests/test_deploy_check.py -q
+
   package:
     name: package (clean install, then run it)
     runs-on: ubuntu-latest

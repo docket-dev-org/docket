@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import socket
+import sys
 import urllib.error
 import urllib.request
 from decimal import Decimal
 
 import pytest
 
-from docket.policy import Policy
+from docket.policy import Caps, Policy
 from docket.pricing import CostMeter, PriceTable
 from docket.proxy import RecordingProxy
 
@@ -64,6 +65,39 @@ def test_auth_headers_are_forwarded_but_never_recorded(ledger, fake_upstream):
     assert fake_upstream.requests[-1]["headers"].get("Authorization") == "Bearer sk-secret-value"
     for event in ledger:
         assert "sk-secret-value" not in json.dumps(event.to_dict())
+
+
+def test_an_upstream_base_url_is_recorded_without_its_secrets(tmp_path, fake_upstream):
+    """Where model traffic was sent is evidence; anything credential-shaped in that URL is not.
+
+    Two claims in one test, because they pull in opposite directions. An override changes what a
+    call *means* (a mock, a gateway or a self-hosted model is not the provider's own API), so the
+    run records it. But a base URL is also a place people paste tokens — `?api_key=…`,
+    `user:pass@host` — and a ledger is a hash-chained file that gets shared. So the recorded form
+    keeps scheme, host, port and path, and drops query, fragment and userinfo. This drives the real
+    supervisor, writes a real ledger, and reads the bytes: if the secret is anywhere on disk, the
+    test fails.
+    """
+    from docket.ledger import Ledger
+    from docket.supervisor import Supervisor
+
+    secret = "sk-live-DO-NOT-RECORD-5f3a9c"
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    supervisor = Supervisor(
+        [sys.executable, "-c", "print('no calls needed')"],
+        policy=Policy(name="t", caps=Caps(max_usd=None)),
+        docket_dir=tmp_path / ".docket",
+        cwd=workdir,
+        upstreams={"openai": f"{fake_upstream.url}/v1?api_key={secret}"},
+    )
+    result = supervisor.run()
+    raw = result.ledger_path.read_bytes().decode("utf-8")
+    assert secret not in raw, "a token in a base URL reached the ledger"
+    assert "api_key" not in raw
+    start = next(event for event in Ledger.read(result.ledger_path) if event.type == "session.start")
+    recorded = start.data["upstream_overrides"]
+    assert recorded["openai"] == f"{fake_upstream.url}/v1", recorded
 
 
 def test_bodies_are_not_recorded_by_default(ledger, fake_upstream):

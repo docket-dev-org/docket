@@ -1,0 +1,155 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docket-agent
+  labels:
+    app.kubernetes.io/name: docket
+    app.kubernetes.io/instance: {{ .Values.instance }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: docket
+      app.kubernetes.io/instance: {{ .Values.instance }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: docket
+        app.kubernetes.io/instance: {{ .Values.instance }}
+    spec:
+{{ if .Values.serviceAccount.create }}
+      serviceAccountName: docket
+{{ end }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+{{ if .Values.provider.enabled }}
+        - name: provider
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "docket.fakeupstream"]
+          args: ["--host", "127.0.0.1", "--port", "{{ .Values.provider.port }}", "--steps", "{{ .Values.provider.steps }}"]
+          ports:
+            - name: provider
+              containerPort: {{ .Values.provider.port }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: provider
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: {{ .Values.resources.provider.requests.cpu }}
+              memory: {{ .Values.resources.provider.requests.memory }}
+            limits:
+              cpu: {{ .Values.resources.provider.limits.cpu }}
+              memory: {{ .Values.resources.provider.limits.memory }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+{{ end }}
+        - name: docket
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - run
+            - --label
+            - {{ .Values.agent.label }}
+            - --docket-dir
+            - /work/.docket
+            - --policy
+            - /etc/docket/policy.toml
+            - --port
+            - "{{ .Values.agent.port }}"
+{{ range .Values.agent.upstreams }}
+            - --upstream
+            - {{ . }}
+{{ end }}
+            - --
+{{ range .Values.agent.command }}
+            - {{ . }}
+{{ end }}
+          env:
+            - name: DOCKET_AGENT_CALLS
+              value: "{{ .Values.agent.calls }}"
+            - name: DOCKET_AGENT_MODE
+              value: {{ .Values.agent.mode }}
+          ports:
+            - name: boundary
+              containerPort: {{ .Values.agent.port }}
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - |
+                  import urllib.request
+                  urllib.request.urlopen("http://127.0.0.1:{{ .Values.agent.port }}/docket/healthz", timeout=2).read()
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - |
+                  import urllib.request
+                  urllib.request.urlopen("http://127.0.0.1:{{ .Values.agent.port }}/docket/readyz", timeout=2).read()
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: {{ .Values.resources.boundary.requests.cpu }}
+              memory: {{ .Values.resources.boundary.requests.memory }}
+            limits:
+              cpu: {{ .Values.resources.boundary.limits.cpu }}
+              memory: {{ .Values.resources.boundary.limits.memory }}
+          volumeMounts:
+            - name: workspace
+              mountPath: /work
+{{ if .Values.persistence.enabled }}
+            - name: evidence
+              mountPath: /work/.docket
+{{ end }}
+            - name: policy
+              mountPath: /etc/docket
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: workspace
+          emptyDir: {}
+{{ if .Values.persistence.enabled }}
+        - name: evidence
+          persistentVolumeClaim:
+            claimName: docket-evidence
+{{ end }}
+        - name: policy
+          configMap:
+            name: docket-policy
+        - name: tmp
+          emptyDir: {}

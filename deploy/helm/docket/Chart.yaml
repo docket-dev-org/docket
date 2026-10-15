@@ -1,0 +1,20 @@
+apiVersion: v2
+name: docket
+description: Run an agent under Docket — hard caps, a hash-chained ledger, and a receipt anyone can verify.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/docket-dev/docket
+sources:
+  - https://github.com/docket-dev/docket
+keywords:
+  - ai-agents
+  - cost-control
+  - audit
+  - evidence
+  - observability
+annotations:
+  # The chart is deliberately free of template logic (`range`, `with`, `include`, `else`) so that
+  # the renderer in tools/deploy_check.py can check what it produces without reimplementing Helm.
+  # See deploy/README.md for what that buys and what it costs.
+  docket.dev/template-subset: "values-substitution-and-single-conditionals"

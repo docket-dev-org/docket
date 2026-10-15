@@ -51,7 +51,7 @@ from .snapshot import (
     summarise,
     take_snapshot,
 )
-from .util import atomic_write, docket_number
+from .util import atomic_write, docket_number, sanitize_url
 
 EXIT_OK = 0
 EXIT_CAP_EXCEEDED = 42
@@ -155,6 +155,7 @@ class Supervisor:
         fault_seed: int = 0,
         evidence_warn: Any = None,
         time_scale: float = 1.0,
+        proxy_port: int = 0,
     ) -> None:
         self.argv = argv
         self.policy = policy or Policy()
@@ -193,6 +194,9 @@ class Supervisor:
         #: Wall-clock caps are measured in real seconds, but a supervised wait can be
         #: scaled for tests. 1.0 means "faithful"; never changed by the CLI.
         self.time_scale = time_scale
+        #: The port the boundary listens on. 0 means "any free port"; a fixed port is what a
+        #: health probe or a metrics scrape needs, and it is recorded in the run's evidence.
+        self.proxy_port = int(proxy_port)
 
     def _record(
         self, ledger: Ledger, event_type: str, data: dict[str, Any], breach_state: dict[str, str | None]
@@ -314,6 +318,15 @@ class Supervisor:
                 "http_proxy": self.http_proxy,
                 "record_bodies": self.record_bodies,
                 "tool": "docket",
+                # The *requested* port. 0 means "any free port", and the port that was
+                # actually bound is recorded in a note once the socket exists, so the evidence
+                # never states a guess as a fact.
+                "boundary": {"host": "127.0.0.1", "requested_port": self.proxy_port},
+                # Where the *model* traffic was sent. An override changes what a call means (a
+                # mock, a gateway, a self-hosted model is not the provider's own API), so it is
+                # evidence, not configuration. Query, fragment and userinfo are dropped: a token
+                # pasted into a URL must never reach a ledger.
+                "upstream_overrides": {name: sanitize_url(url) for name, url in sorted((self.upstreams or {}).items())},
                 "host": {
                     "platform": platform.platform(),
                     "python": platform.python_version(),
@@ -357,7 +370,16 @@ class Supervisor:
             health=health,
             min_free_bytes=resilience.min_free_bytes,
         )
-        host, port = proxy.start()
+        host, port = proxy.start(self.proxy_port)
+        ledger.append(
+            ev.NOTE,
+            {
+                "message": "the boundary is listening on loopback",
+                "host": host,
+                "port": port,
+                "requested_port": self.proxy_port,
+            },
+        )
 
         if injector is not None:
             ledger.append(

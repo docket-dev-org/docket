@@ -14,7 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from docket.util import http_url, local_http_url
+from docket.cli import parse_upstream_overrides
+from docket.util import http_url, local_http_url, sanitize_url
 
 
 @pytest.mark.parametrize(
@@ -183,3 +184,61 @@ def test_the_walk_actually_flags_an_unguarded_call(tmp_path: Path):
     )
     _, target, assignments = next(iter(_urlopen_targets(guarded)))
     assert _resolves_to_a_guard(target, assignments)
+
+
+# --------------------------------------------------------------------------- #
+# Recording a URL without recording what is in it
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "given,expected",
+    [
+        ("http://127.0.0.1:9000/v1", "http://127.0.0.1:9000/v1"),
+        ("https://api.example.com", "https://api.example.com"),
+        ("https://api.example.com/v1?api_key=sk-live-secret", "https://api.example.com/v1"),
+        ("https://api.example.com/v1#frag", "https://api.example.com/v1"),
+        ("https://user:pass@api.example.com/v1", "https://api.example.com/v1"),
+        ("https://user:pass@api.example.com:8443/v1?k=v#f", "https://api.example.com:8443/v1"),
+        ("http://[::1]:9000/v1?k=v", "http://[::1]:9000/v1"),
+    ],
+)
+def test_a_recorded_url_keeps_the_destination_and_drops_the_secrets(given: str, expected: str):
+    """A base URL is evidence — it says where the traffic went — and it is also where people paste
+    tokens. Scheme, host, port and path are kept because they are the part that makes the claim
+    (self-hosted vs gateway vs provider); query, fragment and userinfo are dropped because they
+    are the part that carries credentials into a file the operator may share."""
+    assert sanitize_url(given) == expected
+
+
+@pytest.mark.parametrize("given", ["not a url", "http://", "//host/path", "", "api.example.com", "http://h:notaport/"])
+def test_an_unparsable_url_is_marked_rather_than_dropped(given: str):
+    """Dropping it would be a quiet claim that no override was configured; the marker says a URL
+    was there and could not be summarised."""
+    assert sanitize_url(given) == "<unparsable url>"
+
+
+def test_an_upstream_override_is_validated_where_it_is_typed():
+    """`--upstream NAME=URL` is how a container, a mock provider or an OpenAI-compatible gateway is
+    configured. A malformed one is a usage error: falling back to the default would mean an agent
+    talking to the real API while the command line says otherwise."""
+    assert parse_upstream_overrides(None) is None
+    assert parse_upstream_overrides([]) is None
+    assert parse_upstream_overrides(["OpenAI = http://127.0.0.1:9000 "]) == {"openai": "http://127.0.0.1:9000"}
+    assert parse_upstream_overrides(["a=http://h", "b=https://h:8443/v1"]) == {
+        "a": "http://h",
+        "b": "https://h:8443/v1",
+    }
+    for bad in (["openai"], ["=http://h"], ["openai="], ["openai=http://h", "openai=http://h2"], ["openai=ftp://h"]):
+        with pytest.raises(ValueError) as caught:
+            parse_upstream_overrides(bad)
+        assert str(caught.value), bad
+
+
+def test_an_upstream_name_may_not_smuggle_a_path_or_a_space():
+    """The name becomes a route prefix (`/<name>/…`), so it is restricted to what a URL path
+    segment can hold; anything else is refused rather than normalised into something surprising."""
+    for bad in (["a/b=http://h"], ["a b=http://h"], ["a?b=http://h"], ["a:b=http://h"]):
+        with pytest.raises(ValueError) as caught:
+            parse_upstream_overrides(bad)
+        assert "letters, digits" in str(caught.value), caught.value

@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: docket-policy
+  labels:
+    app.kubernetes.io/name: docket
+    app.kubernetes.io/instance: {{ .Values.instance }}
+data:
+  policy.toml: |
+    [policy]
+    name = "{{ .Values.policy.name }}"
+
+    [budget]
+    mode = "usd"
+
+    [caps]
+    max_usd = {{ .Values.agent.maxUsd }}
+    warn_at = 0.8
+    on_breach = "kill"
+    grace_seconds = 5.0
+    max_model_calls = {{ .Values.policy.maxModelCalls }}
+    max_wall_seconds = {{ .Values.policy.maxWallSeconds }}
+
+    [models]
+    allow = []
+    deny = []
+
+    [egress]
+    mode = "deny"
+    allow = ['127.0.0.1', 'localhost', 'api.openai.com', 'api.anthropic.com']
+
+    [files]
+    watch = ['/work']
+    ignore = ['.git/**', '.docket/**']
+    deny_write = []
+{{ if .Values.policy.maxEvents }}
+    [resilience]
+    breaker_threshold = 5
+    breaker_cooldown_seconds = 30
+    breaker_max_cooldown_seconds = 300
+    max_calls_per_minute = {{ .Values.policy.maxCallsPerMinute }}
+    max_events = {{ .Values.policy.maxEvents }}
+    max_ledger_bytes = {{ .Values.policy.maxLedgerBytes }}
+    fail_fast_evidence = true
+    min_free_bytes = {{ .Values.policy.minFreeBytes }}
+{{ end }}

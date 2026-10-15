@@ -23,7 +23,7 @@ from .receipt import load_receipt
 from .report import diff_receipts, render_diff, render_findings, render_markdown, render_receipt
 from .resilience import parse_fault_spec
 from .supervisor import Supervisor
-from .util import NonStandardJSONError, human_bytes, loads_json
+from .util import NonStandardJSONError, http_url, human_bytes, loads_json
 from .verify import verify_receipt
 
 PROGRAM = "docket"
@@ -83,6 +83,53 @@ def _at_least_one(text: str) -> int:
     if number < 1:
         raise argparse.ArgumentTypeError(f"must be at least 1, got {text!r}")
     return number
+
+
+def parse_upstream_overrides(pairs: list[str]) -> dict[str, str] | None:
+    """Turn ``["openai=http://host:9000"]`` into ``{"openai": "http://host:9000"}``.
+
+    The base URL of a provider is part of what a receipt *means* — a call to a mock, a gateway or a
+    self-hosted model is not a call to the provider's own API — so an override is recorded in the
+    run's evidence (name and scheme/host/path, without query, fragment or userinfo: a token pasted
+    into a URL must not end up in a ledger).
+
+    Refused with the reason rather than falling back to the default: silently ignoring a
+    ``--upstream`` the operator typed would mean an agent talking to the real API while the command
+    line says otherwise.
+    """
+    if not pairs:
+        return None
+    resolved: dict[str, str] = {}
+    for pair in pairs:
+        name, sep, raw = pair.partition("=")
+        name = name.strip().lower()
+        if not sep or not name or not raw.strip():
+            raise ValueError(f"--upstream needs NAME=URL, got {pair!r}")
+        if not all(char.isalnum() or char in "-_" for char in name):
+            raise ValueError(f"--upstream name must be letters, digits, '-' or '_', got {name!r}")
+        if name in resolved:
+            raise ValueError(f"--upstream {name} given twice; one base URL per provider")
+        try:
+            resolved[name] = http_url(raw.strip())
+        except ValueError as exc:
+            raise ValueError(f"--upstream {name}: {exc}") from exc
+    return resolved
+
+
+def _port_number(text: str) -> int:
+    """A TCP port for the boundary: 0 (any free port) or 1024..65535.
+
+    Ports below 1024 are refused rather than attempted. On a Linux box they need privileges the
+    tool has no business asking for, and binding the *boundary* somewhere privileged is a
+    deployment smell: the value of a fixed port is that an orchestrator can probe it, not that it
+    is hard to reach.
+    """
+    value = _whole_number(text)
+    if value == 0:
+        return 0
+    if not 1024 <= value <= 65535:
+        raise argparse.ArgumentTypeError(f"port must be 0 or between 1024 and 65535, not {text!r}")
+    return value
 
 
 def _positive_minutes(text: str) -> int:
@@ -174,12 +221,21 @@ def cmd_run(args: argparse.Namespace) -> int:
         _out(sys.stderr, f"{PROGRAM}: nothing to run. Usage: {PROGRAM} run -- <command> [args…]")
         return 43
 
-    upstream_override = os.environ.get("DOCKET_GAME_DAY_UPSTREAM")
     upstreams = None
-    if upstream_override:
+    try:
+        from_flag = parse_upstream_overrides(args.upstream or [])
+    except ValueError as exc:
+        _out(sys.stderr, f"{PROGRAM}: {exc}")
+        return 43
+    if from_flag:
+        upstreams = from_flag
+
+    upstream_override = os.environ.get("DOCKET_GAME_DAY_UPSTREAM")
+    if upstream_override and upstreams is None:
         # Used by `docket game-day` to point a real `docket run` at a local scripted
         # provider. Documented, single-purpose, and never set by Docket itself in normal
-        # operation: the boundary is still the real boundary.
+        # operation: the boundary is still the real boundary. An explicit `--upstream` wins over
+        # it, because a flag on the command line is what the operator just typed.
         try:
             upstreams = loads_json(upstream_override, what="DOCKET_GAME_DAY_UPSTREAM")
         except (json.JSONDecodeError, NonStandardJSONError) as exc:
@@ -228,6 +284,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             args.snapshot_max_bytes if args.snapshot_max_bytes is not None else snapshot_module.DEFAULT_MAX_BYTES
         ),
         rollback_on_breach=args.rollback_on_breach,
+        proxy_port=args.port,
     )
     if faults:
         _out(
@@ -1037,6 +1094,20 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--sign", metavar="KEY_PATH", help="sign the receipt with an Ed25519 key (needs docket[sign])")
     run.add_argument("--label", help="a human label for this run")
     run.add_argument("--report", choices=["summary", "full"], default="summary")
+    run.add_argument(
+        "--upstream",
+        action="append",
+        metavar="NAME=URL",
+        help="override a provider's base URL (repeatable); what a container, a mock provider or an "
+        "OpenAI-compatible gateway needs",
+    )
+    run.add_argument(
+        "--port",
+        type=_port_number,
+        default=0,
+        help="bind the boundary to this loopback port (default: any free port); a fixed port is "
+        "what a readiness probe or a metrics scrape needs",
+    )
     run.add_argument("--max-usd", type=_cap_amount, help="override the USD cap")
     run.add_argument("--max-tokens", type=_whole_number, help="override the token cap")
     run.add_argument("--max-calls", type=_whole_number, help="override the model-call cap")

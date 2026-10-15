@@ -216,6 +216,93 @@ def test_a_closed_ledger_is_not_written_to_again(tmp_path):
     assert Ledger(events=events).chain_error() is None
 
 
+def test_the_boundary_can_be_told_which_port_to_listen_on(tmp_path):
+    """A fixed port is what an orchestrator needs: a readiness probe, a metrics scrape, or a
+    sidecar that finds the boundary by address. The evidence then has to say *which* port it was,
+    because a probe that fires against the wrong port is a false alarm either way.
+
+    Two facts, both checked: the port that was asked for is the port that answers, and the ledger
+    records the requested port in `session.start` and the *actual* one in a note once the socket
+    exists — a run that asked for port 0 must not have a fabricated number in its record.
+    """
+    import urllib.request
+
+    from docket.pricing import CostMeter, PriceTable
+    from docket.proxy import RecordingProxy
+
+    ledger = Ledger.open(tmp_path / "l.jsonl")
+    upstream = _upstream()
+    upstream.start()
+    port = _free_port()
+    proxy = RecordingProxy(
+        ledger=ledger,
+        policy=Policy(),
+        meter=CostMeter(price_table=PriceTable.load()),
+        session_id="port",
+        upstreams={"openai": upstream.url},
+    )
+    host, bound = proxy.start(port)
+    try:
+        assert bound == port, f"asked for {port}, bound {bound}"
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/docket/healthz", timeout=5) as response:
+            assert response.status == 200
+    finally:
+        proxy.stop()
+        upstream.stop()
+        ledger.close()
+
+    # And an occupied port is refused with the port named, not with a bare EADDRINUSE.
+    holder = socket.socket()
+    holder.bind(("127.0.0.1", 0))
+    holder.listen(1)
+    taken = holder.getsockname()[1]
+    try:
+        other = Ledger.open(tmp_path / "l2.jsonl")
+        second = RecordingProxy(
+            ledger=other,
+            policy=Policy(),
+            meter=CostMeter(price_table=PriceTable.load()),
+            session_id="port2",
+            upstreams={"openai": upstream.url},
+        )
+        with pytest.raises(OSError) as caught:
+            second.start(taken)
+        assert str(taken) in str(caught.value), caught.value
+        other.close()
+    finally:
+        holder.close()
+
+
+def test_a_supervised_run_records_the_boundary_port_it_actually_used(tmp_path):
+    """The note is written by the supervisor, so this drives a real run: the requested port and the
+    bound port are both in the evidence, and they agree when a port was requested."""
+    upstream = _upstream()
+    upstream.start()
+    port = _free_port()
+    try:
+        supervisor = Supervisor(
+            [sys.executable, "-c", CALL_CHILD],
+            policy=Policy(name="t", caps=Caps(max_usd=None)),
+            docket_dir=tmp_path / ".docket",
+            cwd=tmp_path,
+            upstreams={"openai": upstream.url},
+            proxy_port=port,
+        )
+        result = supervisor.run()
+        events = Ledger.read(result.ledger_path)
+        start = next(event for event in events if event.type == "session.start")
+        assert start.data["boundary"] == {"host": "127.0.0.1", "requested_port": port}
+        listening = [
+            event.data
+            for event in events
+            if event.type == "note" and event.data.get("message") == "the boundary is listening on loopback"
+        ]
+        assert listening and listening[0]["port"] == port, listening
+        assert listening[0]["requested_port"] == port
+    finally:
+        upstream.stop()
+
+
 # --------------------------------------------------------------------------- #
 # Idempotency: what Docket does *not* do
 # --------------------------------------------------------------------------- #

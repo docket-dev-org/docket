@@ -1,0 +1,95 @@
+# Values for the Docket chart.
+#
+# Every value here is used by a template, and the deploy check fails if a template references a
+# value that is not declared below (or if a declared value is never used): a values file is an
+# interface, and an interface that drifts from its implementation is worse than no interface.
+
+image:
+  # There is no published image yet (see PUBLISH.md). Build it with
+  # `docker build -f deploy/Dockerfile -t docket:0.1.0 .` and push it to your registry, then set
+  # `repository` and `tag` here.
+  repository: docket
+  tag: "0.1.0"
+  # `Always` would re-pull on every pod restart, which for a pinned tag is only cost.
+  pullPolicy: IfNotPresent
+
+# Name for this release's labels (`app.kubernetes.io/instance`). There is no `{{ .Release.Name }}`
+# in these templates on purpose: the renderer in tools/deploy_check.py implements a declared subset
+# of Helm's language, and a name is exactly the sort of thing a chart should not have to compute.
+# Set it to your release name.
+instance: docket
+
+# The pod runs two containers: a scripted provider and the agent under Docket. Set
+# `provider.enabled` to false for a real deployment and point the agent at your provider with
+# `agent.upstreams`.
+provider:
+  enabled: true
+  port: 9100
+  # How many scripted responses to cycle through before the last one repeats forever.
+  steps: 5000
+
+agent:
+  # The command Docket supervises. Replace it with your agent; the container must have it on PATH.
+  command:
+    - python
+    - -m
+    - docket.scriptagent
+  label: helm-release
+  calls: 6
+  mode: bounded
+  # NAME=URL overrides, one per provider. With `provider.enabled` these point at the scripted
+  # provider in the same pod (which shares this pod's loopback). Empty means "use the real
+  # provider base URLs".
+  upstreams:
+    - openai=http://127.0.0.1:9100
+    - anthropic=http://127.0.0.1:9100
+  # The port the boundary binds inside the pod. Probes use it, so changing it here changes them.
+  port: 8787
+  # The run's dollar cap, written into the policy this chart mounts.
+  maxUsd: "5.00"
+
+policy:
+  # The policy document itself, mounted at /etc/docket/policy.toml. Edit it for your run: it is
+  # the thing that decides what "too expensive" means.
+  name: helm-release
+  maxModelCalls: 200
+  maxWallSeconds: 900
+  maxEvents: 20000
+  maxLedgerBytes: 67108864
+  maxCallsPerMinute: 120
+  minFreeBytes: 16777216
+
+persistence:
+  enabled: true
+  size: 1Gi
+  # Empty means "the cluster's default StorageClass".
+  storageClass: ""
+
+serviceAccount:
+  create: true
+  # No token is mounted: Docket calls nothing in the Kubernetes API, so the pod has no business
+  # holding a credential that could be read out of it.
+  automountServiceAccountToken: false
+
+networkPolicy:
+  # Includes the pod in a default-deny ingress posture with DNS and 443 egress. Turn it off if
+  # your cluster policy is managed elsewhere, and know that you have then removed one of the two
+  # egress controls (Docket's own policy is the other).
+  enabled: true
+
+resources:
+  boundary:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  provider:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+

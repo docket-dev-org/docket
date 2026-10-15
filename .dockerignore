@@ -1,0 +1,22 @@
+# Everything the image build does not read. The Dockerfile copies `pyproject.toml`, `README.md`,
+# `LICENSE`, `CHANGELOG.md` and `src/`; a context carrying `.git`, a previous `dist/`, a ledger or
+# a virtualenv would make the image slow to build and easy to leak from.
+.git
+.github
+.docket
+.venv
+__pycache__
+*.pyc
+*.egg-info
+dist
+build
+.coverage
+htmlcov
+deploy
+docs
+examples
+spec
+tests
+verify-js
+tools
+assets

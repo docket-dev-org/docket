@@ -1,0 +1,16 @@
+Docket is running {{ .Values.agent.label }} under a policy with a {{ .Values.agent.maxUsd }} dollar cap.
+
+The boundary is bound to loopback inside the pod (port {{ .Values.agent.port }}) and there is
+deliberately no Service: nothing outside this pod should be able to talk to a live run. To read the
+run's own metrics and readiness from inside it:
+
+  kubectl exec deploy/docket-agent -c docket -- python -c \
+    "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:{{ .Values.agent.port }}/docket/readyz').read().decode())"
+
+When the run finishes, its receipt is at <evidence volume>/latest.receipt.json, and it can be
+verified offline by anyone:
+
+  docket verify /work/.docket/latest.receipt.json
+
+Before you apply this to a cluster you care about, read deploy/README.md: it states what the deploy
+check checks, and — at the same length — what it cannot check without a cluster.

@@ -151,9 +151,19 @@ def test_sdk_inside_a_supervised_run_writes_through_the_boundary(tmp_path, fake_
     assert [event.type for event in agent_asserted].count("note") == 2
     assert "tool.call" in [event.type for event in agent_asserted]
     assert "model.response" in [event.type for event in agent_asserted]
-    supervisor_notes = [event for event in events if event.type == "note" and "reported_by" not in event.data]
-    assert supervisor_notes, "the run's own note about the evidence directory is in the record"
-    assert all("excluded" in event.data for event in supervisor_notes)
+    supervisor_notes = [event.data for event in events if event.type == "note" and "reported_by" not in event.data]
+    assert supervisor_notes, "the run's own notes are in the record"
+    # Two of them are pinned by name, because they are the two facts a reader of this receipt
+    # cannot derive from anything else: what was excluded from the file diff, and which port the
+    # boundary actually bound (the requested port is in `session.start`, and a run that asked for
+    # "any free port" must not have a guessed number in its record).
+    assert any("excluded" in note for note in supervisor_notes), supervisor_notes
+    assert any(
+        note.get("message") == "the boundary is listening on loopback" for note in supervisor_notes
+    ), supervisor_notes
+    for note in supervisor_notes:
+        # Every supervisor note says what it is about; none of them is an unattributed sentence.
+        assert note.get("message") or "excluded" in note, note
 
 
 def test_sdk_standalone_still_writes_its_own_ledger_and_receipt(tmp_path):

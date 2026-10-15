@@ -1596,9 +1596,21 @@ class RecordingProxy:
         return "\n".join(lines) + "\n"
 
     # -- lifecycle --------------------------------------------------------- #
-    def start(self) -> tuple[str, int]:
+    def start(self, port: int = 0) -> tuple[str, int]:
+        """Bind the boundary on loopback and return ``(host, port)``.
+
+        ``port=0`` (the default) asks the kernel for an ephemeral port, which is what a local run
+        wants. A *fixed* port is what an orchestrator wants: a readiness probe, a metrics scrape or
+        a sidecar that discovers the boundary by address rather than by environment variable needs
+        the port to be knowable before the agent starts. A port that is already in use is reported
+        as such, with the port named — "Address already in use" from three frames down is a worse
+        error message than the one thing the operator needs to know.
+        """
         handler = type("BoundHandler", (_Handler,), {"proxy": self})
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        try:
+            self._server = ThreadingHTTPServer(("127.0.0.1", port), handler)
+        except OSError as exc:
+            raise OSError(f"cannot bind the Docket boundary to 127.0.0.1:{port}: {exc}") from exc
         self._server.daemon_threads = True
         self._thread = threading.Thread(target=self._server.serve_forever, name="docket-proxy", daemon=True)
         self._thread.start()

@@ -18,7 +18,15 @@ from decimal import Decimal
 
 import pytest
 
-from docket.cli import MAX_CAP_USD, _at_least_one, _cap_amount, _positive_minutes, _whole_number, main
+from docket.cli import (
+    MAX_CAP_USD,
+    _at_least_one,
+    _cap_amount,
+    _port_number,
+    _positive_minutes,
+    _whole_number,
+    main,
+)
 from docket.policy import Caps
 
 
@@ -125,6 +133,35 @@ def test_the_policy_object_refuses_the_same_values_when_set_directly():
     assert caps.max_usd is None
     caps.set_max_usd("0.25")
     assert caps.max_usd == Decimal("0.25")
+
+
+@pytest.mark.parametrize("text", ["80", "443", "1023", "65536", "65536 ", "00080"])
+def test_a_port_outside_the_allowed_range_is_refused(text: str):
+    """The boundary's port is either 0 (any free port) or a real unprivileged port.
+
+    A privileged port is refused rather than attempted: needing root to *listen* is a deployment
+    smell for a recorder, and the point of a fixed port is that an orchestrator can probe it. The
+    refusal names the range, so the message is actionable rather than a stack trace from `bind`.
+    """
+    with pytest.raises(argparse.ArgumentTypeError) as caught:
+        _port_number(text)
+    assert "1024" in str(caught.value) and "65535" in str(caught.value), caught.value
+
+
+@pytest.mark.parametrize("text", ["-1", "0.5", "abc", "", "87 87"])
+def test_a_port_that_is_not_a_count_is_refused_as_such(text: str):
+    """Delegation is deliberate: a negative or fractional port is not *out of range*, it is not a
+    count at all, and the refusal comes from the same shared validator every other count flag
+    uses — so the wording matches, and there is one place where "not a count" is decided."""
+    with pytest.raises(argparse.ArgumentTypeError) as caught:
+        _port_number(text)
+    message = str(caught.value)
+    assert "number" in message or "negative" in message, message
+
+
+@pytest.mark.parametrize("text,expected", [("0", 0), ("1024", 1024), ("8787", 8787), ("65535", 65535)])
+def test_a_port_inside_the_range_survives_as_typed(text: str, expected: int):
+    assert _port_number(text) == expected
 
 
 def test_a_cap_still_works_end_to_end(tmp_path, monkeypatch, capsys):

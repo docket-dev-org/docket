@@ -1,0 +1,302 @@
+# A two-container pod: a scripted provider, and the agent running under Docket.
+#
+# What this manifest is for: it is the *documented topology* expressed as something you can apply —
+# the agent and the boundary side by side, sharing a workspace and (because they are in one pod) a
+# network namespace, so the agent talks to the boundary over loopback and never leaves the pod.
+#
+# What it is not: a cluster-validated deployment. There is no `kubectl` and no cluster in the
+# environment this repository is built and tested in, so nothing here has been *applied*. What has
+# been checked is static, by `tools/deploy_check.py` (run `make deploy-check`): every document
+# parses, every reference resolves, and each of these invariants holds —
+#
+#   * the pod is non-root, may not escalate privileges, and drops all capabilities;
+#   * the root filesystem is read-only, with an explicit writable `emptyDir` for /tmp and the
+#     evidence volume mounted where the policy says it is;
+#   * the container that can be probed declares the port the probe uses;
+#   * requests and limits are set, and the image tag is pinned (no `:latest`);
+#   * no `hostPath`, no host networking, no secret in the manifest.
+#
+# The provider in this pod is `docket.fakeupstream`: an HTTP server that answers with scripted
+# usage. It is here so that the manifest produces a real receipt offline. Replace its container
+# with nothing and point `--upstream` at your provider — or delete the container and the two
+# `--upstream` flags, and the boundary uses the provider's real API by default.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: docket-policy
+  labels:
+    app.kubernetes.io/name: docket
+data:
+  # A policy is the operator's, not Docket's. This one is deliberately small: a dollar cap that
+  # actually bites, a call ceiling so a loop cannot fill the volume with its own record, readiness
+  # that turns red before the disk does, and egress denied for everything except the model hosts.
+  policy.toml: |
+    [policy]
+    name = "kubernetes-smoke"
+
+    [budget]
+    mode = "usd"
+
+    [caps]
+    max_usd = 5.00
+    warn_at = 0.8
+    on_breach = "kill"
+    grace_seconds = 5.0
+    max_model_calls = 200
+    max_wall_seconds = 900
+
+    [models]
+    allow = []
+    deny = []
+
+    [egress]
+    mode = "deny"
+    allow = ['127.0.0.1', 'localhost', 'api.openai.com', 'api.anthropic.com']
+
+    [files]
+    watch = ['/work']
+    ignore = ['.git/**', '.docket/**']
+    deny_write = ['/work/.env']
+
+    [resilience]
+    breaker_threshold = 5
+    breaker_cooldown_seconds = 30
+    breaker_max_cooldown_seconds = 300
+    max_calls_per_minute = 120
+    max_events = 20000
+    max_ledger_bytes = 67108864
+    fail_fast_evidence = true
+    min_free_bytes = 16777216
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: docket-evidence
+  labels:
+    app.kubernetes.io/name: docket
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  # No storageClassName: the cluster's default class is used instead of guessing a name that does
+  # not exist everywhere. Set it explicitly if your cluster has no default.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: docket
+  labels:
+    app.kubernetes.io/name: docket
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docket-agent
+  labels:
+    app.kubernetes.io/name: docket
+    app.kubernetes.io/component: supervised-agent
+spec:
+  replicas: 1
+  strategy:
+    # A supervised run is a *single* writer to one ledger, and two pods writing the same evidence
+    # share nothing but the volume: `Recreate` makes the second pod wait for the first to stop,
+    # which is the only ordering that cannot interleave two runs into one directory.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: docket
+      app.kubernetes.io/component: supervised-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: docket
+        app.kubernetes.io/component: supervised-agent
+      annotations:
+        # Metrics are *not* scraped from outside the pod, and there is deliberately no Service:
+        # the boundary binds loopback (src/docket/proxy.py), so nothing on the pod network can
+        # reach it and nothing outside should be able to post events into a live run. Read
+        # /docket/metrics from inside the pod — `kubectl exec deploy/docket-agent -- python -c
+        # "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8787/docket/metrics').read().decode())"`
+        # — or add a sidecar that does it for you. See docs/deployment.md.
+        docket.dev/metrics: "loopback-only"
+    spec:
+      serviceAccountName: docket
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: provider
+          # A scripted provider: it answers with fixed usage numbers so the manifest produces a
+          # real receipt without an API key. Delete this container for a real deployment.
+          image: docket:0.1.0
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "docket.fakeupstream"]
+          args: ["--host", "127.0.0.1", "--port", "9100", "--steps", "5000"]
+          ports:
+            - name: provider
+              containerPort: 9100
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: provider
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+        - name: docket
+          image: docket:0.1.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - run
+            - --label
+            - kubernetes-smoke
+            - --docket-dir
+            - /work/.docket
+            - --policy
+            - /etc/docket/policy.toml
+            # A fixed port so the probes below have something to probe. It is a loopback port in
+            # this pod's network namespace, not a published one.
+            - --port
+            - "8787"
+            # Point the agent at the scripted provider in the same pod. Drop these two flags, and
+            # the boundary forwards to the real provider base URLs.
+            - --upstream
+            - openai=http://127.0.0.1:9100
+            - --upstream
+            - anthropic=http://127.0.0.1:9100
+            - --
+            - python
+            - -m
+            - docket.scriptagent
+          env:
+            - name: DOCKET_AGENT_CALLS
+              value: "6"
+            - name: DOCKET_AGENT_MODE
+              value: bounded
+            - name: DOCKET_AGENT_WRITE
+              value: /work/agent-output.txt
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+          ports:
+            - name: boundary
+              containerPort: 8787
+          livenessProbe:
+            exec:
+              # Runs in this container, so loopback is the boundary. A health check that could pass
+              # without a run in progress would not be worth having.
+              command:
+                - python
+                - -c
+                - |
+                  import urllib.request
+                  urllib.request.urlopen("http://127.0.0.1:8787/docket/healthz", timeout=2).read()
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              # Readiness is the *evidence* question: is the ledger writable, is the volume above
+              # its free-space floor, is the breaker shut? A `503` here means the run is still
+              # going and Docket can no longer promise to record it.
+              command:
+                - python
+                - -c
+                - |
+                  import urllib.request
+                  urllib.request.urlopen("http://127.0.0.1:8787/docket/readyz", timeout=2).read()
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: workspace
+              mountPath: /work
+            - name: evidence
+              mountPath: /work/.docket
+            - name: policy
+              mountPath: /etc/docket
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: workspace
+          emptyDir: {}
+        - name: evidence
+          persistentVolumeClaim:
+            claimName: docket-evidence
+        - name: policy
+          configMap:
+            name: docket-policy
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: docket-agent
+  labels:
+    app.kubernetes.io/name: docket
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: docket
+      app.kubernetes.io/component: supervised-agent
+  policyTypes:
+    - Ingress
+    - Egress
+  # Nothing connects *to* this pod: the boundary is on loopback, the agent talks to the provider on
+  # loopback, and no Service exists. An empty ingress rule set is the default-deny that says so.
+  ingress: []
+  egress:
+    # DNS, and only DNS, from the cluster's resolver.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # A real provider is reached over 443. This is the second of two controls: Docket's own egress
+    # policy decides host by host and records every decision (`net.allowed` / `net.denied`), so a
+    # host that is not in the policy's allow-list is refused even inside this window.
+    - ports:
+        - protocol: TCP
+          port: 443

@@ -12,7 +12,9 @@ way the real APIs do.
 
 from __future__ import annotations
 
+import argparse
 import json
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -53,7 +55,20 @@ class FakeUpstream:
     _index: int = 0
 
     # -- lifecycle --------------------------------------------------------- #
-    def start(self) -> tuple[str, int]:
+    def start(self, port: int = 0, host: str = "127.0.0.1") -> tuple[str, int]:
+        """Serve on loopback and return ``(host, port)``.
+
+        ``port=0`` (the default) asks the kernel for a free port, which is what a test wants. A
+        *fixed* port is what a container wants: a scripted provider published at a stable address is
+        how `deploy/compose.yaml` and the Kubernetes manifest give an agent something to call
+        without an API key and without a network.
+
+        ``host`` defaults to loopback — in a Kubernetes pod two containers share a network
+        namespace, so loopback reaches both, and nothing else on the network can answer as a
+        provider. Binding elsewhere is for container runtimes that give each container its own
+        namespace (Docker Compose), where the server would otherwise be unreachable; it prints a
+        warning, because a scripted provider on a routable address is a bad neighbour.
+        """
         upstream = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -61,6 +76,27 @@ class FakeUpstream:
 
             def log_message(self, *args: Any) -> None:  # noqa: D102
                 return
+
+            def do_GET(self) -> None:  # noqa: N802
+                """Liveness for a container: `/healthz` (and `/`) answer without touching a script.
+
+                A probe that POSTs a chat completion to check liveness is a probe that costs a call
+                and can fail for reasons that have nothing to do with the process being alive. This
+                answers the only question a probe should ask, and says how many responses it has
+                served so an operator can see it working.
+                """
+                if self.path.split("?")[0] not in {"/healthz", "/"}:
+                    payload = b'{"error":{"message":"not found","type":"invalid_request_error"}}'
+                    self.send_response(404)
+                else:
+                    payload = json.dumps(
+                        {"status": "ok", "served": upstream._index, "steps": len(upstream.steps)}
+                    ).encode()
+                    self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
 
             def do_POST(self) -> None:  # noqa: N802
                 length = int(self.headers.get("Content-Length") or 0)
@@ -111,7 +147,10 @@ class FakeUpstream:
                     self.wfile.flush()
                     time.sleep(0.001)
 
-        upstream._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        try:
+            upstream._server = ThreadingHTTPServer((host, port), Handler)
+        except OSError as exc:
+            raise OSError(f"cannot bind the scripted provider to {host}:{port}: {exc}") from exc
         upstream._server.daemon_threads = True
         upstream._thread = threading.Thread(target=upstream._server.serve_forever, daemon=True)
         upstream._thread.start()
@@ -266,3 +305,89 @@ def _stream_chunks(step: Step, model: str, anthropic: bool) -> list[str]:
     )
     out.append("data: [DONE]\n\n")
     return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the scripted provider in the foreground: ``python -m docket.fakeupstream``.
+
+    This exists so the provider can be a *service* rather than part of a test process: a container
+    or a second terminal that an agent calls over the network. It is the same object the tests use,
+    so a containerised smoke test exercises the same wire format as `docket demo`.
+
+    The address is printed on stdout as JSON, because that is what a container health check or a
+    shell script can read without parsing prose. A port that is already taken is reported as such
+    and exits `2` — the same contract as the boundary's own fixed port.
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m docket.fakeupstream",
+        description="A scripted, offline, provider-shaped upstream for Docket.",
+    )
+    parser.add_argument("--host", default="127.0.0.1", help="address to bind (default 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=9100, help="port to listen on (default 9100)")
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=1000,
+        help="how many responses to script before the last one repeats forever (default 1000)",
+    )
+    parser.add_argument("--model", default="claude-sonnet-5", help="model name to report")
+    parser.add_argument("--input-tokens", type=int, default=1_000, help="input tokens per response")
+    parser.add_argument("--output-tokens", type=int, default=200, help="output tokens per response")
+    parser.add_argument(
+        "--delay-ms",
+        type=int,
+        default=0,
+        help="artificial delay before each response, in milliseconds (0 = none)",
+    )
+    args = parser.parse_args(argv)
+
+    if not 0 <= args.port <= 65535:
+        parser.error("--port must be between 0 and 65535")
+    if args.steps < 1:
+        parser.error("--steps must be at least 1")
+
+    step = Step(
+        model=args.model,
+        input_tokens=args.input_tokens,
+        output_tokens=args.output_tokens,
+        delay_seconds=args.delay_ms / 1000.0,
+    )
+    upstream = FakeUpstream(steps=[step] * args.steps)
+    if args.host != "127.0.0.1":
+        # The default is loopback, and anything else is a deliberate act with a consequence: this
+        # server answers every request with scripted numbers. It is for wiring a container network
+        # or a pod to a provider that costs nothing — never for a host with a route to the internet.
+        print(
+            f"fakeupstream: WARNING binding {args.host}, not loopback: this server answers with "
+            "scripted usage and must not be reachable beyond the network you control",
+            file=sys.stderr,
+            flush=True,
+        )
+    try:
+        host, port = upstream.start(args.port, host=args.host)
+    except OSError as exc:
+        print(f"fakeupstream: {exc}", file=sys.stderr)
+        return 2
+    print(
+        json.dumps(
+            {
+                "listening": f"http://{host}:{port}",
+                "port": port,
+                "steps": args.steps,
+                "model": args.model,
+            }
+        ),
+        flush=True,
+    )
+    try:
+        while True:
+            time.sleep(0.5)
+    except KeyboardInterrupt:  # pragma: no cover - interactive path
+        pass
+    finally:
+        upstream.stop()
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - process entry point
+    raise SystemExit(main())

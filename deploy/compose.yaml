@@ -1,0 +1,144 @@
+# A two-container smoke test, runnable offline.
+#
+#     docker compose -f deploy/compose.yaml up --build --abort-on-container-exit
+#
+# Three services, no API key, no network beyond the image build:
+#
+#   provider  a scripted, provider-shaped upstream (`python -m docket.fakeupstream`)
+#   boundary  the real Docket supervisor + boundary proxy + ledger + receipt
+#   verify    the same image verifying the receipt the boundary wrote, from the shared volume
+#
+# This is a *smoke test of the deployment shape*, not a production topology: it proves that the
+# image starts, that the boundary records traffic from an agent, that the receipt lands on a
+# volume, and that a second container can verify it. Read deploy/README.md for what it does not
+# prove.
+#
+# Note on loopback: Docker gives every service its own network namespace, so the provider cannot
+# be reached over 127.0.0.1 from the boundary's container. The scripted provider therefore binds
+# its own container address and prints a warning to that effect; nothing outside the compose
+# network can reach it, because no port is published. In a Kubernetes pod the two containers share
+# a network namespace, so the manifest in deploy/kubernetes/ keeps the provider on loopback.
+
+name: docket-smoke
+
+services:
+  provider:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    entrypoint:
+      - python
+      - -m
+      - docket.fakeupstream
+      - --host
+      - 0.0.0.0
+      - --port
+      - "9100"
+      - --steps
+      - "2000"
+      - --model
+      - claude-sonnet-5
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      # `/healthz` answers without scripting a call: a probe that POSTs a chat completion to test
+      # liveness is a probe that can fail for reasons unrelated to the process being alive.
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import json, urllib.request
+          status = json.loads(urllib.request.urlopen("http://127.0.0.1:9100/healthz", timeout=3).read())
+          assert status["status"] == "ok", status
+      interval: 5s
+      timeout: 5s
+      retries: 6
+
+  boundary:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    depends_on:
+      provider:
+        condition: service_healthy
+    command:
+      - run
+      - --label
+      - compose-smoke
+      - --docket-dir
+      - /work/.docket
+      - --policy
+      - /etc/docket/policy.toml
+      - --port
+      - "8787"
+      - --upstream
+      - openai=http://provider:9100
+      - --upstream
+      - anthropic=http://provider:9100
+      - --
+      - python
+      - -m
+      - docket.scriptagent
+    environment:
+      # The reference agent: four calls, stopping at the first refusal. A real deployment replaces
+      # the command, not this file.
+      DOCKET_AGENT_CALLS: "4"
+      DOCKET_AGENT_PROMPT: "Summarise the failing test and propose the smallest fix."
+    volumes:
+      - evidence:/work/.docket
+      # Read-only policy, mounted from the repository. A policy belongs to the deployment, so this
+      # file is the example; copy it out and edit it rather than editing this one.
+      - ./policy.example.toml:/etc/docket/policy.toml:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      # The boundary is bound to loopback *inside this container*, so the probe runs here too.
+      # `/docket/readyz` answers 503 when the ledger has become unwritable or the volume is below
+      # its free-space floor — which is the failure this check exists to catch, and the reason a
+      # health check on this tool is worth having at all.
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import urllib.request
+          urllib.request.urlopen("http://127.0.0.1:8787/docket/readyz", timeout=3).read()
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 3s
+
+  verify:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    depends_on:
+      boundary:
+        condition: service_completed_successfully
+    command:
+      - verify
+      - --json
+      - /work/.docket/latest.receipt.json
+    volumes:
+      - evidence:/work/.docket:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  evidence:
