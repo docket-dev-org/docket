@@ -12,7 +12,7 @@ and can be told to fail on cue.
 ## The suite
 
 ```console
-$ make test          # 530 tests, ~90 s, no network
+$ make test          # 531 tests, ~90 s, no network
 $ make check         # + ruff, + bandit, + the independent Node verifier
 ```
 

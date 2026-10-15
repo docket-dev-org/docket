@@ -303,7 +303,7 @@ pipx install docket         # or keep it out of your project venvs
 uvx docket demo             # or run it without installing anything
 ```
 
-From source: `git clone … && cd docket && make check` (530 tests, fully offline — no API keys,
+From source: `git clone … && cd docket && make check` (531 tests, fully offline — no API keys,
 no network, ~90 s).
 
 ## Documentation
