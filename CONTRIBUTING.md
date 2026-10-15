@@ -20,7 +20,7 @@ git clone https://github.com/docket-dev/docket
 cd docket
 python3 -m venv .venv && . .venv/bin/activate      # or any 3.11+ interpreter
 pip install -e '.[dev,sign]'
-make test          # 158 tests, fully offline, ~30 s
+make test          # 530 tests, fully offline, ~90 s
 make demo          # the runaway-agent demo
 make verify-js     # independent Node verifier against the committed vectors
 ```
@@ -64,7 +64,15 @@ feature — CI runs both implementations against the vectors on every pull reque
 - A bug fix comes with a regression test that fails before the fix. The float rule in
   canonical JSON exists because three bugs got through without one.
 - Verifier changes need a *negative* test: hand it a modified ledger and assert it notices.
+- **Concurrency changes need a test that runs the thing concurrently.** The boundary is a
+  `ThreadingHTTPServer`, so "two calls at once" is the normal case, not an edge case:
+  `tests/test_ledger_concurrency.py` and `tests/test_proxy_concurrency.py` fire 6–8 threads at
+  the real code. Assert a *bound* where a race decides the outcome (at most one paid call per
+  in-flight request, never an exact admitted count), and assert **every request has an outcome**
+  — a driver that only catches `HTTPError` lets a thread die silently and turns a lost request
+  into a passing test. See `docs/adr/0005`.
 - Run `make check` (lint + tests + Node conformance) before pushing.
+- What is covered, by kind, and what is deliberately *not*: [`docs/testing.md`](docs/testing.md).
 
 ## Style
 

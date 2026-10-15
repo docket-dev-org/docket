@@ -100,9 +100,19 @@ re-instrumentation, no "we only started tracking that last quarter".
 
 ## Threading and failure behaviour
 
-- The proxy is a `ThreadingHTTPServer` on loopback, one thread per request, with an event list
-  guarded for concurrent appends. Requests from a single agent are usually sequential; retries
-  and parallel tool calls are not assumed away.
+- The proxy is a `ThreadingHTTPServer` on loopback, one thread per request. Requests from a
+  single agent are usually sequential; retries and parallel tool calls are not assumed away.
+- **One ledger, one writer at a time.** `Ledger.append` takes an instance lock for the whole
+  step — sequence number, `prev` link, digest, write — so the file is always a contiguous chain
+  in sequence order no matter how many request threads append at once. Without it, a parallel
+  burst produced a file a verifier reports as broken: the tool accusing an honest run. The lock
+  is held for the append, not for the upstream call, so a slow provider does not serialise the
+  writers.
+- The caps are enforced **at admission**: with *n* requests already in flight when a cap is
+  breached, at most one paid call per in-flight request is recorded before the refusal takes
+  effect. The receipt says what happened; it does not claim the overshoot was prevented.
+  ADR 0005 has the full list of concurrency invariants (contiguous chain, conserved cost,
+  a limiter that admits exactly its budget, a breaker that counts each failure once).
 - Ledger writes `flush()` and `fsync()` per line. A crash mid-run leaves a valid prefix of the
   chain, and `docket verify` on a truncated ledger reports the count mismatch rather than
   pretending completeness.

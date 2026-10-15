@@ -1,0 +1,9 @@
+DIFF DKT-20260102-VECT01 → DKT-20260103-VECT02
+  cost delta: $0.02   behaviour changed
+
+  ~ cost_usd         0.013500  →  0.031500
+  ~ calls            4  →  7
+    total_tokens     9900  →  9900
+  ~ files_changed    0  →  2
+    exit_code        0  →  0
+    denied_calls     0  →  0

@@ -303,8 +303,8 @@ pipx install docket         # or keep it out of your project venvs
 uvx docket demo             # or run it without installing anything
 ```
 
-From source: `git clone … && cd docket && make check` (tests are fully offline — no API keys,
-no network, ~30 s).
+From source: `git clone … && cd docket && make check` (530 tests, fully offline — no API keys,
+no network, ~90 s).
 
 ## Documentation
 
@@ -317,6 +317,7 @@ no network, ~30 s).
 | [Verification](docs/verification.md) | what each check means and how to run it in CI |
 | [Integrations](docs/integrations.md) | Claude Code, Codex, Gemini CLI, opencode, aider, SDKs, HTTP |
 | [Threat model and limits](docs/threat-model.md) | what Docket does not defend against |
+| [Testing](docs/testing.md) | what is tested, by kind, and what is deliberately not |
 | [Evidence](docs/evidence.md) | every problem claim with its source and its strength |
 | [Comparison](docs/comparison.md) | Docket vs gateways, observability, sandboxes, LLM cassette tools |
 | [Format specification](spec/docket-receipt-1.md) | the normative `docket/receipt/v1` contract |

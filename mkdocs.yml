@@ -83,6 +83,7 @@ nav:
       - Format specification: spec/docket-receipt-1.md
   - Project:
       - Architecture: docs/architecture.md
+      - Testing: docs/testing.md
       - Comparison: docs/comparison.md
       - Roadmap: ROADMAP.md
       - Governance: GOVERNANCE.md
@@ -93,6 +94,10 @@ nav:
       - Sponsorship detail: docs/sponsorship.md
       - Decisions (ADRs):
           - 0001 Record format decisions as ADRs: docs/adr/0001-record-format-decisions-as-adrs.md
+          - 0002 No floating point in hashed structures: docs/adr/0002-no-floating-point-in-hashed-structures.md
+          - 0003 Verification uses recomputed hashes: docs/adr/0003-verification-uses-recomputed-hashes.md
+          - 0004 Content snapshots and confinement: docs/adr/0004-content-snapshots-and-confinement.md
+          - 0005 One writer at a time: docs/adr/0005-concurrency-and-one-writer-at-a-time.md
           - 0002 No floating point in hashed structures: docs/adr/0002-no-floating-point-in-hashed-structures.md
           - 0003 Verification uses recomputed hashes: docs/adr/0003-verification-uses-recomputed-hashes.md
   - Examples:

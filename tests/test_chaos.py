@@ -326,12 +326,18 @@ def test_the_rollback_phase_really_puts_the_seeded_files_back(tmp_path):
     record = run_phase(phase, root=tmp_path / "day")
     workspace = tmp_path / "day" / "rollback"
 
-    assert record["exit_code"] == 42 and record["breached"] == "max_usd"
+    # Each assertion carries the record when it fails. This test is a whole subprocess run, and
+    # a bare "assert False" from a phase that only misbehaves under load is a dead end: the
+    # record is what says *which* expectation moved (`duration_seconds`, the exit code, the
+    # receipt's ops block, the audit's own checks).
+    assert (record["exit_code"], record["breached"]) == (42, "max_usd"), {
+        k: record.get(k) for k in ("exit_code", "breached", "duration_seconds", "env", "checks")
+    }
     for relative, content in phase.seed_files.items():
-        assert (workspace / relative).read_text(encoding="utf-8") == content
-    assert record["receipt_ops"]["snapshot"]["taken"] is True
-    assert record["receipt_ops"]["rollback"]["applied"] is True
-    assert record["facts"]["rollbacks"], "the rollback is a ledger event"
+        assert (workspace / relative).read_text(encoding="utf-8") == content, f"{relative} was not restored"
+    assert record["receipt_ops"]["snapshot"]["taken"] is True, record["receipt_ops"]
+    assert record["receipt_ops"]["rollback"]["applied"] is True, record["receipt_ops"]
+    assert record["facts"]["rollbacks"], f"the rollback is a ledger event: {record['facts']}"
     assert record["verification"]["ok"], record["verification"]["failures"]
     failures = [check for check in record["checks"] if check["status"] == "fail"]
     assert not failures, failures

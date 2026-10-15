@@ -1,0 +1,22 @@
+┌─ DOCKET DKT-20260102-VECT01 ───────────────────────────────────────────────┐
+│ agent --task vector                                                        │
+└────────────────────────────────────────────────────────────────────────────┘
+  exit       0
+  duration   2.5s
+  spend      $0.01 of $5.00 cap
+  calls      4   denied: 0
+  tokens     9,900 (in 9,000 · cached 1,000 · out 900)
+  pricing    assumed for: unlisted-model-1 (not in price table)
+  files      0 changed (+0 ~0 -0)
+  tools      1 (read_file)
+
+WHAT THIS RECEIPT PROVES
+  ✓ 12 ledger events in order, hash-chained and Merkle-rooted
+  ✓ $0.01 recomputable from provider token counts and the embedded price table
+  ✓ 0 filesystem change(s) with content digests
+  ✗ does not observe: traffic that does not pass through the Docket boundary (e.g. an agent configured with a direct provider URL, or HTTPS tunnels when egress.mode = tunnel)
+  ✗ does not observe: prompts, completions or file contents unless --record-bodies is enabled
+
+VERIFY IT YOURSELF (offline, no account)
+  docket verify DKT-20260102-VECT01.receipt.json
+  node verify-js/verify.mjs DKT-20260102-VECT01.receipt.json
