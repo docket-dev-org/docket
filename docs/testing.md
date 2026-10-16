@@ -75,13 +75,13 @@ the same reason, and the verbosity trap that makes the difference is recorded un
 
 | installed | result | the skips |
 | --- | --- | --- |
-| `pytest` alone (`make test`) | 1,032 passed, 47 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below); the Ed25519 sealing and signing tests (need `cryptography`) |
-| `pip install pytest cryptography` | 1,037 passed, 42 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below) |
-| `pip install pytest pyyaml` | 1,074 passed, 5 skipped | the Ed25519 sealing and signing tests (need `cryptography`) |
-| `pip install -e '.[dev,sign]'` (**the documented dev setup**) | 1,079 passed, nothing skipped | none |
+| `pytest` alone (`make test`) | 1,058 passed, 47 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below); the Ed25519 sealing and signing tests (need `cryptography`) |
+| `pip install pytest cryptography` | 1,063 passed, 42 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below) |
+| `pip install pytest pyyaml` | 1,100 passed, 5 skipped | the Ed25519 sealing and signing tests (need `cryptography`) |
+| `pip install -e '.[dev,sign]'` (**the documented dev setup**) | 1,105 passed, nothing skipped | none |
 
 Each cell is a fresh virtual environment with `pip install pytest` plus the extras its row names, then
-`pytest tests -ra` from the repository root. All four cells **collect the same 1,079 tests**: what
+`pytest tests -ra` from the repository root. All four cells **collect the same 1,105 tests**: what
 differs between them is whether a test runs or skips, which is what the last column is for. `-ra` is
 what makes that column checkable — every skip is a sentence with its reason, and a cell that skipped
 something without saying why would be indistinguishable from a cell that never had the test.
@@ -109,7 +109,7 @@ when PyYAML is absent — "could not run", a different code from the 1 that mean
 and `tests/test_deploy_check.py` includes the test that pins exactly that, on a machine that *has*
 PyYAML, by shadowing the import rather than uninstalling anything.
 
-**The round tabulated above ran at 2026-10-16T17:39:26Z, and it is the eleventh measured on this tree.** The
+**The round tabulated above ran at 2026-10-16T19:09:03Z, and it is the twelfth measured on this tree.** The
 rounds before it are filed rather than overwritten — in the `mutation/` directory of the workspace that
 produced these documents, which is not part of this repository — because a matrix someone might check
 is evidence and a matrix edited in place is not. Until 2026-10-16T17:15Z the filing was a manual step
@@ -118,7 +118,7 @@ round's own first command, which is why the table below carries their numbers wi
 but the run's output. The script files the previous round before it clears the directory now, and the
 table names every round by the stamp *that round's own summary wrote*, which is also a correction: the
 earlier prose on this page labelled three rounds by the time their directory was filed rather than by
-the time they ran. The newest, `17:39:26Z`, measured **1,032 / 1,037 / 1,074 / 1,079** with 47 / 42 / 5 / 0 skipped. Every round, and what its machine had:
+the time they ran. The newest, `19:09:03Z`, measured **1,058 / 1,063 / 1,100 / 1,105** with 47 / 42 / 5 / 0 skipped. Every round, and what its machine had:
 
 | round (start, UTC) | tests collected | passed per cell | skipped per cell | the environment, and what the round was |
 | --- | --- | --- | --- | --- |
@@ -132,7 +132,8 @@ the time they ran. The newest, `17:39:26Z`, measured **1,032 / 1,037 / 1,074 / 1
 | `15:21:56Z` | 1,033 | 986 / 991 / 1,028 / 1,033 | 47 / 42 / 5 / 0 | the release record re-based onto them |
 | `16:49:21Z` | 1,077 | 1,030 / 1,035 / 1,072 / 1,077 | 47 / 42 / 5 / 0 | the round whose cells were overwritten: the next round cleared `matrix/` before filing it, so its numbers survive here and in the run's own output and nowhere else. `tools_matrix.sh` files the previous round now |
 | `17:15:10Z` | 1,076 | 1,029 / 1,034 / 1,071 / 1,076 | 47 / 42 / 5 / 0 | one test fewer than the round above, because the release-record wiring assertion was moved out of the repository (see below) |
-| `17:39:26Z` | 1,079 | 1,032 / 1,037 / 1,074 / 1,079 | 47 / 42 / 5 / 0 | **this round** — the tree these documents describe |
+| `17:39:26Z` | 1,079 | 1,032 / 1,037 / 1,074 / 1,079 | 47 / 42 / 5 / 0 | one round older than the round the documents describe |
+| `19:09:03Z` | 1,105 | 1,058 / 1,063 / 1,100 / 1,105 | 47 / 42 / 5 / 0 | **this round** — the tree these documents describe |
 
 A skip count is only evidence when the environment that produced it is stated, which is why each round
 is named and what its machine had is written beside it. All of them describe this machine except the
