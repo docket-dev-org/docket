@@ -131,7 +131,7 @@ the time they ran. The newest, `17:39:26Z`, measured **1,032 / 1,037 / 1,074 / 1
 | `15:04:24Z` | 1,031 | 984 / 989 / 1,026 / 1,031 | 47 / 42 / 5 / 0 | the two document guards of that hour added |
 | `15:21:56Z` | 1,033 | 986 / 991 / 1,028 / 1,033 | 47 / 42 / 5 / 0 | the release record re-based onto them |
 | `16:49:21Z` | 1,077 | 1,030 / 1,035 / 1,072 / 1,077 | 47 / 42 / 5 / 0 | the round whose cells were overwritten: the next round cleared `matrix/` before filing it, so its numbers survive here and in the run's own output and nowhere else. `tools_matrix.sh` files the previous round now |
-| `17:15:10Z` | 1,076 | 1,029 / 1,034 / 1,071 / 1,076 | 47 / 42 / 5 / 0 | this round: one test fewer than the round above, because the release-record wiring assertion was moved out of the repository (see below) |
+| `17:15:10Z` | 1,076 | 1,029 / 1,034 / 1,071 / 1,076 | 47 / 42 / 5 / 0 | one test fewer than the round above, because the release-record wiring assertion was moved out of the repository (see below) |
 | `17:39:26Z` | 1,079 | 1,032 / 1,037 / 1,074 / 1,079 | 47 / 42 / 5 / 0 | **this round** — the tree these documents describe |
 
 A skip count is only evidence when the environment that produced it is stated, which is why each round
