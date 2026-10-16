@@ -454,6 +454,65 @@ def test_every_place_that_quotes_the_size_of_the_suite_quotes_it_correctly():
         )
 
 
+#: The document that carries the evidence ledger, and the sources whose *internal ranking* this
+#: repository is not entitled to state. On 2026-10-16 three shipped files said OWASP's agentic top ten
+#: puts "denial of wallet" at risk #2 — a specific, checkable, and wrong claim (ASI02 is *Tool Misuse
+#: and Exploitation*, and cost is not one of that list's ten classes at all). One of the same three
+#: files already hedged that the rank "could not be pinned to the primary text", so the repository was
+#: contradicting itself in adjacent paragraphs. The rule this test holds is narrow and is the one that
+#: was broken: a claim about a position *inside* a source list needs the source, and where the primary
+#: page does not enumerate its entries, no position may be asserted at all.
+EVIDENCE_LEDGER = "docs/evidence.md"
+RANKED_LIST_SOURCES = {
+    "agentic": (
+        "Top 10 for Agentic Applications",
+        "https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/",
+    ),
+}
+
+
+def test_no_document_asserts_a_rank_inside_a_source_that_does_not_publish_one():
+    """A rank is the most precise kind of citation and the easiest to invent.
+
+    Two halves, because either alone can be satisfied vacuously: every document that discusses the
+    agentic list must be free of a position claim against it, *and* the repository must still discuss
+    it — deleting the paragraph would otherwise be a way to pass this test.
+    """
+    root = Path(__file__).resolve().parents[1]
+    discussions: list[str] = []
+    problems: list[str] = []
+
+    #: A position inside a list: `risk #2`, `risk 2`, `ranked #2`, `#2 risk`, `item 2 of`.
+    rank = re.compile(r"(?:risk|rank|ranked|item|entry|position)\s*#?\s*\d+|#\s*\d+\s*(?:risk|item)", re.I)
+
+    for path in sorted(root.rglob("*.md")):
+        if any(part in {".git", "node_modules"} for part in path.parts):
+            continue
+        text = path.read_text(encoding="utf-8")
+        for label, (title, url) in RANKED_LIST_SOURCES.items():
+            if title not in text and url not in text:
+                continue
+            discussions.append(f"{path.relative_to(root)} ({label})")
+            for number, line in enumerate(text.splitlines(), start=1):
+                if title not in line and url not in line:
+                    continue
+                # The line may *quote* the mistake in order to correct it; that is how the
+                # correction is recorded, and it is written as a quotation in backticks.
+                stripped = line.replace("`", "")
+                match = rank.search(stripped)
+                if match and "earlier version" not in stripped and "earlier draft" not in stripped:
+                    problems.append(
+                        f"{path.relative_to(root)}:{number} states a position inside {label}: "
+                        f"{match.group(0)!r} — {line.strip()[:110]}"
+                    )
+
+    assert discussions, (
+        "no document discusses the OWASP agentic list any more. If that is deliberate, remove the "
+        "source from RANKED_LIST_SOURCES with the reason; if not, the discussion was deleted"
+    )
+    assert not problems, "\n".join(problems)
+
+
 #: The commands the repository itself ships that run the suite: the Makefile target a contributor is
 #: told to run, and the four CI jobs that run it. `pyproject.toml` gives all of them `-q` through
 #: `addopts`, so a `-q` written on one of these lines is the *second* one — `-qq`, at which pytest

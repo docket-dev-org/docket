@@ -313,7 +313,7 @@ pipx install docket         # or keep it out of your project venvs
 uvx docket demo             # or run it without installing anything
 ```
 
-From source: `git clone … && cd docket && make check` (1028 tests, fully offline — no API keys,
+From source: `git clone … && cd docket && make check` (1029 tests, fully offline — no API keys,
 no network, ~90 s).
 
 ## Documentation
@@ -352,8 +352,12 @@ Agent spend and agent authority both grow faster than the ability to audit eithe
   and read.
 - **OWASP's GenAI Security Project** carries the category: *Unbounded Consumption* — explicitly
   including cost exhaustion or "denial of wallet" — is a top-10 LLM risk
-  ([OWASP][owasp-llm]), and the peer-reviewed [Top 10 for Agentic Applications][owasp-agentic]
-  (December 2025) names resource and cost abuse as its own risk class.
+  ([OWASP][owasp-llm]). Its peer-reviewed [Top 10 for Agentic Applications][owasp-agentic]
+  (published 2025-12-09, ASI01–ASI10) does **not** carry cost as a class of its own; the classes a
+  runaway spend sits in are **ASI08 *Cascading Failures*** (one bad inference amplified across
+  hundreds of writes) and **ASI10 *Rogue Agents*** (an agent that stays inside every individual
+  rule). Cost exhaustion is its own entry in the *LLM* list, not the agentic one, and this file
+  says so rather than borrowing the stronger-sounding version.
 - Practitioners report the tail: an **eleven-day two-agent Analyzer/Verifier loop costing
   ~$47,000**, escalating $127 → $891 → $6,240 → $18,400 week over week ([Tech
   Startups][ts47k]); a Claude/Droid/Bedrock pipeline that billed **$37,901.73** when prompt

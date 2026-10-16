@@ -53,7 +53,7 @@ count.
 | developers running coding agents on their own machines | the single-agent usage monitor `Claude-Code-Usage-Monitor` has **8,742 stars** — i.e. thousands of developers already install tooling just to watch their agent's usage | caps and a receipt; the local, no-account promise fits exactly this habit |
 | teams running agents in CI or production | LiteLLM (61,159) and Langfuse (35,771) show the size of the governance/observability audience | receipts attach to incidents, clients and audits; the boundary works where gateways cannot |
 | regulated/enterprise adopters | every AI-governance buyer in 2026 is being asked for evidence, while the EU AI Act's obligations moved to Dec 2027 (Reg. (EU) 2026/1744) | a format an auditor can verify offline is a cheaper answer than a platform |
-| the "cost shock" audience | OWASP lists **Denial of Wallet** as agentic risk #2; documented incidents reach $6.5k–$50k per event | this is the audience that arrives through stories, which is what a launch needs |
+| the "cost shock" audience | OWASP names cost exhaustion in its **LLM** top 10 (*Unbounded Consumption*, LLM10:2025) and carries the neighbouring agentic classes (ASI08 *Cascading Failures*, ASI10 *Rogue Agents*) in its peer-reviewed agentic list; documented incidents reach $6.5k–$50k per event (`docs/incident-corpus.md`) | this is the audience that arrives through stories, which is what a launch needs |
 
 Evidence on what actually moves stars (from the literature, not from hope):
 [HN launches are worth on the order of **+121 stars at 24 h, +189 at 48 h, +289 at seven days**

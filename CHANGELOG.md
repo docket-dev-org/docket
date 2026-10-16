@@ -10,6 +10,16 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **A test that refuses a rank the source does not publish.** Three shipped documents said OWASP's
+  agentic top ten puts "denial of wallet" at risk #2 — the list's second entry is *Tool Misuse and
+  Exploitation*, and cost is not one of its ten classes at all. A rank is the most precise kind of
+  citation and the cheapest to invent, so
+  `tests/test_doc_links.py::test_no_document_asserts_a_rank_inside_a_source_that_does_not_publish_one`
+  reads every document that discusses such a list, fails on a position claim against it, and fails if
+  the discussion disappears instead of being corrected — because deleting the paragraph would
+  otherwise be a way to pass. Quoting the old wording in order to correct it stays allowed, which is
+  how the correction is recorded in `docs/incident-corpus.md`.
+
 - **A guard against the verbosity trap, in the file whose subject is the documents matching what the
   repository does.** `tests/test_doc_links.py` reads `pyproject.toml`'s `addopts`, asserts exactly one
   `-q` there, and then checks every pytest command the repository ships — the `make test` target and
@@ -462,6 +472,20 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   size the page has. It caught one row on its first run: a book, named with neither a link nor a year.
 
 ### Fixed
+
+- **A fabricated citation rank in four documents, including the README.** "OWASP's *Top 10 for Agentic
+  Applications* puts denial of wallet at risk #2" appeared in `README.md`, `docs/evidence.md`,
+  `docs/incident-corpus.md` and `docs/strategy.md`, and the phrase it stood for — that the agentic list
+  "treats resource/cost abuse as its own class" — is not true either: its classes are ASI01–ASI10, and
+  cost exhaustion is a class in the **LLM** list (LLM10:2025 *Unbounded Consumption*), which all four
+  documents already cite correctly two lines away. The evidence ledger had even hedged that the rank
+  "could not be pinned to the primary text, so this repository does not cite a rank for it", so the
+  repository was contradicting itself in adjacent paragraphs of the same page. The primary page was
+  fetched and read (2026-10-16) to settle it: it states the date and the 100+ reviewer peer review and
+  does **not** enumerate the entries, so the entry names are grade B (five consistent secondary
+  write-ups) while the framework's existence, date and review are grade A. All four sites now name the
+  classes a runaway spend actually belongs to — **ASI08 *Cascading Failures*** and **ASI10 *Rogue
+  Agents*** — and `docs/evidence.md` carries both grades with the earlier wording marked as wrong.
 
 - **`make test` and four CI jobs ran the suite two `-q`s deep, so their logs carried no counts.**
   `pyproject.toml`'s `addopts` already carry one `-q`; a command line that adds another asks pytest for

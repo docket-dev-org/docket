@@ -33,9 +33,12 @@ edited: open an issue with a primary source.
 
 ## Standards and recognised risk
 
-- **OWASP, *Top 10 for Agentic Applications* (2026): risk #2 is "Denial of Wallet"** — the
-  failure mode of an agent consuming unbounded resources, including money. This is the clearest
-  independent confirmation that the problem is a named class rather than an anecdote.
+- **OWASP, *Top 10 for Agentic Applications* (2026)** — published 2025-12-09, ASI01–ASI10, and
+  **cost is not one of its ten classes**: its second entry (ASI02) is *Tool Misuse and
+  Exploitation*. The classes a runaway spend belongs to are **ASI08 *Cascading Failures*** and
+  **ASI10 *Rogue Agents***. An earlier version of this line cited "risk #2: Denial of Wallet",
+  which the list does not say; corrected 2026-10-16. What *is* a named class, in the LLM list, is
+  the next bullet — and that one is graded above.
 - **OWASP LLM10:2025 — "Unbounded Consumption"** — the LLM-application variant: cost per token,
   retries, long contexts, no ceiling.
 
