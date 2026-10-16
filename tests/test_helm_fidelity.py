@@ -30,7 +30,13 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "helm_fidelity.py"
 
-#: Why the end-to-end comparison cannot run here, or `None` if it can.
+#: Why the end-to-end comparison cannot run here, or `None` if it can. The comparison has *two*
+#: prerequisites and it needed two gates: the client must exist, and the tool must be able to read
+#: YAML. The second one was missing until the dependency matrix found it — with a Helm client on
+#: `PATH` and PyYAML absent the test ran, and the tool exited 2 with "PyYAML is not installed", so
+#: the suite went red for a setup the README describes. That is the same defect the deploy-check
+#: file had, in the same direction: a missing optional extra must *skip with its reason*, because a
+#: failure says the code is wrong when the environment is.
 HELM_MISSING = (
     None
     if shutil.which("helm") is not None
@@ -38,6 +44,18 @@ HELM_MISSING = (
         "needs the Helm client, which is not installed here. The tool exits 2 with that reason "
         "rather than reporting success, so there is nothing to assert but the reason: install Helm "
         "(https://helm.sh/docs/intro/install/) and re-run to compare the renders for real"
+    )
+)
+
+#: The other half of the same prerequisite. Only the end-to-end test needs it spelled out: every
+#: other test in this file asks for `yaml_module` as a fixture, and the end-to-end one drives the
+#: tool as a subprocess, where a fixture cannot reach.
+YAML_MISSING = (
+    None
+    if importlib.util.find_spec("yaml") is not None
+    else (
+        "the comparison renders the chart with Helm and then reads values.yaml with PyYAML, so it "
+        "cannot run without it: `pip install pyyaml` and re-run"
     )
 )
 
@@ -151,6 +169,7 @@ def test_a_missing_helm_is_exit_2_with_a_reason_never_a_pass(tmp_path: Path):
 
 
 @pytest.mark.skipif(HELM_MISSING is not None, reason=HELM_MISSING or "")
+@pytest.mark.skipif(YAML_MISSING is not None, reason=YAML_MISSING or "")
 def test_the_checkers_render_is_the_render_helm_produces():
     """The end-to-end claim: same documents, same fields, from a real Helm client.
 

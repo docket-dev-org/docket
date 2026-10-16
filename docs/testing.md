@@ -68,47 +68,57 @@ suite says so by *skipping with a reason* rather than failing, because a bare cl
 looks like a broken project:
 
 The counts in that table come from `pytest --collect-only -q` (how many tests exist) and from a run
-with `-ra` (how many passed and why the rest skipped) — never from a `-q` run's last line, which on
-pytest 9.1.1 does not exist: in quiet mode the summary line is suppressed, so a script that greps for
-it records a pass count of zero and a reader has no way to tell that from a suite that genuinely has
-none. The same reason is why the release checklist quotes counts collected at a commit rather than a
-number copied out of a log.
+with `-ra` (how many passed, and why the rest skipped) — never from a log a script had to guess at.
+The release checklist quotes counts collected at a commit rather than a number copied out of a log for
+the same reason, and the verbosity trap that makes the difference is recorded under the table.
 
 | installed | result | the skips |
 | --- | --- | --- |
-| `pytest` alone (`make test`) | 840 passed, 33 skipped | 28 need PyYAML, 5 need `cryptography` |
-| `+ cryptography` | 845 passed, 28 skipped | the 28 are `tools/deploy_check.py`'s |
-| `+ pyyaml` | 868 passed, 5 skipped | the 5 are Ed25519 sealing and signing |
-| `pip install -e '.[dev,sign]'` (**the documented dev setup**) | **878 passed, 0 skipped** | none |
+| `pytest` alone (`make test`) | 980 passed, 47 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below); the Ed25519 sealing and signing tests (need `cryptography`) |
+| `pip install pytest cryptography` | 985 passed, 42 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below) |
+| `pip install pytest pyyaml` | 1,022 passed, 5 skipped | the Ed25519 sealing and signing tests (need `cryptography`) |
+| `pip install -e '.[dev,sign]'` (**the documented dev setup**) | 1,027 passed, nothing skipped | none |
 
 Each cell is a fresh virtual environment with `pip install pytest` plus the extras its row names, then
-`pytest tests -ra` from the repository root; the collected count comes from a separate
-`pytest --collect-only -q`, which is why the first two rows collect fewer tests than the last two — a
-module that cannot be imported is skipped with its reason rather than collected. `-ra` is what makes
-the last column checkable: every skip is a sentence, and a cell that skipped something without saying
-why would be indistinguishable from a cell that never had the test. One measurement defect is worth
-recording here because it produced a *plausible* number rather than an error: the 2026-10-15 version of
-this table recorded `0 skipped` in every cell, while the four runs it summarised had reported their
-skips as 47, 42, 6 and 1. The counts had been summed with `paste | bc`, and `bc` is not installed
-everywhere; the sum is `awk` now, and each cell's counts are checked against that cell's own summary
-line before they are quoted — by the reader rather than by the writer.
+`pytest tests -ra` from the repository root. All four cells **collect the same 1,027 tests**: what
+differs between them is whether a test runs or skips, which is what the last column is for. `-ra` is
+what makes that column checkable — every skip is a sentence with its reason, and a cell that skipped
+something without saying why would be indistinguishable from a cell that never had the test.
+
+Two measurement defects are recorded here because both produced a *plausible* number rather than an
+error. The 2026-10-15 version of this table recorded `0 skipped` in every cell, while the four runs it
+summarised had reported their skips as 47, 42, 6 and 1 — the counts had been summed with `paste | bc`,
+and `bc` is not installed everywhere; the sum is `awk` now, and each cell's counts are checked against
+that cell's own summary line before they are quoted. The second is verbosity, and this page stated it
+wrongly until 2026-10-16: it said the counts come from a run with `-ra` and "never a `-q` run's last
+line", as if `-q` were the problem. The flag that matters is how many times it is passed.
+`pyproject.toml`'s `addopts` already carry one `-q`, so a command line that adds another asks for
+`-qq` — at which level pytest 9 prints **no summary line at all**, and a script that greps for one
+records zero passes for a suite that passed a thousand. A single `-q` prints it (that is measured, not
+recalled: `15 passed in 11.43s` beside the progress line). The extra flag was in the mutation harness's
+own pytest line and in the release check's; both are gone, and the harness reads the counts from a
+single-`-q` run.
 
 The skips are not a way of hiding a defect: the checker these 30 cover **exits 2 with a reason**
 when PyYAML is absent — "could not run", a different code from the 1 that means "found a problem" —
 and `tests/test_deploy_check.py` includes the test that pins exactly that, on a machine that *has*
 PyYAML, by shadowing the import rather than uninstalling anything.
 
-The previous matrix is filed rather than overwritten — `mutation/matrix-2026-10-16T080524Z/` holds
-that round's cells, because a matrix someone might check is evidence and a matrix edited in place
-is not.
-Its fourth cell exited 1 with 4 failure(s): three were the stale suite counts this round fixed,
-and the fourth was `tests/test_mutate.py`'s CLI test, which died on the harness's own refusal to
-score a run whose sandbox does not pass its baseline first (`tools/mutate.py` reports `killed:
-stand-in` — the verdict of the stand-in that test installs — and reports no score at all).
-The same cell passes on this tree. `tests/test_mutate.py` held 23 tests in that round and holds 40
-now, so the two runs are not measuring the same file.
-What is recorded here is the failure and the re-run: this page does not supply a cause that
-neither run demonstrated.
+**The round tabulated above ran at 2026-10-16T11:06Z, and it is the third measured on this tree.** The
+rounds before it are filed rather than overwritten — in the `mutation/` directory of the workspace
+that produced these documents, which is not part of this repository — because a matrix someone might
+check is evidence and a matrix edited in place is not: the round of `08:21Z`, which measured the same
+four cells as 978 / 983 / 1,019 / 1,024 passed, and the round of `08:05Z`, whose `+ PyYAML` cell
+exited 1 on the wall-clock flake in `tests/test_snapshot_restore.py` recorded under *Found by
+testing*. This round differs from the one before it in the two ways that are visible above: the Helm
+client is installed on the machine, and the documented dev setup — cell 4 — now runs **every test with
+nothing skipped**, where the previous round skipped the comparison. Getting there found a defect of
+the same family as the one this page already records for `tools/deploy_check.py`: the comparison test
+had **one gate and two prerequisites**. It skipped when the Helm *client* was missing, and with the
+client reachable and PyYAML absent — rows 1 and 2 — it ran and *failed* on the tool's `PyYAML is not
+installed` exit 2, a red suite for a setup the README describes. It carries a second gate now, in the
+same idiom as `tests/test_deploy_check.py`'s, and the round in which those two cells were red is kept
+beside the green one.
 
 ## By kind
 
@@ -238,6 +248,8 @@ with a named regression test in `test_fuzz_regressions.py` or the relevant file:
 | writing a probe for a feature end to end | `docket selftest`'s new cache probe drives two identical calls through a real boundary and found that **a cache supplied to `RecordingProxy` was silently ignored while it was empty**: `ResponseCache` defines `__len__`, so the boundary's `cache or ResponseCache(...)` replaced the caller's configured, enabled object with a policy-built one. Every unit test passed a cache through the *policy*, so none of them could see it, and the failure appeared or vanished with the cache's contents. Fixed at both ends (`is not None`, and `__bool__` so an empty cache is still a cache), with a regression test that supplies one as an argument |
 | checking the manifests the way a cluster would | the chart rendered by **Helm itself** (v3.16.3) produced `max_ledger_bytes = 6.7108864e+07` where the static checker produced `67108864`: Helm hands every template a `float64` for each number in `values.yaml`, and Go prints a large one in scientific notation, which TOML reads as a float. Docket's loader accepted it, so nothing in the tree noticed — the divergence was invisible because the checker rendered numbers the way *Python* writes them. The chart's integers now go through `\| int64`, the checker renders values the way Helm does (pinned against a table produced by running Helm), it refuses an integer key that arrives as a float by name, and the two renderers now agree document for document (`deploy/README.md`) |
 | installing the package the way a user would | `tools/deploy_check.py` needs PyYAML, and the suite around it *failed* — 28 tests, not skipped — when it was absent, so a bare clone was red while the README promised a green suite (`pip install -e '.[dev]'` did not pull it in either). The same tool also exited `1` when it could not run, which is the code it uses for "found a problem"; its own docstring promised `2`. Both are fixed, and the exit code now has a test that blocks the import rather than uninstalling anything |
+| checking the release the way a publisher gets it | the FMEA names `docs/measurements/2026-10-15-2core/load-report.json` as what catches tail latency, that directory's README and `docs/production-coverage.md` name the other reports, and `.gitignore` carried a bare `load-report.json` line — which ignores that name *anywhere* in the tree. The two reports were in the authoring checkout and in no clone: the suite was green where it was written and red the first time the release checks ran against a clone of the bundle instead of the working directory, which is what that check is for. The rules are anchored now, the reports are tracked, and two tests hold the property — one scans every file the documentation names, the other feeds the scanner the rule that shipped and requires it to fail |
+| running the dependency matrix with the Helm client installed | `tests/test_helm_fidelity.py`'s end-to-end comparison had one gate and two prerequisites: it skipped when the Helm *client* was missing (`shutil.which("helm")`), and the moment the client became reachable — this round put it on the path the mutation harness's sandbox uses — it ran in the two cells without PyYAML and **failed**, on the tool's own `PyYAML is not installed` exit 2, where every other test in the file asks for a `yaml` fixture and skips with its reason. A user following the README with Helm installed and no deploy extra got a red suite for an environment problem. The same defect `tools/deploy_check.py` had, in the same file family: the test now declares both prerequisites |
 | running the dependency matrix | `tests/test_snapshot_restore.py` looked the two `docket restore` record documents up by *filename*, expecting the second to carry the `-2` collision suffix. In the `pytest` + PyYAML cell the two commands stamped their records one second apart (`…T081327Z` and `…T081328Z`), so there was no collision, no suffix, and a `StopIteration` on a machine merely slower than the one the test was written on — the matrix's only failure in that cell, and the reason the test now identifies its records by what they say. |
 
 ## Mutation testing
@@ -377,6 +389,59 @@ candidates, seed 11). The ledger number moved because the *tests* moved: the fir
 test for the lock file's contents, the byte accounting, the ceiling fields, `degraded()`, the
 repair path's sidecar naming, or the chain verdict's own silence.
 
+### The release round
+
+One pass, one commit, one harness: the nine mutated modules re-measured together after the
+subsets and the source stopped moving, so that the numbers below are comparable with each
+other and every one of them names the tree it was taken on. The parameters are the ones the
+earlier rounds used where they are stated (`--min-score 0`, `--seed 0`), and the `control`
+column is new: it is the unmutated sandbox's own summary line, before any mutant ran, in
+pytest's words. An outcome that did not happen is not written (pytest names only what
+happened), so `121 passed` is 121 passed with nothing failed and nothing skipped — and the
+report says so independently in its control block's `clean` flag. A subset that skips is a
+subset that cannot kill, so a reader can now check the
+environment a score was taken in instead of trusting the author's note about it. Every control
+in this round skipped nothing, which is itself the evidence that the optional `cryptography`
+and `PyYAML` extras were installed: the signature tests and the Helm-fidelity tests are
+`skipif`-gated on exactly those. Every report names its own interpreter — here
+`3.13.16` — and its own subset, so
+the environment a score was taken in is a field rather than a paragraph.
+
+| module | candidates | run | killed | survived | timed out | score | wall clock | seed | control (as pytest wrote it) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `src/docket/verify.py` | 177 | 177 | 176 | 1 | 0 | **99.4%** | 2,127 s | 0 | 189 passed |
+| `src/docket/ledger.py` | 172 | 172 | 144 | 28 | 0 | **83.7%** | 802 s | 0 | 121 passed |
+| `src/docket/loaddriver.py` | 61 | 61 | 56 | 2 | 3 | **96.5%** | 815 s | 0 | 37 passed |
+| `src/docket/canon.py` | 63 | 63 | 58 | 1 | 4 | **98.3%** | 515 s | 0 | 55 passed |
+| `src/docket/cache.py` | 128 | 128 | 128 | 0 | 0 | **100%** | 437 s | 0 | 197 passed |
+| `tools/mutate.py` | 144 | 144 | 144 | 0 | 0 | **100%** | 384 s | 0 | 40 passed |
+| `src/docket/resilience.py` | 166 | 166 | 163 | 3 | 0 | **98.2%** | 250 s | 0 | 110 passed |
+| `tools/helm_fidelity.py` | 47 | 47 | 45 | 2 | 0 | **95.7%** | 49 s | 0 | 17 passed |
+| `src/docket/latency.py` | 21 | 21 | 21 | 0 | 0 | **100%** | 15 s | 0 | 117 passed |
+
+Every report carries its module's mutable sites, its subset, the control run's counts and the
+verdict for every mutant it ran; `provenance.py` re-lists each file's sites and compares them
+with the sites the report says it ran, so a report that describes a different file than the one
+on disk is caught rather than quoted. The survivors this round leaves are classified under
+*Every survivor, classified*.
+
+The round reproduced every score the earlier rounds had reported, and — checked mutant by
+mutant, as `(line, operator, from, to)` — every survivor and every timeout as well. That is the
+useful part: the numbers quoted above were measured across three days, two environments and a
+test suite that grew underneath them, and this round says which of them the current tree still
+supports. It also says what the earlier rounds could not, because the evidence is in the report
+rather than in a note about it: each subset ran, in full, against the interpreter named in its
+own control block.
+
+**The control column found something on its first round.** `tools/helm_fidelity.py` scored
+45 of 47 with two survivors and a control run of `16 passed, 1 skipped`, and the skip was the
+test that runs the *real* Helm client — the comparison the module exists to make. The reason
+was mechanical: the harness gives every test process a fixed `PATH`
+(`/usr/bin:/bin:/usr/local/bin`) so that a score cannot depend on the operator's shell, and the
+client was on a path outside it. With the client reachable the control run is `17 passed,
+0 skipped` and the score is the same 45 of 47 — an unchanged number is not the same fact as an
+unchecked one, and a subtitle that says *checked every YAML template* has to be able to say
+which client did the checking.
 ### The paydown
 
 The verifier's corpus is 177 candidates — the number the byte-offset fix revealed — and the first

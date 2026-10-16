@@ -10,6 +10,37 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **Every mutation score in `docs/testing.md` is re-measured in one round, in one pass, with the
+  control run recorded in every report** (`docs/testing.md`, *The release round*). The nine modules
+  were swept back to back on one commit with one harness, each report carrying what its unmutated
+  sandbox *did* before any mutant ran — `189 passed`, `121 passed`, `17 passed`, in pytest's own
+  words — and the round reproduced every score, every survivor and every timeout the earlier rounds
+  had reported, mutant by mutant as `(line, operator, from, to)`. That mattered because those numbers
+  had been measured across three days, two environments and a test suite that grew underneath them:
+  they now sit in one table that names the interpreter and the subset behind each of them. **The
+  control column earned its place on its first round**: the Helm module scored 45 of 47 with a control
+  run of `16 passed, 1 skipped`, and the skip was the test that runs the *real* Helm client — the
+  harness gives its test processes a fixed `PATH` so that a score cannot depend on the operator's
+  shell, and the client was outside it. With the client reachable the control reads `17 passed,
+  0 skipped` and the score is unchanged, which is a claim a reader can now check in the report
+  instead of taking from the author.
+
+- **Two tests that hold the documentation to what a clone can carry** (`tests/test_doc_links.py`,
+  15 tests). One reads `.gitignore` — implementing the forms this repository uses and *refusing*
+  `**` rather than guessing at its meaning — matches every rule the way git does (anchored or by name
+  at any depth, last match wins, `!` re-includes), and fails on any file the documentation names that
+  a clone would not have. The other feeds the reader the rule that shipped and the rule that replaced
+  it: a checker that cannot fail is decoration, and this one is asked to fail.
+
+- **The dependency matrix in `docs/testing.md` is re-measured, and a claim this page made about
+  pytest is corrected.** The table had been three rounds stale (it still carried 840 / 845 / 868 /
+  878), and the sentence above it said the counts come from "a run with `-ra`, never a `-q` run's last
+  line" — as if `-q` were the problem. What matters is how many times the flag is passed:
+  `pyproject.toml`'s `addopts` already carry one, so a command line that adds another asks for `-qq`,
+  and at that level pytest 9 prints no summary line at all — a script that greps for one records zero
+  passes for a suite that passed a thousand. A single `-q` prints it. The page now says which round is
+  tabulated, what the earlier rounds measured, and where the two that are not tabulated are filed.
+
 - **A support page that says what support is not** (`SUPPORT.md`, in the documentation's nav and
   linked from the README's Contributing section). The repository had a security policy, a contribution
   guide and a sponsorship pack, and nothing that answered "something is wrong — where do I go": the
@@ -424,6 +455,29 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   size the page has. It caught one row on its first run: a book, named with neither a link nor a year.
 
 ### Fixed
+
+- **The Helm-fidelity comparison had one gate and two prerequisites.** With a Helm client on `PATH`
+  and PyYAML absent, `test_the_checkers_render_is_the_render_helm_produces` ran and failed on
+  `tools/helm_fidelity.py`'s `PyYAML is not installed` exit 2 — a red suite for a setup the README
+  describes, where every other test in the file both skips and says why. The gate named the client
+  only; it now names both, in the idiom `tests/test_deploy_check.py` already used
+  (`importlib.util.find_spec("yaml") is None`). Found by re-running the dependency matrix with the Helm
+  client installed, which is what turned a skip into a run: cells 1 and 2 were red with one failure
+  each, and the round after the fix is green in all four — **980 / 985 / 1,022 / 1,027 passed** with
+  47 / 42 / 5 / 0 skipped, and the documented dev setup now runs the whole suite with **nothing
+  skipped**.
+
+- **Two measured reports the documentation names were in the authoring checkout and in no clone.**
+  `.gitignore` ignored `load-report.json` and `soak-report.json` as bare names, which git reads as
+  "this name, at any depth" — so the curated reports under `docs/measurements/2026-10-15-2core/`,
+  named by that directory's README, by the FMEA row for tail latency (`load-report.json`,
+  `soak-report.json`) and by `docs/production-coverage.md` (`cache-report.json`), were tracked by
+  nobody. Nothing in the test suite noticed, because the test that holds those names to the tree ran
+  where the ignored files happened to be present. The rules are anchored to the repository root now
+  (the copies `make load`, `make soak` and `make cache-load` write there are still outputs), the four
+  reports are in the tree, and the new canary above is the reason this cannot come back quietly. It
+  was found by running the release checks against a clone of the bundle rather than against the
+  working directory — the same check that exists to notice a difference between the two.
 
 - **Four tests in `tests/test_cache.py` killed one mutant on their line and stopped one token
   short of the other** — and what said so was the sweep, not a reading. The verifier's full corpus is
