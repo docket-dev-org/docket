@@ -55,11 +55,13 @@ through when it yields nothing:
 
 `<script>`, `<style>` and `<template>` contribute nothing. Two consequences of the order are worth
 stating because the site exercises both: a link with visible text *and* a tooltip is named by its text,
-and a link whose only content is a script has no name at all. On the 47-page build of 2026-10-16, 3,493
-elements were named by their text, 235 by an `aria-label` the theme wrote (141 of them the drawer's and
-search's controls), and 5 by the logo's `alt` — that 240 is the number a text-only rule would have
-reported as nameless, and the reason the report prints the split beside the verdict instead of letting
-a reader assume it.
+and a link whose only content is a script has no name at all. On the site this tool ships with, roughly
+nineteen names in twenty come from text a reader can also see, and the rest from an attribute the theme
+wrote — the drawer's and search's controls, and a logo whose `alt` carries the name its `<a>` does not.
+The split is a line in the report (`names_by_source`) rather than a number in this docstring, because it
+moves every time a document is added: a hundredth of the site's links swung on one page's worth of
+editing while this sentence was being written, which is exactly why the count a text-only rule would
+have got wrong is printed beside the verdict instead of asserted somewhere.
 
 The whole algorithm is not implemented — no CSS generated content, no shadow roots, no `aria-hidden`
 exclusion inside a name, no full flat-string normalisation, and no role-based prohibition of naming,
