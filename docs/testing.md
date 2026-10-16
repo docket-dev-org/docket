@@ -555,9 +555,12 @@ why; an equivalent mutant is not a defect and no test pretends otherwise.
 
 `tools/a11y_check.py` reads the published site and is the release record's sixteenth check, so it was
 swept on 2026-10-16 like the machine it runs in: **136 candidates, 134 killed, 98.5%**, no timeouts, a
-subset of its own tests, a control run of `71 passed`. Its first sweep scored **67.1%**, and reading the
-47 survivors was worth more than the number: they were nearly all *tests that could not see what they
-asserted*.
+subset of its own tests, a control run of `71 passed`, filed as `mut-a11y-release.json` — and every
+number in this section can be read from that file. It was the *third* sweep on this file: the first
+scored **67.1%** and the second **91.9%**, and neither of those two reports exists any more, because
+each sweep writes to the same path and the next one replaced it. The 47 survivors they left are what the
+repairs below were read from; the paragraph is their record now, and the score that survives with its
+evidence beside it is the 98.5%.
 
 | the sweep found | what was wrong |
 | --- | --- |
