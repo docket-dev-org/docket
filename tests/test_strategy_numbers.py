@@ -80,9 +80,8 @@ def test_the_table_star_counts_are_the_sweeps_with_commas() -> None:
     checked = 0
     for name, written, _age, _rate in TABLE_ROW.findall(page()):
         row = rows[name]
-        assert written.replace(",", "") == str(row["stars"]), (
-            f"docs/strategy.md says {name} has {written} stars; the sweep of {row['slug']} says {row['stars']}"
-        )
+        message = f"docs/strategy.md says {name} has {written} stars; the sweep of {row['slug']} says {row['stars']}"
+        assert written.replace(",", "") == str(row["stars"]), message
         checked += 1
     assert checked >= 10, f"only {checked} comparable rows parsed — the table changed shape"
 
@@ -121,9 +120,8 @@ def test_the_inline_audience_figures_agree_with_the_sweep() -> None:
         match = re.search(pattern, text)
         assert match, f"the inline figure for {label} is gone from docs/strategy.md"
         written, row = match.group(1).replace(",", ""), rows[label]
-        assert written == str(row["stars"]), (
-            f"docs/strategy.md writes {label} as {match.group(1)}; the sweep says {row['stars']}"
-        )
+        message = f"docs/strategy.md writes {label} as {match.group(1)}; the sweep says {row['stars']}"
+        assert written == str(row["stars"]), message
 
 
 def test_the_ecosystem_totals_are_the_search_counts() -> None:
@@ -134,8 +132,7 @@ def test_the_ecosystem_totals_are_the_search_counts() -> None:
         query = f"stars:>{threshold.replace(',', '')}"
         assert query in totals, f"docs/strategy.md has a row for {query}, which the sweep never asked"
         assert int(written) == totals[query], (
-            f"docs/strategy.md says {written} repositories over {threshold} stars; the sweep says "
-            f"{totals[query]}"
+            f"docs/strategy.md says {written} repositories over {threshold} stars; the sweep says " f"{totals[query]}"
         )
         checked += 1
     assert checked == 3, f"parsed {checked} ecosystem rows, expected three"
@@ -166,9 +163,9 @@ def test_no_row_the_page_quotes_is_an_error_row() -> None:
     text = page()
     for row in sweep()["repositories"]:
         if row.get("error"):
-            assert row["label_in_plan"] not in text, (
-                f"docs/strategy.md quotes {row['label_in_plan']}, whose sweep row is an error: {row['error']}"
-            )
+            assert (
+                row["label_in_plan"] not in text
+            ), f"docs/strategy.md quotes {row['label_in_plan']}, whose sweep row is an error: {row['error']}"
         else:
             assert isinstance(row["stars"], int) and row["stars"] > 0, f"{row['slug']}: no star count"
             assert row["age_months"] > 0, f"{row['slug']}: no age"
@@ -178,6 +175,6 @@ def test_the_sweep_file_is_the_newest_one_shipped() -> None:
     """If a newer sweep is ever added beside it, the page has to be re-based onto that one."""
     files = sweep_files()
     assert files[-1].name >= files[0].name
-    assert len({json.loads(path.read_text(encoding="utf-8"))["queried_utc"] for path in files}) == len(files), (
-        "two shipped sweeps carry the same query time — one of them is a copy"
-    )
+    assert len({json.loads(path.read_text(encoding="utf-8"))["queried_utc"] for path in files}) == len(
+        files
+    ), "two shipped sweeps carry the same query time — one of them is a copy"
