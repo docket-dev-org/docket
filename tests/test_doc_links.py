@@ -454,6 +454,82 @@ def test_every_place_that_quotes_the_size_of_the_suite_quotes_it_correctly():
         )
 
 
+#: The two tables whose subject *is* the confidence of a claim. Every row in them has to carry a
+#: grade, because a row without one is a claim that has quietly become the same weight as a sourced
+#: one — and this repository's whole evidence standard is that the difference is visible. The tables
+#: are found by their own header lines rather than by position, so a new table above them does not
+#: make this pass for the wrong reason.
+GRADED_TABLES = (
+    ("docs/evidence.md", "| Claim as used | Source | Grade |", r"^\*\*[A-D]"),
+    ("docs/incident-corpus.md", "| date | what happened | grade | source |", r"^\*{0,2}[A-D]\b"),
+)
+
+
+def test_every_row_of_a_graded_table_carries_a_grade():
+    """Fifteen of `docs/evidence.md`'s rows are graded A–D; a row that is not graded is smuggled in.
+
+    Written after the correction of 2026-10-16, when one row's claim turned out to be unsupported
+    while the same table's neighbouring row *declined* to cite the number at all: the table's grades
+    are the reason that contradiction was findable, and a row without one would have removed the
+    handle.
+    """
+    root = Path(__file__).resolve().parents[1]
+    for relative, header, grade in GRADED_TABLES:
+        page = root / relative
+        assert page.is_file(), f"{relative} is named here and is not in the tree"
+        lines = page.read_text(encoding="utf-8").splitlines()
+        assert header in lines, f"{relative}: the graded table's header row changed: {header!r}"
+        start = lines.index(header) + 2  # the header, then the divider
+        ungraded: list[str] = []
+        rows = 0
+        for line in lines[start:]:
+            if not line.startswith("|"):
+                break
+            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            rows += 1
+            if not re.match(grade, cells[2] if len(cells) > 2 else ""):
+                ungraded.append(f"{relative}: {line[:90]}…")
+        assert rows >= 7, f"{relative}: the graded table has {rows} rows — has it been emptied?"
+        assert not ungraded, "rows without a grade:\n" + "\n".join(ungraded)
+
+
+def test_every_make_target_the_repository_names_exists():
+    """`make deploy-check` in a workflow, or in the Makefile's own help, has to be a real target.
+
+    A CI job that calls a target nobody defined fails for whoever enables it, and a help line that
+    promises a target is a documented command that does not run — the same class of defect as a
+    count in a table. Only the workflow commands and the Makefile's `help` text are scanned: prose
+    saying "make sure" or "make decisions" is not a command, and a scanner that cannot tell the
+    difference would be a scanner nobody could keep green.
+    """
+    root = Path(__file__).resolve().parents[1]
+    makefile = (root / "Makefile").read_text(encoding="utf-8")
+    targets = set(re.findall(r"^([a-z][a-z-]*):", makefile, re.MULTILINE))
+    assert "test" in targets and "check" in targets, f"the Makefile's targets do not parse: {sorted(targets)}"
+
+    checked = 0
+    problems: list[str] = []
+    for path in sorted((root / ".github" / "workflows").glob("*.yml")):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            match = re.search(r"(?<![\w-])make ([a-z][a-z-]{2,})", line)
+            if not match:
+                continue
+            checked += 1
+            if match.group(1) not in targets:
+                problems.append(
+                    f"{path.name}:{number} calls `make {match.group(1)}`, which the Makefile does not define"
+                )
+    for number, line in enumerate(makefile.splitlines(), start=1):
+        match = re.search(r'@echo "make ([a-z][a-z-]{2,})', line)
+        if not match:
+            continue
+        checked += 1
+        if match.group(1) not in targets:
+            problems.append(f"Makefile:{number} help text promises `make {match.group(1)}`")
+    assert checked >= 5, f"the scan found {checked} make commands — the pattern has stopped matching"
+    assert not problems, "\n".join(problems)
+
+
 #: The document that carries the evidence ledger, and the sources whose *internal ranking* this
 #: repository is not entitled to state. On 2026-10-16 three shipped files said OWASP's agentic top ten
 #: puts "denial of wallet" at risk #2 — a specific, checkable, and wrong claim (ASI02 is *Tool Misuse

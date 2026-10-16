@@ -12,7 +12,7 @@ and can be told to fail on cue.
 ## The suite
 
 ```console
-$ make test          # 1029 tests, no network (2-4 min on a 2-vCPU box)
+$ make test          # 1031 tests, no network (2-4 min on a 2-vCPU box)
 $ make check         # + ruff, + bandit, + the independent Node verifier
 ```
 
@@ -53,7 +53,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | `test_deploy_check.py` | 44 | the static deployment checker, one broken fixture per invariant it claims to enforce, the number formatting Helm actually produces, and the ConfigMap value that arrived as a float — a checker that cannot fail is decoration |
 | `test_mutate.py` | 40 | the mutation harness itself: the splice is a byte-for-byte no-op, every mutant changes exactly one line and compiles, a site on a line with non-ASCII text splices by character not by byte (the regression that hid 82 of `verify.py`'s 177 sites), a site at byte zero is a candidate rather than a drop, every operator is exercised and labelled, the docstring rule answers `is True`/`is False` when it is asked directly, the verdict maps pytest's exit code to survived/killed/killed-import/timeout, timeouts stay out of the score, `--only-line` runs every mutant on a line and refuses a line with none, a dropped site is counted rather than lost, a sandbox that cannot be deleted does not replace the report or any of the three refusals beside it, and the CLI writes both reports, re-runs into a directory it already made, and decides its exit code against `--min-score` inclusively |
 | `test_helm_fidelity.py` | 17 | the comparison between the checker's chart render and a real Helm render: pairing by kind and name, the block scalar's final newline, the path of the first difference, exit 2 when Helm is absent, and — where Helm is installed — the end-to-end comparison |
-| `test_doc_links.py` | 17 | every `docs/…md` reference in the tree resolves, every page is in the nav, the scanner itself can fail, a staged site copy is not read as a second copy of the documentation, this table's own counts are reconciled against the suite, the counts written beside a test filename in the other pages are reconciled too, the size the README quotes for the whole suite is reconciled, every pytest command the Makefile and the CI jobs ship prints its counts and its skips, no document states a position inside a source list that does not publish one, every source line cited in prose (`verify.py:186`) exists and carries a site the mutation harness would mutate, and the coverage maps have a row for every concept and practice they claim |
+| `test_doc_links.py` | 19 | every `docs/…md` reference in the tree resolves, every page is in the nav, the scanner itself can fail, a staged site copy is not read as a second copy of the documentation, this table's own counts are reconciled against the suite, the counts written beside a test filename in the other pages are reconciled too, the size the README quotes for the whole suite is reconciled, every pytest command the Makefile and the CI jobs ship prints its counts and its skips, no document states a position inside a source list that does not publish one, every row of a graded table carries its grade, and every `make` target the workflows and the help text name exists, every source line cited in prose (`verify.py:186`) exists and carries a site the mutation harness would mutate, and the coverage maps have a row for every concept and practice they claim |
 | `test_fuzz_regressions.py` | 98 | one test per defect a fuzzer found (see below) |
 
 Counts are collected (`pytest --collect-only`), not remembered — and "they are checked" is now a
@@ -74,13 +74,13 @@ the same reason, and the verbosity trap that makes the difference is recorded un
 
 | installed | result | the skips |
 | --- | --- | --- |
-| `pytest` alone (`make test`) | 982 passed, 47 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below); the Ed25519 sealing and signing tests (need `cryptography`) |
-| `pip install pytest cryptography` | 987 passed, 42 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below) |
-| `pip install pytest pyyaml` | 1,024 passed, 5 skipped | the Ed25519 sealing and signing tests (need `cryptography`) |
-| `pip install -e '.[dev,sign]'` (**the documented dev setup**) | 1,029 passed, nothing skipped | none |
+| `pytest` alone (`make test`) | 984 passed, 47 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below); the Ed25519 sealing and signing tests (need `cryptography`) |
+| `pip install pytest cryptography` | 989 passed, 42 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below) |
+| `pip install pytest pyyaml` | 1,026 passed, 5 skipped | the Ed25519 sealing and signing tests (need `cryptography`) |
+| `pip install -e '.[dev,sign]'` (**the documented dev setup**) | 1,031 passed, nothing skipped | none |
 
 Each cell is a fresh virtual environment with `pip install pytest` plus the extras its row names, then
-`pytest tests -ra` from the repository root. All four cells **collect the same 1,029 tests**: what
+`pytest tests -ra` from the repository root. All four cells **collect the same 1,031 tests**: what
 differs between them is whether a test runs or skips, which is what the last column is for. `-ra` is
 what makes that column checkable — every skip is a sentence with its reason, and a cell that skipped
 something without saying why would be indistinguishable from a cell that never had the test.
@@ -108,17 +108,23 @@ when PyYAML is absent — "could not run", a different code from the 1 that mean
 and `tests/test_deploy_check.py` includes the test that pins exactly that, on a machine that *has*
 PyYAML, by shadowing the import rather than uninstalling anything.
 
-**The round tabulated above ran at 2026-10-16T14:56Z, and it is the sixth measured on this tree.** The
+**The round tabulated above ran at 2026-10-16T15:15Z, and it is the seventh measured on this tree.** The
 rounds before it are filed rather than overwritten — in the `mutation/` directory of the workspace
 that produced these documents, which is not part of this repository — because a matrix someone might
-check is evidence and a matrix edited in place is not. Four of them describe exactly this environment
-and differ only by the tree, one test at a time: `14:29Z` measured **981 / 986 / 1,023 / 1,028**,
-`14:06Z` the same cells with the Helm client off the machine (6 and 1 skipped where this round has 5
-and none, the difference being the single test that compares the two renders), and `11:06Z` the four
-cells of the previous tree. Before those, `08:21Z` measured 978 / 983 / 1,019 / 1,024, and `08:05Z`'s
-`+ PyYAML` cell exited 1 on the wall-clock flake in `tests/test_snapshot_restore.py` that is recorded
-under *Found by testing*. A skip count is only evidence when the environment that produced it is
-stated, which is why each round is named and what its machine had is written beside it.
+check is evidence and a matrix edited in place is not. Five of them describe this same machine and
+differ only by the tree, one or two tests at a time: `14:56Z` measured **982 / 987 / 1,024 / 1,029**,
+`14:29Z` **981 / 986 / 1,023 / 1,028**, `14:06Z` the same cells with the Helm client off the machine
+(6 and 1 skipped where this round has 5 and none, the difference being the single test that compares
+the two renders), and `11:06Z` the four cells of the tree before both. Before those, `08:21Z` measured
+978 / 983 / 1,019 / 1,024, and `08:05Z`'s `+ PyYAML` cell exited 1 on the wall-clock flake in
+`tests/test_snapshot_restore.py` that is recorded under *Found by testing*. A skip count is only
+evidence when the environment that produced it is stated, which is why each round is named and what
+its machine had is written beside it.
+
+Two of these seven rounds were quoted with a *derived* number before they ran, and both times the
+derivation was wrong by one or two: a re-base by hand is a prediction, and the cells are the
+measurement. That is the same lesson the table itself records about `paste | bc` — the sum is a
+command now, or it is a guess.
 
 The matrix is also where a defect was found, in the same family as the one this page already records
 for `tools/deploy_check.py`: the `11:06Z` round is the one in which the comparison test showed that it

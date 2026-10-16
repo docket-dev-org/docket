@@ -10,6 +10,15 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **Two more guards in the file whose subject is documents matching the repository.** One fails on a
+  row of a *graded* table that carries no grade — `docs/evidence.md`'s claim ledger and the incident
+  corpus's incident table, found by their own header rows — because a claim that loses its grade
+  quietly becomes the same weight as a sourced one, which is the failure the grades exist to prevent.
+  The other reads every `make` target named in `.github/workflows/*.yml` and in the Makefile's `help`
+  text and fails on one that does not exist: a job calling a target nobody defined is a red build for
+  whoever enables it, and a help line is a documented command. Both are the shape of the correction
+  that preceded them: a number or a name that was true when written and had no guard.
+
 - **A test that refuses a rank the source does not publish.** Three shipped documents said OWASP's
   agentic top ten puts "denial of wallet" at risk #2 — the list's second entry is *Tool Misuse and
   Exploitation*, and cost is not one of its ten classes at all. A rank is the most precise kind of
@@ -472,6 +481,11 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   size the page has. It caught one row on its first run: a book, named with neither a link nor a year.
 
 ### Fixed
+
+- **`docs/incident-corpus.md` opened by giving the failure mode a name it does not have.** "Docket's
+  whole reason to exist is a failure mode with a name: **Denial of Wallet**" — the name is
+  *unbounded consumption* (OWASP LLM10), and "denial of wallet" is how practitioners describe it. The
+  page now says so, in the same correction round as the fabricated rank above.
 
 - **A fabricated citation rank in four documents, including the README.** "OWASP's *Top 10 for Agentic
   Applications* puts denial of wallet at risk #2" appeared in `README.md`, `docs/evidence.md`,
