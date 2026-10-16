@@ -690,7 +690,14 @@ def test_a_failed_site_build_is_exit_2_not_a_check_of_the_previous_build(checker
 
 
 def test_the_default_site_is_the_one_this_repository_builds(checker) -> None:
-    """`ROOT` is the repository root: the tool's default site is the `site/` beside `tools/`."""
-    assert checker.ROOT.name == "docket"
+    """`ROOT` is the repository root, whatever the checkout is called.
+
+    The first version of this test asserted `ROOT.name == "docket"`, which is true of the authoring
+    workspace and false of every clone made into a differently-named directory — and false in the
+    mutation harness's sandbox, which copies the tree to `repo`. The harness refused to run: *the
+    sandbox does not pass the suite before any mutation*. A test may assert where it is in the tree;
+    never what the tree has been called.
+    """
     assert (checker.ROOT / "tools" / "a11y_check.py").is_file()
+    assert (checker.ROOT / "mkdocs.yml").is_file(), "ROOT is the repository root"
     assert checker.DEFAULT_SITE == checker.ROOT / "site"
