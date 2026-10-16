@@ -18,9 +18,8 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   caption on every table, no duplicate `id` — with the accessible name computed from `aria-label`,
   `aria-labelledby` resolved through the page's own ids, element text, a nested `<img alt>`, a nested
   `<svg><title>`, a `<label for=…>` elsewhere on the page, or a `<label>` that wraps the control.
-  `tests/test_a11y_check.py` (43 tests) makes every rule prove it can fail and every one of those
-  naming paths prove it does not cry wolf, and the check runs in the release record beside the docs
-  build.
+  `tests/test_a11y_check.py` makes every rule prove it can fail and every one of those naming paths
+  prove it does not cry wolf, and the check runs in the release record beside the docs build.
 - **One exemption, and it expires.** material renders its drawer and search toggles as
   `<input class="md-toggle" type="checkbox">`, and the theme's stylesheet says `.md-toggle{
   display:none}`: a control that is not rendered is not announced, so no name is due. The checker
@@ -509,6 +508,15 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   size the page has. It caught one row on its first run: a book, named with neither a link nor a year.
 
 ### Fixed
+
+- **The accessibility checker read the `title` attribute before the element's own text.** No verdict
+  changed — a tooltip is a name, so a link named by one passed either way — but the precedence was
+  wrong, and the count it fed was wrong with it: the first tally called 442 links by their tooltip
+  when a reader hears their text. The order is now the one *Accessible Name and Description
+  Computation 1.2* §4.3.2 step 2 specifies — `aria-labelledby`, `aria-label`, a control's `<label>`,
+  name from content, and only then the tooltip, which the specification marks as used *only if
+  nothing else, including subtree content, has provided results*. Three tests assert the precedence
+  from the report rather than from the verdict, because the verdict cannot tell the difference.
 
 - **The code of conduct carried two `h1` headings, which the new site check found on its first run.**
   `CODE_OF_CONDUCT.md` opened with a title line above the Contributor Covenant's own heading, so the

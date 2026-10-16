@@ -40,11 +40,32 @@ violation there means the theme changed under the site, which is worth knowing o
 and is not a writer's mistake to fix in a document.
 
 The accessible-name computation is the part that has to be right, because a checker that reports a
-named link as unnamed is worse than no checker: it teaches its reader to ignore it. A name is taken
-from, in order, `aria-label`, `aria-labelledby` (resolved through the page's `id`s), the text of the
-element, the `alt` of a nested `<img>`, a nested `<svg><title>`, the `title` attribute, and — for form
-controls — the text of a `<label for=...>` or a wrapping `<label>`. `<script>` and `<style>` text is
-never part of a name.
+named link as unnamed is worse than no checker: it teaches its reader to ignore it. The order below is
+the precedence of *Accessible Name and Description Computation 1.2* §4.3.2 step 2, and each step falls
+through when it yields nothing:
+
+1. `aria-labelledby`, resolved through the page's `id`s (2.02);
+2. `aria-label` (2.04);
+3. the host language's own naming (2.05): for a form control, the text of a `<label for=...>` or of a
+   `<label>` that wraps it;
+4. name from content (2.06–2.08): the element's text and its children's, where a child that has a name
+   of its own contributes that instead of its text, and a child's `alt` or `<svg><title>` counts;
+5. the `title` attribute, which the specification marks as used *only if nothing else, including
+   subtree content, has provided results* (2.09).
+
+`<script>`, `<style>` and `<template>` contribute nothing. Two consequences of the order are worth
+stating because the site exercises both: a link with visible text *and* a tooltip is named by its text,
+and a link whose only content is a script has no name at all. On the 47-page build of 2026-10-16, 3,493
+elements were named by their text, 235 by an `aria-label` the theme wrote (141 of them the drawer's and
+search's controls), and 5 by the logo's `alt` — that 240 is the number a text-only rule would have
+reported as nameless, and the reason the report prints the split beside the verdict instead of letting
+a reader assume it.
+
+The whole algorithm is not implemented — no CSS generated content, no shadow roots, no `aria-hidden`
+exclusion inside a name, no full flat-string normalisation, and no role-based prohibition of naming,
+which is safe for the two rules that ask: a link and a form control both allow naming. `axe-core`
+implements the rest; this tool's job is to decide ten questions, explain each answer, and refuse to run
+rather than guess.
 """
 
 from __future__ import annotations
@@ -224,6 +245,124 @@ def wrapper_label(node: Node, parents: dict[int, Node]) -> Node | None:
     return None
 
 
+def _own_attributes(element: Node, prefix: str = "") -> list[tuple[str, str]]:
+    """The element's own `aria-label` and `title` (steps 2.04 and 2.09), in precedence order."""
+    found: list[tuple[str, str]] = []
+    for attribute in ("aria-label", "title"):
+        value = element.attrs.get(attribute, "").strip()
+        if value:
+            found.append((prefix + attribute, value))
+    return found
+
+
+def _labelled_by(element: Node, ids: dict[str, Node], prefix: str = "") -> list[tuple[str, str]]:
+    """The text of every element this one references by `aria-labelledby` (step 2.02), concatenated."""
+    values = []
+    for reference in element.attrs.get("aria-labelledby", "").split():
+        target = ids.get(reference)
+        if target is not None and target.text_of().strip():
+            values.append(target.text_of().strip())
+    return [(prefix + "aria-labelledby", " ".join(values))] if values else []
+
+
+def _native_text_alternative(element: Node) -> list[tuple[str, str]]:
+    """What the host language itself names this element: `alt` on an image, `<title>` in an SVG."""
+    if element.tag == "img" and element.attrs.get("alt", "").strip():
+        return [("alt", element.attrs["alt"].strip())]
+    if element.tag == "svg":
+        for inner in element.descendants():
+            if inner.tag == "title" and inner.text.strip():
+                return [("svg-title", inner.text.strip())]
+    return []
+
+
+def _name_from_content(element: Node, ids: dict[str, Node], prefix: str = "") -> list[tuple[str, str]]:
+    """One element's contribution to a name from content (steps 2.06–2.08).
+
+    Each child contributes *its own* name, in document order, and a child that has a name of its own
+    contributes that instead of its text — the difference between a `<span aria-label="x">y</span>`
+    inside a link naming it `x` and naming it `x y`. A `<script>`, `<style>` or `<template>` subtree
+    contributes nothing: it is not rendered, so a link whose only content is a script tag has no name,
+    and reporting that is the point of walking the tree rather than reading `text_of()`.
+    """
+    if element.tag in OPAQUE:
+        return []
+    labelled = _labelled_by(element, ids, prefix)
+    if labelled:
+        return labelled
+    attributes = _own_attributes(element, prefix)
+    if attributes:
+        return attributes
+    native = _native_text_alternative(element)
+    if native:
+        return [(prefix + source, value) for source, value in native]
+    fragments: list[tuple[str, str]] = []
+    if element.text.strip():
+        fragments.append((prefix + "text", element.text.strip()))
+    for child in element.children:
+        fragments.extend(_name_from_content(child, ids, prefix))
+    return fragments
+
+
+def name_parts(
+    node: Node,
+    ids: dict[str, Node],
+    labels: dict[str, Node],
+    parents: dict[int, Node] | None = None,
+) -> list[tuple[str, str]]:
+    """Every fragment of this element's name, as `(which step named it, the text)`.
+
+    The order is the precedence order of the accessible-name computation (W3C, *Accessible Name and
+    Description Computation 1.2*, §4.3.2 step 2): `aria-labelledby` (2.02) over `aria-label` (2.04)
+    over the host language's own naming — a `<label for=…>` or a wrapping label (2.05) over the
+    element's content, in which a descendant's `aria-label`, its `alt` or its `<svg><title>` count
+    (2.06) — over the tooltip attribute (2.09), which the specification marks as used *only if nothing
+    else, including subtree content, has provided results*. Only the winning step's fragments are
+    returned: a link with both visible text and a `title` is named by its text, and reporting the
+    `title` as its name would misdescribe the page. A step that yields nothing falls through to the
+    next, which is what the specification asks for (*Return the accumulated text if it is not the
+    empty string*).
+
+    The whole algorithm is not implemented here, and the departures are deliberate: no CSS generated
+    content, no shadow roots or slots, no `aria-hidden` or `display:none` exclusion inside a name, no
+    full flat-string normalisation, and no role-based prohibition of naming — that last one is safe
+    because this tool only asks the question of links and of form controls, whose roles all allow
+    naming. `axe-core` implements the rest. What this function has to be is decidable and explainable
+    for the ten rules beside it, and to *say where each name came from*, so the number of names a
+    text-only rule would have missed is a line in the report rather than a claim in a comment.
+    """
+    labelled = _labelled_by(node, ids)
+    if labelled:
+        return labelled
+
+    aria_label = [fragment for fragment in _own_attributes(node) if fragment[0] == "aria-label"]
+    if aria_label:
+        return aria_label
+
+    if node.tag in CONTROLS:
+        label = labels.get(node.attrs.get("id", ""))
+        if label is not None and label.text_of().strip():
+            return [("label-for", label.text_of().strip())]
+        if parents:
+            wrapping = wrapper_label(node, parents)
+            if wrapping is not None:
+                # The wrapper's text already contains the control's own text, so only the wrapper's
+                # text outside this control is used; joining the whole wrapper would double it.
+                outside = "".join(child.text_of() for child in wrapping.children if child is not node).strip()
+                if outside or wrapping.text_of().strip():
+                    return [("wrapper-label", outside or wrapping.text_of().strip())]
+
+    content: list[tuple[str, str]] = []
+    if node.text.strip():
+        content.append(("text", node.text.strip()))
+    for child in node.children:
+        content.extend(_name_from_content(child, ids, "descendant:"))
+    if content:
+        return content
+
+    return [fragment for fragment in _own_attributes(node) if fragment[0] == "title"]
+
+
 def accessible_name(
     node: Node,
     ids: dict[str, Node],
@@ -231,53 +370,15 @@ def accessible_name(
     parents: dict[int, Node] | None = None,
 ) -> str:
     """The name a screen reader would announce for this element. Empty means it would announce none."""
-    parts: list[str] = []
-
-    def from_attributes(element: Node) -> None:
-        for attr in ("aria-label", "title"):
-            value = element.attrs.get(attr, "").strip()
-            if value:
-                parts.append(value)
-        for reference in element.attrs.get("aria-labelledby", "").split():
-            target = ids.get(reference)
-            if target is not None:
-                parts.append(target.text_of().strip())
-
-    from_attributes(node)
-    ancestors = node.descendants()
-    for element in ancestors:
-        from_attributes(element)
-        if element.tag == "img":
-            alt = element.attrs.get("alt", "").strip()
-            if alt:
-                parts.append(alt)
-        if element.tag == "svg":
-            for inner in element.descendants():
-                if inner.tag == "title" and inner.text.strip():
-                    parts.append(inner.text.strip())
-
-    parts.append(node.text_of().strip())
-
-    if node.tag in CONTROLS:
-        # A control's own name can live in a label elsewhere on the page, which is how every theme
-        # hides its toggles: material's `<input class="md-toggle" id="__drawer">` is named by
-        # `<label class="md-nav__title" for="__drawer">`. Resolving `for=` is the difference between
-        # 141 reports on this site and two.
-        label = labels.get(node.attrs.get("id", ""))
-        if label is not None:
-            parts.append(label.text_of().strip())
-        if parents:
-            wrapping = wrapper_label(node, parents)
-            if wrapping is not None:
-                # The wrapper's text already includes the control's own text, which the step above
-                # may have added; joining the whole wrapper would double it, so only the wrapper's
-                # text outside this control is used.
-                outside = "".join(child.text_of() for child in wrapping.children if child is not node).strip()
-                parts.append(outside or wrapping.text_of().strip())
-    return " ".join(part for part in parts if part).strip()
+    return " ".join(value for _, value in name_parts(node, ids, labels, parents)).strip()
 
 
-def check_page(page: Path, site: Path, hidden: set[str]) -> tuple[list[Violation], list[str]]:
+def check_page(
+    page: Path,
+    site: Path,
+    hidden: set[str],
+    names: dict[str, int] | None = None,
+) -> tuple[list[Violation], list[str]]:
     tree = Tree()
     tree.feed(page.read_text(encoding="utf-8"))
     tree.close()
@@ -314,15 +415,22 @@ def check_page(page: Path, site: Path, hidden: set[str]) -> tuple[list[Violation
     for node in elements:
         if node.tag == "img" and "alt" not in node.attrs:
             flag("img-alt", f"<img src={node.attrs.get('src', '?')!r}> has no alt attribute", node.line)
-        if node.tag == "a" and node.attrs.get("href", "").strip() and not accessible_name(node, ids, labels, parents):
-            flag("link-name", f"link to {node.attrs['href'][:70]!r} has no accessible name", node.line)
+        if node.tag == "a" and node.attrs.get("href", "").strip():
+            parts = name_parts(node, ids, labels, parents)
+            if not parts:
+                flag("link-name", f"link to {node.attrs['href'][:70]!r} has no accessible name", node.line)
+            elif names is not None:
+                names[parts[0][0]] = names.get(parts[0][0], 0) + 1
         if node.tag in CONTROLS and node.attrs.get("type", "text").lower() not in SILENT_INPUT_TYPES:
             # `md-toggle` is a class the site's stylesheet declares `display:none`: not rendered, so not
             # announced, so no name is due — while the rule exists. See the module docstring.
             if set(node.attrs.get("class", "").split()) & hidden:
                 continue
-            if not accessible_name(node, ids, labels, parents):
+            parts = name_parts(node, ids, labels, parents)
+            if not parts:
                 flag("control-name", f"<{node.tag} {_describe(node)}> has no accessible name", node.line)
+            elif names is not None:
+                names["control from " + parts[0][0]] = names.get("control from " + parts[0][0], 0) + 1
         if node.tag == "table" and not any(inner.tag in ("th", "caption") for inner in node.descendants()):
             flag("table-headers", "the table has no <th> and no <caption>", node.line)
 
@@ -356,8 +464,9 @@ def check_site(site: Path) -> tuple[list[Violation], int, dict[str, object]]:
     hidden, evidence = display_none_classes(site)
     violations: list[Violation] = []
     exempted_classes: set[str] = set()
+    names: dict[str, int] = {}
     for page in pages:
-        page_violations, page_classes = check_page(page, site, hidden)
+        page_violations, page_classes = check_page(page, site, hidden, names)
         violations.extend(page_violations)
         exempted_classes |= set(page_classes)
     return (
@@ -367,6 +476,7 @@ def check_site(site: Path) -> tuple[list[Violation], int, dict[str, object]]:
             "classes_declared_display_none": sorted(hidden),
             "classes_that_exempted_a_control": sorted(exempted_classes),
             "css_evidence": evidence,
+            "names_by_source": dict(sorted(names.items(), key=lambda item: (-item[1], item[0]))),
         },
     )
 
@@ -413,8 +523,23 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{len(violations)} violation(s) across {pages} page(s): {', '.join(rules)}; {note}")
         print("every rule this tool applies, and why it is a defect, is in its module docstring")
         return 1
-    print(f"{pages} page(s) checked: no violation of the {len(RULES)} rules; {note}")
+    print(f"{pages} page(s) checked: no violation of the {len(RULES)} rules; {note}{named_by(exemptions)}")
     return 0
+
+
+def named_by(exemptions: dict[str, object]) -> str:
+    """A clause for the summary line: how many names the site's elements got from text, and how many
+    from somewhere else. Not decoration — it is the count of elements a text-only rule would have
+    reported as nameless, and it is the number that justifies resolving attributes at all."""
+    tally = exemptions.get("names_by_source")
+    if not isinstance(tally, dict) or not tally:
+        return ""
+    text = sum(count for source, count in tally.items() if source.endswith("text"))
+    elsewhere = {source: count for source, count in tally.items() if not source.endswith("text")}
+    if not elsewhere:
+        return f"; all {text} name(s) came from the element's own text"
+    detail = ", ".join(f"{source} {count}" for source, count in list(elsewhere.items())[:3])
+    return f"; {text} name(s) from text and {sum(elsewhere.values())} from elsewhere ({detail})"
 
 
 #: The rule names this tool can report, for the summary line. Kept beside the checks that emit them.

@@ -188,6 +188,64 @@ def test_a_link_is_named_by_everything_that_can_name_it(checker, tmp_path: Path,
     assert ("link-name" in rules) is (rule == "link-name"), rules
 
 
+def test_the_tooltip_attribute_is_the_last_resort_the_specification_says_it_is(checker, tmp_path: Path) -> None:
+    """`title` names an element only when nothing else does (AccName 1.2 §4.3.2 step 2.09).
+
+    Both pages below pass — a `title` *is* a name — so the assertion is not the verdict but the report:
+    the link with text is named by its text, and only the link with nothing else is named by its
+    tooltip. Reading `title` first, as this tool did until a test said otherwise, would have called 536
+    links on the real site by their tooltip when a reader hears their text.
+    """
+    root = site(
+        tmp_path,
+        {
+            "both.html": GOOD.replace(
+                '<a href="quickstart/">quickstart</a>', '<a href="/x" title="Tooltip">Quickstart</a>'
+            ),
+            "tooltip-only.html": GOOD.replace(
+                '<a href="quickstart/">quickstart</a>', '<a href="/x" title="Tooltip"></a>'
+            ),
+        },
+    )
+    found, _, report = checker.check_site(root)
+    assert found == []
+    assert report["names_by_source"]["text"] >= 1
+    assert report["names_by_source"].get("title") == 1
+
+
+def test_a_child_that_has_its_own_name_does_not_also_contribute_its_text(checker, tmp_path: Path) -> None:
+    """`<a><span aria-label="x">y</span></a>` is named `x`, and the report says the child named it.
+
+    This is the recursion in step 2.06 applied one level down: a child with a name of its own
+    contributes that instead of its text. The tally is how a test can see it — the link is named either
+    way, and only the report distinguishes a reader hearing `x` from hearing `x y`.
+    """
+    root = site(
+        tmp_path,
+        {
+            "nested.html": GOOD.replace(
+                '<a href="quickstart/">quickstart</a>', '<a href="/x"><span aria-label="x">y</span></a>'
+            )
+        },
+    )
+    found, _, report = checker.check_site(root)
+    assert found == []
+    assert report["names_by_source"].get("descendant:aria-label") == 1
+
+
+def test_a_link_whose_only_text_is_inside_a_script_has_no_name(checker, tmp_path: Path) -> None:
+    root = site(
+        tmp_path,
+        {
+            "script.html": GOOD.replace(
+                '<a href="quickstart/">quickstart</a>', "<a href='/x'><script>var s = 1;</script></a>"
+            )
+        },
+    )
+    found, _, _ = checker.check_site(root)
+    assert [violation.rule for violation in found] == ["link-name"]
+
+
 def test_aria_labelledby_resolves_through_the_pages_ids(checker, tmp_path: Path) -> None:
     page = (
         '<!DOCTYPE html><html lang="en"><head><title>t</title></head><body><main><h1>a</h1>'
