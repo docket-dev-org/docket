@@ -137,6 +137,10 @@ DEFAULT_TESTS: dict[str, list[str]] = {
     # tests that describe it. `make check` runs both tools, and a tool whose own numbers are quoted
     # in `docs/testing.md` is as much a part of the evidence as the modules it mutates.
     "tools/mutate.py": ["tests/test_mutate.py"],
+    # The site checker is the release record's sixteenth check and the only thing in the repository
+    # that reads the published HTML, so its own mutants are worth a subset. Its tests are the only
+    # thing that can kill a mutant in it: they are written as pages that break one rule each.
+    "tools/a11y_check.py": ["tests/test_a11y_check.py"],
     "tools/helm_fidelity.py": ["tests/test_helm_fidelity.py"],
     "tools/deploy_check.py": ["tests/test_deploy_check.py"],
     "tools/loadtest.py": ["tests/test_loadtest.py"],
