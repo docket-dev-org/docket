@@ -611,7 +611,13 @@ argued equivalent, with the argument written out below it".
   monochrome golden files and the markdown report are what "nothing is only conveyed by colour"
   means here. The documentation site is the one HTML artefact and `tools/a11y_check.py` decides ten
   mechanical questions about it; it is a static check, not a substitute for a person using a screen
-  reader on a real page, and WCAG 2.2 conformity is not claimed here.
+  reader on a real page, and WCAG 2.2 conformity is not claimed here. Its name computation implements
+  the precedence of AccName 1.2 §4.3.2 and not the whole algorithm: no CSS generated content, no shadow
+  roots or slots, no `aria-hidden` exclusion inside a name, no full flat-string normalisation, and no
+  role-based prohibition of naming (safe here because only links and form controls are asked, and both
+  allow naming). It also has no equivalent of a contrast check, a focus-order check or a
+  keyboard-traversal check — the four things a person with a screen reader would notice first if they
+  were wrong.
 - **A suite that has been proved to hold under heavy CPU contention.** Under artificial load —
   two busy loops on a two-core box, a third process's worth of oversubscription — `test_chaos.py`'s
   rollback drill failed once: it drives a whole game-day phase as a subprocess with a wall-clock
