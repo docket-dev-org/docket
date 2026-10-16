@@ -10,6 +10,13 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **A guard against the verbosity trap, in the file whose subject is the documents matching what the
+  repository does.** `tests/test_doc_links.py` reads `pyproject.toml`'s `addopts`, asserts exactly one
+  `-q` there, and then checks every pytest command the repository ships — the `make test` target and
+  the four CI jobs — for a second `-q` (which is `-qq`, where pytest prints no counts line) and for a
+  missing `-ra` (which is what makes a skip say why it skipped). It is the fifth place the same defect
+  turned up in one day, and the first one that cannot come back.
+
 - **Every mutation score in `docs/testing.md` is re-measured in one round, in one pass, with the
   control run recorded in every report** (`docs/testing.md`, *The release round*). The nine modules
   were swept back to back on one commit with one harness, each report carrying what its unmutated
@@ -455,6 +462,16 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   size the page has. It caught one row on its first run: a book, named with neither a link nor a year.
 
 ### Fixed
+
+- **`make test` and four CI jobs ran the suite two `-q`s deep, so their logs carried no counts.**
+  `pyproject.toml`'s `addopts` already carry one `-q`; a command line that adds another asks pytest for
+  `-qq`, at which level it prints the progress line and nothing else. It exits 0 either way, which is
+  how this survived review: green jobs, no line saying how many tests passed, and a CONTRIBUTING.md
+  promising "1028 tests" with nothing in the output to confirm it. Measured before it was fixed — with
+  `addopts = "-q --strict-markers"`, `pytest tests -q` prints `1 passed in 0.00s` on a one-test file,
+  and the same command at `-qq` prints a dot and stops. All five lines now run plain
+  `pytest tests -ra`: the counts line is back in the Makefile's output and in every CI log, with the
+  skip reasons beside it.
 
 - **Two survivor rows in `docs/testing.md` account for their mutants line by line now, and one of
   them gave the wrong reason.** `ledger.py:628-646` is six mutants under one verdict, and the verdict

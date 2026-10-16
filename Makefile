@@ -21,7 +21,11 @@ help:
 	@echo "make cache-load the same load point with the response cache on: what a hit saves, and what it returns"
 
 test:
-	PYTHONPATH=src python3 -m pytest tests -q
+	# No `-q` here: `pyproject.toml`'s `addopts` already carry one, and a second asks pytest for
+	# `-qq` — at which level it prints no counts line, so `make test` would end without saying how
+	# many tests passed. The summary line is the point of the command; `-ra` adds the skip reasons
+	# in the cells that have skips.
+	PYTHONPATH=src python3 -m pytest tests -ra
 
 demo:
 	PYTHONPATH=src python3 -m docket demo --tamper

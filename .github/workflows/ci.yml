@@ -49,7 +49,11 @@ jobs:
         # it covers exits 2 without it, which is a failed run, never a silent pass). Installing them
         # keeps this job at 0 skips, so a skip in CI means something changed.
         run: pip install pytest cryptography pyyaml
-      - run: PYTHONPATH=src python -m pytest tests -q
+      # No `-q` on any pytest line in this repository: `pyproject.toml`'s `addopts` carry one, a
+      # second asks for `-qq`, and at that level pytest prints no counts line — so the job would
+      # end green with nothing in the log saying how many tests passed. `-ra` prints the skip
+      # reasons, and this job installs both extras so that there are none to print.
+      - run: PYTHONPATH=src python -m pytest tests -ra
       - name: Self-test (the probes a cron would run against a deployment)
         # 19 probes that start a real boundary, a real upstream and real child processes in this
         # runner: forwarding, refusal, caps, throttling, the breaker, fault injection, the response
@@ -99,7 +103,7 @@ jobs:
       - name: The checker fails on a broken artefact
         # The load-bearing half: tests/test_deploy_check.py breaks every invariant on purpose, one
         # fixture per check, so a checker that cannot fail cannot pass this job either.
-        run: PYTHONPATH=src python -m pytest tests/test_deploy_check.py -q
+        run: PYTHONPATH=src python -m pytest tests/test_deploy_check.py -ra
 
   docs:
     name: "docs (mkdocs build --strict: no broken links, no stranded pages)"

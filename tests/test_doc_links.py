@@ -454,6 +454,68 @@ def test_every_place_that_quotes_the_size_of_the_suite_quotes_it_correctly():
         )
 
 
+#: The commands the repository itself ships that run the suite: the Makefile target a contributor is
+#: told to run, and the four CI jobs that run it. `pyproject.toml` gives all of them `-q` through
+#: `addopts`, so a `-q` written on one of these lines is the *second* one — `-qq`, at which pytest
+#: prints no counts line. That was measured, not assumed: with `addopts = "-q --strict-markers"`,
+#: `pytest tests -q` prints the progress line and nothing else, exits 0, and a reader — or a script —
+#: has no idea how many tests ran. `-ra` is required here for the same reason: a cell that skips
+#: without saying why is indistinguishable from one that never had the test, which is the sentence
+#: `docs/testing.md` uses to explain why its matrix was measured with it.
+SHIPPED_PYTEST_COMMANDS = (
+    "Makefile",
+    ".github/workflows/ci.yml",
+    ".github/workflows/release.yml",
+    ".github/workflows/security.yml",
+)
+
+
+def test_no_shipped_pytest_command_asks_for_less_than_the_line_the_docs_quote():
+    """Every command in this repository that runs the suite prints its counts, and says what skipped.
+
+    Written after finding the same defect in three separate places on 2026-10-16 — `tools/mutate.py`'s
+    control run, `mutation/run_final_checks.sh`, and then the Makefile and four CI jobs, which had been
+    doing it since they were written. In the harness it was load-bearing (a control whose counts are
+    missing cannot be read); in CI it was quieter: the job goes green with no line saying how many
+    tests passed, which is the evidence a reader of a green badge is entitled to. The documentation in
+    `docs/testing.md` states the rule; nothing enforced it, so this does, in the file whose subject is
+    the documents matching what the repository actually does.
+    """
+    root = Path(__file__).resolve().parents[1]
+    addopts = [
+        token
+        for line in (root / "pyproject.toml").read_text(encoding="utf-8").splitlines()
+        if line.startswith("addopts")
+        for token in line.split("=", 1)[1].strip().strip('"').split()
+    ]
+    assert addopts.count("-q") == 1, (
+        f"`pyproject.toml`'s addopts are {addopts!r}: this test's arithmetic assumes exactly one `-q` "
+        f"there, which every shipped command line is then measured against"
+    )
+
+    problems: list[str] = []
+    for relative in SHIPPED_PYTEST_COMMANDS:
+        page = root / relative
+        assert page.is_file(), f"{relative} is named here and is not in the tree"
+        for number, line in enumerate(page.read_text(encoding="utf-8").splitlines(), start=1):
+            if "-m pytest" not in line and not line.strip().startswith(("run: pytest", "pytest ")):
+                continue
+            tokens = line.split()
+            quiet = [token for token in tokens if token.startswith("-q")]
+            skipped = [token for token in tokens if token == "-ra" or token == "-r" or token.startswith("-r")]
+            extra = sum(token.count("q") for token in quiet)
+            if extra:
+                problems.append(
+                    f"{relative}:{number} passes {quiet} on top of addopts' `-q` — that is `-qq`, "
+                    f"where pytest prints no counts line: {line.strip()}"
+                )
+            if not skipped:
+                problems.append(
+                    f"{relative}:{number} runs the suite without `-ra`, so a skip is silent: {line.strip()}"
+                )
+    assert not problems, "\n".join(problems)
+
+
 #: The concepts `docs/production-coverage.md` undertakes to cover, by section. This list *is* the
 #: requirement: it is the set of terms the map was written to answer, kept here so that a row which
 #: disappears — or a section that quietly shrinks — fails a test instead of only making the document

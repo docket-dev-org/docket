@@ -21,7 +21,9 @@ jobs:
       - name: Install test dependencies (the tag gate runs the whole suite, skips and all)
         run: pip install build pytest cryptography pyyaml
       - name: Test the tag before shipping it
-        run: PYTHONPATH=src python -m pytest tests -q
+        # `-ra`, and no `-q`: `addopts` already carries one and a second would suppress the
+        # counts line. The release log is the evidence that the tag was tested.
+        run: PYTHONPATH=src python -m pytest tests -ra
       - name: Build
         run: python -m build
       - name: Checksums

@@ -41,4 +41,6 @@ jobs:
         # manifest and cross-checked against the source's imports by tests/test_supply_chain.py —
         # including that the two optional extras are imported only behind a guard, so a user who
         # installed nothing can still run the thing.
-        run: PYTHONPATH=src python -m pytest tests/test_supply_chain.py -q
+        # No `-q`: `addopts` already carries one, and a second would ask for `-qq`, at which
+        # pytest prints no counts line.
+        run: PYTHONPATH=src python -m pytest tests/test_supply_chain.py -ra
