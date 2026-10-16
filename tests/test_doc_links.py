@@ -454,6 +454,84 @@ def test_every_place_that_quotes_the_size_of_the_suite_quotes_it_correctly():
         )
 
 
+def test_every_flag_the_cli_reference_documents_is_an_option_of_that_command():
+    """`docs/cli.md` is 397 lines of flags, and none of them was checked against the parser.
+
+    A documented flag that no command accepts is a command that does not run, and the failure is
+    invisible until a reader copies a line — the same class as a stale count, with a worse blast
+    radius, because the reader has to discover it at a terminal. The check is narrow on purpose: only
+    level-2 sections whose heading *is* a `docket <command>` line are scanned, so the flags belonging
+    to `tools/` scripts documented further down the same page are not read as the CLI's. Every
+    subcommand named in a heading must exist too, and the scan asserts it checked a plausible number
+    of flags — a heading rename would otherwise turn this green by finding nothing.
+    """
+    import argparse
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    from docket import cli  # the same package the docs describe, imported from the tree under test
+
+    def options(parser: argparse.ArgumentParser) -> set[str]:
+        found: set[str] = set()
+        for action in parser._actions:
+            found.update(action.option_strings)
+            if isinstance(action, argparse._SubParsersAction):
+                for child in action.choices.values():
+                    found |= options(child)
+        return found
+
+    parser = cli.build_parser()
+    subcommands = next(action for action in parser._actions if isinstance(action, argparse._SubParsersAction))
+    document = (Path(__file__).resolve().parents[1] / "docs" / "cli.md").read_text(encoding="utf-8")
+
+    checked = 0
+    problems: list[str] = []
+    for section in re.split(r"^## ", document, flags=re.MULTILINE)[1:]:
+        heading = section.split("\n", 1)[0]
+        match = re.match(r"`docket ([a-z-]+)", heading)
+        if not match:
+            continue
+        command = match.group(1)
+        if command not in subcommands.choices:
+            problems.append(f"docs/cli.md documents `docket {command}`, which the CLI does not define")
+            continue
+        known = options(parser) | options(subcommands.choices[command])
+        body = section.split("\n## ", 1)[0]
+        for flag in sorted(set(re.findall(r"(?<![\w-])(--[a-z][a-z0-9-]+)", body))):
+            checked += 1
+            if flag not in known:
+                problems.append(f"docs/cli.md / `docket {command}`: {flag} is not an option of that command")
+
+    assert checked >= 60, f"the scan read {checked} flags from docs/cli.md — the headings have changed shape"
+    assert not problems, "\n".join(problems)
+
+
+#: Where an absolute authoring path is legitimate: the raw measurement reports carry the `command`,
+#: `ledger_path` and `receipt_path` their harness ran with, unedited, and that directory's README
+#: says so in as many words. Everywhere else, a path from the machine that wrote the docs is a dead
+#: end for the reader — and this tree has already shipped one defect of that shape (a `.gitignore`
+#: rule that kept two measurement reports out of every clone while the documents cited them).
+AUTHORING_PATHS_ALLOWED_IN = ("docs/measurements/",)
+
+
+def test_no_prose_document_leaks_a_path_from_the_machine_that_wrote_it():
+    """`/home/user/…` in a document that is not raw evidence means the reader cannot follow it."""
+    root = Path(__file__).resolve().parents[1]
+    paths = ("/home/user/", "/Users/", "/tmp/venv-")
+    problems: list[str] = []
+    checked_files = 0
+    for path in sorted(root.rglob("*.md")):
+        relative = path.relative_to(root).as_posix()
+        if any(relative.startswith(prefix) for prefix in AUTHORING_PATHS_ALLOWED_IN):
+            continue
+        checked_files += 1
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            for needle in paths:
+                if needle in line:
+                    problems.append(f"{relative}:{number} names {needle}… — {line.strip()[:100]}")
+    assert checked_files >= 15, f"the scan read {checked_files} markdown files — is it looking in the tree?"
+    assert not problems, "\n".join(problems)
+
+
 #: The two tables whose subject *is* the confidence of a claim. Every row in them has to carry a
 #: grade, because a row without one is a claim that has quietly become the same weight as a sourced
 #: one — and this repository's whole evidence standard is that the difference is visible. The tables

@@ -10,6 +10,16 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **Two more guards, both green on the tree they were written for.** `docs/cli.md` is 397 lines of
+  flags and none of them had ever been checked against the parser: the new test reads the level-2
+  sections whose heading is a `docket <command>` line, requires the command to exist, and requires
+  every flag filed under it to be an option of it — 72 flags, all real, and the scan fails if it reads
+  fewer than 60, so a heading rename cannot turn it green by finding nothing. The second refuses an
+  absolute path from the machine that wrote the docs — the authoring sandbox's home directory, or a
+  `/tmp` toolchain path — in any prose document, with the raw measurement reports
+  exempt because their own README says their `command` and `ledger_path` fields are the paths the
+  harness ran with, unedited.
+
 - **Two more guards in the file whose subject is documents matching the repository.** One fails on a
   row of a *graded* table that carries no grade — `docs/evidence.md`'s claim ledger and the incident
   corpus's incident table, found by their own header rows — because a claim that loses its grade
@@ -481,6 +491,14 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   size the page has. It caught one row on its first run: a book, named with neither a link nor a year.
 
 ### Fixed
+
+- **A documented-flag class of defect that had never been checked, and a re-base that was typed rather
+  than measured.** Three of the last four dependency-matrix rounds were quoted in this page with a
+  number worked out by hand from the previous round's, and all three were wrong — by one, by two, by
+  two — which is the same failure the matrix section already records for `paste | bc`, one level up.
+  The sections now say so, and the growth plan's two moving numbers are written by
+  `mutation/rebase_plan_numbers.py` (workspace, not shipped), which reads them from the measurement,
+  refuses a missing label instead of reading it as zero, and re-reads the file before reporting.
 
 - **`docs/incident-corpus.md` opened by giving the failure mode a name it does not have.** "Docket's
   whole reason to exist is a failure mode with a name: **Denial of Wallet**" — the name is
