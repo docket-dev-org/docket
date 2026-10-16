@@ -75,13 +75,13 @@ the same reason, and the verbosity trap that makes the difference is recorded un
 
 | installed | result | the skips |
 | --- | --- | --- |
-| `pytest` alone (`make test`) | 986 passed, 47 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below); the Ed25519 sealing and signing tests (need `cryptography`) |
-| `pip install pytest cryptography` | 991 passed, 42 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below) |
-| `pip install pytest pyyaml` | 1,028 passed, 5 skipped | the Ed25519 sealing and signing tests (need `cryptography`) |
-| `pip install -e '.[dev,sign]'` (**the documented dev setup**) | 1,033 passed, nothing skipped | none |
+| `pytest` alone (`make test`) | 1,030 passed, 47 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below); the Ed25519 sealing and signing tests (need `cryptography`) |
+| `pip install pytest cryptography` | 1,035 passed, 42 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below) |
+| `pip install pytest pyyaml` | 1,072 passed, 5 skipped | the Ed25519 sealing and signing tests (need `cryptography`) |
+| `pip install -e '.[dev,sign]'` (**the documented dev setup**) | 1,077 passed, nothing skipped | none |
 
 Each cell is a fresh virtual environment with `pip install pytest` plus the extras its row names, then
-`pytest tests -ra` from the repository root. All four cells **collect the same 1,033 tests**: what
+`pytest tests -ra` from the repository root. All four cells **collect the same 1,077 tests**: what
 differs between them is whether a test runs or skips, which is what the last column is for. `-ra` is
 what makes that column checkable — every skip is a sentence with its reason, and a cell that skipped
 something without saying why would be indistinguishable from a cell that never had the test.
@@ -109,21 +109,23 @@ when PyYAML is absent — "could not run", a different code from the 1 that mean
 and `tests/test_deploy_check.py` includes the test that pins exactly that, on a machine that *has*
 PyYAML, by shadowing the import rather than uninstalling anything.
 
-**The round tabulated above ran at 2026-10-16T15:32Z, and it is the eighth measured on this tree.** The
-rounds before it are filed rather than overwritten — in the `mutation/` directory of the workspace
-that produced these documents, which is not part of this repository — because a matrix someone might
-check is evidence and a matrix edited in place is not. Five of them describe this same machine and
-differ only by the tree, one or two tests at a time: `15:15Z` measured **984 / 989 / 1,026 / 1,031**, and
-`14:56Z` **982 / 987 / 1,024 / 1,029**,
-`14:29Z` **981 / 986 / 1,023 / 1,028**, `14:06Z` the same cells with the Helm client off the machine
-(6 and 1 skipped where this round has 5 and none, the difference being the single test that compares
-the two renders), and `11:06Z` the four cells of the tree before both. Before those, `08:21Z` measured
-978 / 983 / 1,019 / 1,024, and `08:05Z`'s `+ PyYAML` cell exited 1 on the wall-clock flake in
+**The round tabulated above ran at 2026-10-16T17:00Z, and it is the ninth measured on this tree.**
+The rounds before it are filed rather than overwritten — in the `mutation/` directory of the
+workspace that produced these documents, which is not part of this repository — because a matrix
+someone might check is evidence and a matrix edited in place is not. Six of them describe this
+same machine and differ only by the tree, one or two tests at a time. The newest, `17:00Z`,
+measured **1,030 / 1,035 / 1,072 / 1,077** with 47 / 42 / 5 / 0 skipped, and the round before it,
+`15:15Z` measured **984 / 989 / 1,026 / 1,031**, and `14:56Z` **982 / 987 / 1,024 / 1,029**,
+`14:29Z` **981 / 986 / 1,023 / 1,028**, `14:06Z` the same cells with the Helm client off the
+machine (6 and 1 skipped where this round has 5 and none, the difference being the single test
+that compares the two renders), and `11:06Z` the four cells of the tree before both. Before those,
+`08:21Z` measured 978 / 983 / 1,019 / 1,024, and `08:05Z`'s `+ PyYAML` cell exited 1 on the
+wall-clock flake in
 `tests/test_snapshot_restore.py` that is recorded under *Found by testing*. A skip count is only
 evidence when the environment that produced it is stated, which is why each round is named and what
 its machine had is written beside it.
 
-Three of these eight rounds were quoted with a *derived* number before they ran, and all three times
+Three of these nine rounds were quoted with a *derived* number before they ran, and all three times
 the derivation was wrong — by one, by two, and by two again: a re-base by hand is a prediction, and the
 cells are the measurement. That is the same lesson the table itself records about `paste | bc` — the sum is a
 command now, or it is a guess.
