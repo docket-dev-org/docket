@@ -677,18 +677,6 @@ def test_the_summary_line_says_nothing_about_names_when_there_are_none(checker, 
     assert checker.named_by({"names_by_source": {"text": 2}}) == "; all 2 name(s) came from the element's own text"
 
 
-def test_a_failed_site_build_is_exit_2_not_a_check_of_the_previous_build(checker, tmp_path: Path, monkeypatch) -> None:
-    """`--build` runs the site build and refuses to check a stale directory when it fails."""
-
-    class Result:
-        returncode = 1
-
-    monkeypatch.setattr(checker.subprocess, "run", lambda *args, **kwargs: Result())
-    with pytest.raises(SystemExit) as raised:
-        checker.main(["--build", "--site", str(tmp_path / "nowhere")])
-    assert raised.value.code == 2
-
-
 def test_the_default_site_is_the_one_this_repository_builds(checker) -> None:
     """`ROOT` is the repository root, whatever the checkout is called.
 
@@ -701,3 +689,94 @@ def test_the_default_site_is_the_one_this_repository_builds(checker) -> None:
     assert (checker.ROOT / "tools" / "a11y_check.py").is_file()
     assert (checker.ROOT / "mkdocs.yml").is_file(), "ROOT is the repository root"
     assert checker.DEFAULT_SITE == checker.ROOT / "site"
+
+
+def test_the_tally_accumulates_for_repeated_sources(checker, tmp_path: Path) -> None:
+    """Two controls named by the same kind of source count as two, not one.
+
+    A tally that only ever records the first element of each kind reads as correct on every page with
+    one of each — which is every fixture until this one. The mutant it kills is `parts[0][0]` becoming
+    `parts[0][1]` in the *lookup* half of the counter: the write key stays right, the read key becomes
+    the second character of the source name, and the count stops accumulating.
+    """
+    page = (
+        '<!DOCTYPE html><html lang="en"><head><title>t</title></head><body><main><h1>a</h1>'
+        '<input type="text" aria-label="First"><input type="text" aria-label="Second">'
+        "</main></body></html>"
+    )
+    root = site(tmp_path, {"index.html": page})
+    _, _, report = checker.check_site(root)
+    assert report["names_by_source"] == {"control from aria-label": 2}
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (
+            "<main><h1>a</h1></main>\n<main><p>b</p></main>",
+            [("main-landmark", 2, "the page has 2 main landmarks, not 1")],
+        ),
+        ("<h1>a</h1>", [("main-landmark", 1, "the page has 0 main landmarks, not 1")]),
+        (
+            "<h1>a</h1>\n<h1>b</h1>",
+            [
+                ("main-landmark", 1, "the page has 0 main landmarks, not 1"),
+                ("h1", 2, "the page has 2 h1 heading(s) (at line 2)"),
+            ],
+        ),
+        (
+            "<main><h2>b</h2>\n<h1>a</h1></main>",
+            [("h1", 2, "the first heading is <h2> at line 2, not the h1")],
+        ),
+    ],
+)
+def test_the_heading_and_landmark_details_name_the_line_they_mean(
+    checker, tmp_path: Path, body: str, expected: list[tuple[str, int, str]]
+) -> None:
+    """The detail text is the report a person reads, so it has to point at the right element.
+
+    Four pages, each leaving two candidates for one number: two `<main>`s, two `<h1>`s, none, and a
+    page whose first heading is not its `h1`. The elements that could be confused sit on *different*
+    lines in every case, and the detail's own wording is asserted — the mutant that reads the second of
+    the two would report line 3 where the defect is on line 2, and a test that asserted only the rule
+    name and *a* line number would not have noticed.
+    """
+    page = f'<!DOCTYPE html><html lang="en"><head><title>t</title></head><body>\n{body}\n</body></html>'
+    root = site(tmp_path, {"index.html": page})
+    found, _, _ = checker.check_site(root)
+    assert [(violation.rule, violation.line, violation.detail) for violation in found] == expected
+
+
+def test_an_end_tag_closes_the_outermost_element_it_names(checker) -> None:
+    """The parser's stack search stops above the sentinel, and that is what makes the tree right.
+
+    Without the floor, an end tag for the outermost non-root element is ignored, and everything after
+    it is nested inside that element: the document still parses, every rule still runs, and the tree
+    the rules see is wrong — which is why the fix is a test of the tree, not of a verdict.
+    """
+    tree = tree_of(checker, "<main><h1>a</h1></main><p>after</p>")
+    paragraph = next(node for node in tree.root.descendants() if node.tag == "p")
+    assert tree.parents[id(paragraph)] is tree.root, "<p> is a sibling of <main>, not a child of it"
+
+
+def test_a_failed_build_is_refused_and_a_successful_one_is_not(checker, tmp_path: Path, monkeypatch) -> None:
+    """`--build` exits 2 when the build fails, and checks the site when it succeeds.
+
+    Both halves matter: a mutant that compares the exit code to 1 (`!= 1`) passes the failure test if
+    the site is missing, because the missing site exits 2 for its own reason — so the failure half
+    points at a site that *does* exist. The success half kills a mutant that inverts the comparison,
+    which would refuse to check a site it had just built.
+    """
+
+    class Result:
+        def __init__(self, returncode: int) -> None:
+            self.returncode = returncode
+
+    root = site(tmp_path, {"index.html": GOOD})
+    monkeypatch.setattr(checker.subprocess, "run", lambda *args, **kwargs: Result(1))
+    with pytest.raises(SystemExit) as failed:
+        checker.main(["--build", "--site", str(root)])
+    assert failed.value.code == 2
+
+    monkeypatch.setattr(checker.subprocess, "run", lambda *args, **kwargs: Result(0))
+    assert checker.main(["--build", "--site", str(root)]) == 0

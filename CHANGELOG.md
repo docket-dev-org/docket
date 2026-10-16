@@ -509,6 +509,17 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Fixed
 
+- **The accessibility checker read a form control's own content as its name, and a wrapping `<label>`'s
+  whole text as a label.** The checker was swept by the mutation harness (136 candidates, 134 killed,
+  98.5% — the score and both survivors are in `docs/testing.md`), and reading the survivors found three
+  defects in the tool. A form control is not named by its content — WAI-ARIA gives `textbox`, `combobox`
+  and `checkbox` the *author* as their name source — so a `<label><textarea>draft</textarea></label>` was
+  named `draft`, a value used as a name. A wrapping `<label>` with no text of its own fell back to the
+  whole wrapper, which names a control after its own value; it now contributes only the text outside the
+  control. And the document title was read twice by two handlers keeping a flag in step, with both
+  branches unreachable — the title is read from the finished tree, because an unkillable branch is
+  deleted rather than explained.
+
 - **The accessibility checker read the `title` attribute before the element's own text.** No verdict
   changed — a tooltip is a name, so a link named by one passed either way — but the precedence was
   wrong, and the count it fed was wrong with it: the first tally called 442 links by their tooltip

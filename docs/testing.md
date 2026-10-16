@@ -12,7 +12,7 @@ and can be told to fail on cue.
 ## The suite
 
 ```console
-$ make test          # 1079 tests, no network (2-4 min on a 2-vCPU box)
+$ make test          # 1105 tests, no network (2-4 min on a 2-vCPU box)
 $ make check         # + ruff, + bandit, + the independent Node verifier
 ```
 
@@ -54,7 +54,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | `test_mutate.py` | 40 | the mutation harness itself: the splice is a byte-for-byte no-op, every mutant changes exactly one line and compiles, a site on a line with non-ASCII text splices by character not by byte (the regression that hid 82 of `verify.py`'s 177 sites), a site at byte zero is a candidate rather than a drop, every operator is exercised and labelled, the docstring rule answers `is True`/`is False` when it is asked directly, the verdict maps pytest's exit code to survived/killed/killed-import/timeout, timeouts stay out of the score, `--only-line` runs every mutant on a line and refuses a line with none, a dropped site is counted rather than lost, a sandbox that cannot be deleted does not replace the report or any of the three refusals beside it, and the CLI writes both reports, re-runs into a directory it already made, and decides its exit code against `--min-score` inclusively |
 | `test_helm_fidelity.py` | 17 | the comparison between the checker's chart render and a real Helm render: pairing by kind and name, the block scalar's final newline, the path of the first difference, exit 2 when Helm is absent, and — where Helm is installed — the end-to-end comparison |
 | `test_doc_links.py` | 22 | every `docs/…md` reference in the tree resolves, every page is in the nav, the scanner itself can fail, a staged site copy is not read as a second copy of the documentation, this table's own counts are reconciled against the suite, the counts written beside a test filename in the other pages are reconciled too, the size the README quotes for the whole suite is reconciled, every pytest command the Makefile and the CI jobs ship prints its counts and its skips, no document states a position inside a source list that does not publish one, every row of a graded table carries its grade, every `make` target the workflows and the help text name exists, every flag `docs/cli.md` documents is an option of the command it is filed under, and no document outside the raw measurements carries a path from the machine that wrote it, every source line cited in prose (`verify.py:186`) exists and carries a site the mutation harness would mutate, and the coverage maps have a row for every concept and practice they claim |
-| `test_a11y_check.py` | 45 | the site checker against pages built to break each rule it applies, and against pages built to be clean: every rule proves it can fail, every way a link or a control can be named proves it does not cry wolf, and the name precedence is asserted from the report rather than from the verdict — a page where a tooltip names a link that also has text passes either way, and only the report says which source the reader would hear |
+| `test_a11y_check.py` | 71 | the site checker against pages built to break each rule it applies, and against pages built to be clean: every rule proves it can fail, every way a link or a control can be named proves it does not cry wolf, and eighteen of them were written to kill survivors of the checker's own mutation sweep (98.5%, `mut-a11y-release.json`) — the ones that assert what the verdict cannot show: a name, its source, a line number, the tree the parser built |
 | `test_fuzz_regressions.py` | 98 | one test per defect a fuzzer found (see below) |
 
 Counts are collected (`pytest --collect-only`), not remembered — and "they are checked" is now a
@@ -176,7 +176,7 @@ kept beside the green one.
 | security | `test_security.py` (red team) + `bandit` in CI + the URL-guard walk + `tests/test_supply_chain.py` (the manifest and the imports agreeing) + `pip-audit` over the development toolchain on a schedule (`.github/workflows/security.yml`): *no known vulnerabilities* as of 2026-10-15 |
 | penetration | the red team's forgery cases: a doctored receipt, a doctored ledger, a doctored manifest, a path traversal, a setuid mode, a swapped blob |
 | usability | the transcripts are the usability test; a change that makes the output harder to read shows up in the golden files |
-| accessibility | two artefacts. The terminal output is plain UTF-8 box drawing with a `NO_COLOR` path, and the machine-readable form (`--json`, the markdown report) carries the same content, so nothing is *only* conveyed by colour. And the **built documentation site** — the only HTML this project publishes — is checked by `tools/a11y_check.py` against ten mechanical rules (language, title, one `h1`, no skipped heading level, a single `main` landmark, `alt` present on every image, an accessible name on every link and every rendered form control, a header cell or caption on every table, no duplicate `id`): `tests/test_a11y_check.py` (45) makes every rule prove it can fail and every path by which a link or a control can be named prove it does not cry wolf. The name precedence is the accessible-name computation of AccName 1.2 §4.3.2 — `aria-labelledby`, then `aria-label`, then a control's `<label>`, then the element's content, then the `title` attribute, which the specification marks as a last resort — and each run prints where the names it accepted came from, with the split in the JSON report (`names_by_source`), so the number a text-only rule would have got wrong is a line in the record rather than a claim beside it |
+| accessibility | two artefacts. The terminal output is plain UTF-8 box drawing with a `NO_COLOR` path, and the machine-readable form (`--json`, the markdown report) carries the same content, so nothing is *only* conveyed by colour. And the **built documentation site** — the only HTML this project publishes — is checked by `tools/a11y_check.py` against ten mechanical rules (language, title, one `h1`, no skipped heading level, a single `main` landmark, `alt` present on every image, an accessible name on every link and every rendered form control, a header cell or caption on every table, no duplicate `id`): `tests/test_a11y_check.py` makes every rule prove it can fail and every path by which a link or a control can be named prove it does not cry wolf. The name precedence is the accessible-name computation of AccName 1.2 §4.3.2 — `aria-labelledby`, then `aria-label`, then a control's `<label>`, then the element's content, then the `title` attribute, which the specification marks as a last resort — and each run prints where the names it accepted came from, with the split in the JSON report (`names_by_source`), so the number a text-only rule would have got wrong is a line in the record rather than a claim beside it |
 | compatibility | CI matrix: Python 3.11, 3.12, 3.13; Node 20 for the independent verifier |
 | reliability | `chaos.py` + the nine game-day phases; a broken ledger tails off, a full one is declared |
 | the practices rather than the kinds | [`docs/sre-coverage.md`](sre-coverage.md): 22 resilience practices — stress, fuzzing, chaos monkey, game days, red teaming, synthetic monitoring, FMEA, rejuvenation, post-mortems (postmortems) — with the status of each |
@@ -426,9 +426,11 @@ repair path's sidecar naming, or the chain verdict's own silence.
 
 ### The release round
 
-One pass, one commit, one harness: the nine mutated modules re-measured together after the
-subsets and the source stopped moving, so that the numbers below are comparable with each
-other and every one of them names the tree it was taken on. The parameters are the ones the
+One pass, one commit, one harness: the nine mutated modules of the release round, re-measured
+together after the subsets and the source stopped moving, so that the numbers below are
+comparable with each other and every one of them names the tree it was taken on. The tenth row
+was added the same day, when `tools/a11y_check.py` — the release record's own accessibility
+check — was given a subset and swept too; the section *The tenth report* below is that sweep. The parameters are the ones the
 earlier rounds used where they are stated (`--min-score 0`, `--seed 0`), and the `control`
 column is new: it is the unmutated sandbox's own summary line, before any mutant ran, in
 pytest's words. An outcome that did not happen is not written (pytest names only what
@@ -453,6 +455,7 @@ the environment a score was taken in is a field rather than a paragraph.
 | `src/docket/resilience.py` | 166 | 166 | 163 | 3 | 0 | **98.2%** | 250 s | 0 | 110 passed |
 | `tools/helm_fidelity.py` | 47 | 47 | 45 | 2 | 0 | **95.7%** | 49 s | 0 | 17 passed |
 | `src/docket/latency.py` | 21 | 21 | 21 | 0 | 0 | **100%** | 15 s | 0 | 117 passed |
+| `tools/a11y_check.py` | 136 | 136 | 134 | 2 | 0 | **98.5%** | 89 s | 0 | 71 passed |
 
 Every report carries its module's mutable sites, its subset, the control run's counts and the
 verdict for every mutant it ran; `provenance.py` re-lists each file's sites and compares them
@@ -535,6 +538,9 @@ why; an equivalent mutant is not a defect and no test pretends otherwise.
 | `helm_fidelity.py:53` | `if spec is None or spec.loader is None` → `and` | **unreachable, and marked as such.** The guard carries `# pragma: no cover`; `spec` is `None` only when `spec_from_file_location` fails, and for a file that exists the loader it returns is never `None`. Reaching the branch needs an interpreter whose import machinery returns a loaderless spec. |
 | `helm_fidelity.py:105` | `zip(left, right, strict=True)` → `strict=False` | **equivalent.** The line above returns a length mismatch before the `zip` is built, so the two lists are always the same length by then and `strict` can never fire. A belt kept on after the braces. |
 | `ledger.py:680` | `except (ValueError, OverflowError)` → the two mutants of its `return False` | **unreachable on this kernel.** `os.kill` reports a pid no kernel would hand out as `ESRCH`, which is an `OSError` and is handled (and killed) by the branch above; this guard is for the platforms that raise `OverflowError` instead. |
+| `a11y_check.py:285` | `return []` → `return None`, the fallback of `_native_text_alternative` | **equivalent.** Its only caller is `if native:` — `None` and `[]` are both falsy and the caller never iterates the result, so no page can distinguish them. Deleting the fallback would not help: an early `return None` on every path is the same mutant wearing a different line number |
+| `a11y_check.py:128` | the parser's sentinel node `Node("root", {}, 1)` → line `0` | **equivalent.** The sentinel is not an element any rule reports — every rule walks `root.descendants()`, which starts at the children — so its own line number is read by nothing. It is a marker for the stack's floor, and `Node.line` is a field the sentinel has to fill |
+
 [^prefile]: Measured before the `_span` byte-offset fix in `tools/mutate.py` (see *Mutation
     testing*): the candidate count for `verify.py` and `ledger.py` here is lower than the number
     of mutable sites those files actually hold (95 of 177, and 171 of 172), so these scores
@@ -543,6 +549,38 @@ why; an equivalent mutant is not a defect and no test pretends otherwise.
 [^timeouts]: All four mutants in this family failed to terminate within the 45 s per-mutant
     timeout. The score is over the 59 mutants that produced a verdict (63 candidates minus the
     four timeouts); a timeout is reported beside the score, never folded into it.
+
+### The tenth report: the checker's own sweep
+
+`tools/a11y_check.py` reads the published site and is the release record's sixteenth check, so it was
+swept on 2026-10-16 like the machine it runs in: **136 candidates, 134 killed, 98.5%**, no timeouts, a
+subset of its own tests, a control run of `71 passed`. Its first sweep scored **67.1%**, and reading the
+47 survivors was worth more than the number: they were nearly all *tests that could not see what they
+asserted*.
+
+| the sweep found | what was wrong |
+| --- | --- |
+| no fixture used a self-closing tag | `<img … />` goes through a different parser handler than `<img …>`, and both handlers' mutants lived: a self-closing image kept its attributes (or lost them) with nothing to notice |
+| nothing asserted a *line* on a page with no landmarks | `mains[0].line if mains else 1` and its two siblings could return the second element's line, or `0`, and every test still passed |
+| the name precedence was read from the verdict | a link with text and a tooltip passes whether it is named by the text or by the tooltip, so three mutants in the tally and the precedence lived for a whole round |
+| one fixture had one control per name source | the counter's *lookup* key could become the second character of the source name and the tally would still be right on every page in the file |
+| the parser's end-tag search floor | dropping the floor from `range(len(self._open) - 1, 0, -1)` left an outermost element open and nested everything after it inside — the rules still ran, on the wrong tree |
+| `--build` was tested with a site that did not exist | a mutant comparing the build's exit code to `1` exits 2 for the *missing site's* reason, so the test passed for the wrong cause; and nothing ran a *successful* build to kill the inverted comparison |
+
+Three findings were defects in the tool rather than holes in its tests, and all three were deleted-wrong
+code rather than missing checks. The document title was captured by a `_capturing_title` flag whose two
+branches the sweep proved unreachable — `handle_data` keeps only the first captured text, and a page's
+`<title>` always precedes its other text — so the title is read from the finished tree now. A form control
+was named by its own content, which WAI-ARIA forbids (a control's name sources are the author's): a
+wrapped `<textarea>` was being named by the text inside it. And a wrapping `<label>` fell back to the whole
+wrapper's text when it had none of its own, which names a control after its own value.
+
+The harness found the fourth defect itself, in a test written minutes earlier: the new
+`test_the_default_site_is_the_one_this_repository_builds` asserted `ROOT.name == "docket"` — true of this
+workspace, false of every clone made into a differently-named directory. The sweep refused to run:
+*sandbox does not pass the suite before any mutation (1 failed, 64 passed)*. A harness that scores mutants
+against a baseline that does not pass is measuring nothing, so the refusal is the feature, and the test now
+asserts where it is in the tree instead of what the tree is called.
 
 ### What the round changed
 
