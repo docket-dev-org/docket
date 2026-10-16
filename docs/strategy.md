@@ -12,27 +12,28 @@ rare the star figure is:
 
 | quantity | value | source |
 | --- | --- | --- |
-| repositories with more than **100,000** stars | **132** | GitHub search API, counted 2026-10-13 |
-| repositories with more than 150,000 stars | 62 | same |
-| repositories with more than 200,000 stars | 30 | same |
+| repositories with more than **100,000** stars | **132** | GitHub search API, counted 2026-10-16T19:59Z |
+| repositories with more than 150,000 stars | 62 | same search, same minute |
+| repositories with more than 200,000 stars | 30 | same search, same minute |
 
 Against a platform holding hundreds of millions of public repositories, 100k stars is a
 top-0.0001% property, and reaching it *in twelve months* is rarer still. For calibration, from a
-sweep of comparable projects (stars and age collected via the GitHub API on 2026-10-13; the full
-sweep is `research/gh_sweep.json` in the project's research log):
+sweep of comparable projects (stars and age collected via the GitHub API on 2026-10-16T19:59Z;
+the sweep itself ships with this repository, one row per project, so every number below can be read
+back from `docs/measurements/2026-10-16-github-sweep/gh_sweep-2026-10-16T1959Z.json`):
 
 | project | stars | age at measurement | stars/month (lifetime average) |
 | --- | --- | --- | --- |
-| gemini-cli | 107,314 | 17.8 months | ~6,000 |
-| browser-use | 117,862 | 23 months | ~5,000 |
-| ollama | 183,029 | 39 months | ~4,600 |
-| AutoGPT | 187,560 | 43 months | ~4,400 |
-| dify | 158,375 | 42 months | ~3,800 |
-| langchain | 147,769 | 48 months | ~3,100 |
-| OpenHands | 90,808 | 31 months | ~2,900 |
-| litellm | 61,159 | 39 months | ~1,600 |
-| langfuse | 35,771 | 41 months | ~875 |
-| Claude-Code-Usage-Monitor | 8,742 | 16 months | ~554 |
+| gemini-cli | 107,412 | 18.0 months | ~6,000 |
+| browser-use | 118,199 | 23.5 months | ~5,000 |
+| ollama | 183,486 | 39.7 months | ~4,600 |
+| AutoGPT | 187,613 | 43.0 months | ~4,400 |
+| dify | 158,661 | 42.2 months | ~3,800 |
+| langchain | 147,938 | 48.0 months | ~3,100 |
+| OpenHands | 91,072 | 31.1 months | ~2,900 |
+| litellm | 61,393 | 38.7 months | ~1,600 |
+| langfuse | 35,933 | 41.0 months | ~875 |
+| Claude-Code-Usage-Monitor | 8,745 | 15.9 months | ~550 |
 
 **100,000 stars in 12 months requires roughly 8,300 stars/month**, which is higher than *every*
 lifetime average in the verified sample above — including projects with a foundation-model lab
@@ -50,8 +51,8 @@ count.
 
 | segment | size signal | why Docket is relevant to them |
 | --- | --- | --- |
-| developers running coding agents on their own machines | the single-agent usage monitor `Claude-Code-Usage-Monitor` has **8,742 stars** — i.e. thousands of developers already install tooling just to watch their agent's usage | caps and a receipt; the local, no-account promise fits exactly this habit |
-| teams running agents in CI or production | LiteLLM (61,159) and Langfuse (35,771) show the size of the governance/observability audience | receipts attach to incidents, clients and audits; the boundary works where gateways cannot |
+| developers running coding agents on their own machines | the single-agent usage monitor `Claude-Code-Usage-Monitor` has **8,745 stars** — i.e. thousands of developers already install tooling just to watch their agent's usage | caps and a receipt; the local, no-account promise fits exactly this habit |
+| teams running agents in CI or production | LiteLLM (61,393) and Langfuse (35,933) show the size of the governance/observability audience | receipts attach to incidents, clients and audits; the boundary works where gateways cannot |
 | regulated/enterprise adopters | every AI-governance buyer in 2026 is being asked for evidence, while the EU AI Act's obligations moved to Dec 2027 (Reg. (EU) 2026/1744) | a format an auditor can verify offline is a cheaper answer than a platform |
 | the "cost shock" audience | OWASP names cost exhaustion in its **LLM** top 10 (*Unbounded Consumption*, LLM10:2025) and carries the neighbouring agentic classes (ASI08 *Cascading Failures*, ASI10 *Rogue Agents*) in its peer-reviewed agentic list; documented incidents reach $6.5k–$50k per event (`docs/incident-corpus.md`) | this is the audience that arrives through stories, which is what a launch needs |
 

@@ -10,6 +10,18 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **The star-count sweep ships with the repository, and a test keeps the page that quotes it honest.**
+  `docs/strategy.md` argues from GitHub star counts — how many repositories hold more than 100,000
+  stars, and how fast ten comparable projects reached theirs. An audit of this project's own claims on
+  2026-10-17 found two of those figures traceable to nothing: one had been read against `dify/dify`,
+  a slug that answers 404 (the project is `langgenius/dify`), and one had come from a search listing
+  nobody saved. Both are re-swept by canonical slug, and the raw response of the query now ships at
+  `docs/measurements/2026-10-16-github-sweep/gh_sweep-2026-10-16T1959Z.json` — one row per project,
+  each carrying the slug asked for, the API path called and the URL that answers it, plus three
+  `total_count` search rows. `tests/test_strategy_numbers.py` reads the page and the sweep together
+  and refuses a page whose star counts, ages, rates, thresholds or inline figures stopped matching
+  the evidence beside it; it cannot re-ask GitHub (that is the sweep's job, and re-running it means
+  re-basing the page), but it can refuse the drift that actually happened.
 - **`tools/a11y_check.py`: the built documentation site is checked for the accessibility defects a
   program can decide.** The site is the only HTML this project publishes; `mkdocs --strict` proved it
   built, and nothing looked at whether a reader using a screen reader could use it. Ten rules —
@@ -509,6 +521,11 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Fixed
 
+- **`docs/strategy.md` re-based onto the sweep it names.** Every figure in its comparison table, its
+  three ecosystem-threshold rows and its inline audience sentences is now the value in that file, with
+  ages as months since creation and each rate as the stars over that age. The undated first sweep,
+  `research/gh_sweep.json`, is kept as it was written: it fed the adjacent-audience rows the research
+  log quotes, and an observation archive is not re-based.
 - **The accessibility checker read a form control's own content as its name, and a wrapping `<label>`'s
   whole text as a label.** The checker was swept by the mutation harness (136 candidates, 134 killed,
   98.5% — the score and both survivors are in `docs/testing.md`), and reading the survivors found three
