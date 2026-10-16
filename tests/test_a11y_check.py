@@ -421,3 +421,276 @@ def test_the_code_of_conduct_keeps_one_h1() -> None:
     text = (ROOT / "CODE_OF_CONDUCT.md").read_text(encoding="utf-8")
     assert sum(1 for line in text.splitlines() if line.startswith("# ")) == 1
     assert text.startswith("# Contributor Covenant Code of Conduct\n")
+
+
+# ---------------------------------------------------------------------------------------------------
+# The tests below were written to kill survivors of the mutation sweep over this tool itself
+# (`mutation/mut-a11y-release.json`, 143 candidates, 47 survivors on the first run). Each one asserts
+# something the verdict cannot show — a name, its source, a line number, or the tree the parser built —
+# because those are the places a mutant hides. They are grouped here rather than folded into the tests
+# above so that the reason this file is 61 tests long is legible.
+# ---------------------------------------------------------------------------------------------------
+
+
+def tree_of(checker, html: str):
+    """The parsed page, as `check_page` leaves it: fed and closed."""
+    tree = checker.Tree()
+    tree.feed(html)
+    tree.close()
+    return tree
+
+
+def anchors(tree):
+    return [node for node in tree.root.descendants() if node.tag == "a"]
+
+
+def name_of(checker, html: str, index: int = 0) -> list[tuple[str, str]]:
+    """The `(source, text)` fragments of one link's name, straight from the tool's own functions."""
+    tree = tree_of(checker, html)
+    node = anchors(tree)[index]
+    return checker.name_parts(node, checker.by_id(tree), checker.labels_for(tree), tree.parents)
+
+
+def test_an_entity_in_a_link_s_text_is_decoded_into_its_name(checker) -> None:
+    """`convert_charrefs=True` is the difference between a reader hearing `R&D` and hearing `RD`."""
+    fragments = name_of(checker, '<!DOCTYPE html><main><h1>a</h1><a href="/x">R&amp;D</a></main>')
+    assert " ".join(text for _, text in fragments) == "R&D"
+
+
+def test_a_link_named_by_its_child_s_labelledby_is_named(checker) -> None:
+    """The recursion in step 2.06 resolves `aria-labelledby` on a *descendant*, not only on the link."""
+    html = (
+        "<!DOCTYPE html><main><h1>a</h1>"
+        '<a href="/x"><span aria-labelledby="t"></span></a><span id="t">Named by the child</span></main>'
+    )
+    fragments = name_of(checker, html)
+    assert [source for source, _ in fragments] == ["descendant:aria-labelledby"]
+    assert fragments[0][1] == "Named by the child"
+
+
+def test_a_wrapped_label_that_says_nothing_outside_its_control_names_nothing(checker, tmp_path: Path) -> None:
+    """A wrapping label contributes the text *outside* the control, and only if there is some.
+
+    The difference between a name and a value: `<label><textarea>draft</textarea></label>` says
+    "draft" inside the control, which is the text a reader types over, not what the control is called.
+    """
+    empty = '<label><input type="text"></label>'
+    valued = "<label><textarea>draft</textarea></label>"
+    page = (
+        f'<!DOCTYPE html><html lang="en"><head><title>t</title></head><body><main><h1>a</h1>'
+        f"{empty}{valued}</main></body></html>"
+    )
+    root = site(tmp_path, {"index.html": page})
+    found = [violation.rule for violation in checker.check_site(root)[0]]
+    assert found.count("control-name") == 2
+
+
+def test_a_self_closing_tag_keeps_its_attributes_and_its_line(checker, tmp_path: Path) -> None:
+    """`<img ... />` is parsed by a different handler than `<img ...>`, and the fixtures said nothing.
+
+    Two pages: one whose link is named by a self-closing `alt`, one whose self-closing image has no
+    `alt` at all and must be reported on the line it is on.
+    """
+    named = (
+        '<!DOCTYPE html><html lang="en"><head><title>t</title></head><body><main><h1>a</h1>'
+        '<a href="/x"><img src="l.svg" alt="The logo" /></a></main></body></html>'
+    )
+    missing = (
+        '<!DOCTYPE html><html lang="en"><head><title>t</title></head><body><main><h1>a</h1>\n'
+        '<img src="l.svg" /></main></body></html>'
+    )
+    root = site(tmp_path, {"named.html": named, "missing.html": missing})
+    found, _, report = checker.check_site(root)
+    assert [(violation.rule, violation.page) for violation in found] == [("img-alt", "missing.html")]
+    assert found[0].line == 2, "the line of a self-closing element comes from the parser's position"
+    assert report["names_by_source"].get("descendant:alt") == 1
+
+
+def test_an_unmatched_end_tag_closes_nothing_not_even_the_root_sentinel(checker) -> None:
+    """The parser's stack has a sentinel at its bottom; an end tag must never reach it.
+
+    A stray end tag for an element that is not open is ignored (an unmatched `</span>` in a theme's
+    template is not a reason to corrupt the tree). The sentinel is what stops the search at the top of
+    the document — a loop that included it would empty the stack and every later node would be lost.
+    """
+    tree = tree_of(checker, "<main><h1>a</h1></root><p>after</p></main>")
+    main = next(node for node in tree.root.descendants() if node.tag == "main")
+    assert [child.tag for child in main.children] == ["h1", "p"]
+    assert main.children[1].text_of() == "after"
+
+
+def test_an_svg_s_names_its_parent_from_its_title_element(checker) -> None:
+    """`<svg><title>` is a host-language text alternative (step 2.05), and the report says so."""
+    fragments = name_of(
+        checker, '<!DOCTYPE html><main><h1>a</h1><a href="/x"><svg><title>Icon</title></svg></a></main>'
+    )
+    assert [source for source, _ in fragments] == ["descendant:svg-title"]
+    assert fragments[0][1] == "Icon"
+
+
+def test_an_empty_svg_title_does_not_wipe_out_a_link_s_text(checker) -> None:
+    """A `<title>` with nothing in it is not a text alternative; the link is named by its `Home`.
+
+    An empty fragment must not win the precedence: if it did, the link would be reported as unnamed
+    while a reader hears `Home` — the false positive this whole file exists to prevent.
+    """
+    fragments = name_of(
+        checker,
+        '<!DOCTYPE html><main><h1>a</h1><a href="/x"><svg><title></title></svg>Home</a></main>',
+    )
+    assert " ".join(text for _, text in fragments) == "Home"
+    assert {source for source, _ in fragments} == {"text"}
+
+
+def test_by_id_keeps_the_first_node_and_ignores_elements_without_an_id(checker) -> None:
+    tree = tree_of(checker, '<main id="m"><h1 id="m">a</h1><p>x</p></main>')
+    found = checker.by_id(tree)
+    assert set(found) == {"m"}
+    assert found["m"].tag == "main", "the first element with an id is the one #m resolves to"
+
+
+def test_the_css_exemption_reads_the_subject_of_the_selector_not_its_ancestor(checker, tmp_path: Path) -> None:
+    """`display: none` exempts the *subject* of the rule, which is the last compound of the selector."""
+    css = ".md-nav .md-toggle{display:none}"
+    page = (
+        '<!DOCTYPE html><html lang="en"><head><title>t</title></head><body><main><h1>a</h1>'
+        '<div class="md-nav"><input class="md-toggle" type="checkbox" id="drawer"></div>'
+        '<div class="md-nav"><input class="md-nav" type="checkbox" id="unexempt">'
+        "</div></main></body></html>"
+    )
+    root = site(tmp_path, {"index.html": page}, css=css)
+    found, _, report = checker.check_site(root)
+    assert [(violation.rule, "unexempt" in violation.detail) for violation in found] == [
+        ("control-name", True)
+    ], "the control whose own class the rule does not name is still reported"
+    assert report["classes_that_exempted_a_control"] == ["md-toggle"]
+
+
+def test_a_control_whose_label_contains_style_is_still_named(checker, tmp_path: Path) -> None:
+    """A `<style>` inside a label contributes no text (step 2.06 skips it), and breaks nothing."""
+    page = (
+        '<!DOCTYPE html><html lang="en"><head><title>t</title></head><body><main><h1>a</h1>'
+        '<label for="q">Search <style>.x{}</style>field</label>'
+        '<input type="text" id="q"></main></body></html>'
+    )
+    root = site(tmp_path, {"index.html": page})
+    found, _, _ = checker.check_site(root)
+    assert found == []
+
+
+def test_a_whitespace_only_lang_is_reported(checker, tmp_path: Path) -> None:
+    page = '<!DOCTYPE html><html lang=" "><head><title>t</title></head><body><main><h1>a</h1></main></body></html>'
+    root = site(tmp_path, {"index.html": page})
+    assert "lang" in violations_of(checker, root)
+
+
+def test_an_anchor_without_an_href_is_not_a_link(checker, tmp_path: Path) -> None:
+    """HTML gives an `<a>` the link role only with an `href`: without one it is a placeholder."""
+    page = (
+        '<!DOCTYPE html><html lang="en"><head><title>t</title></head><body><main><h1>a</h1>'
+        '<a id="top"></a><a name="legacy"></a></main></body></html>'
+    )
+    root = site(tmp_path, {"index.html": page})
+    assert violations_of(checker, root) == []
+
+
+def test_the_line_numbers_a_page_with_no_landmarks_reports_are_its_first_line(checker, tmp_path: Path) -> None:
+    """With nothing to point at, the report points at line 1 — never at line 0, which no file has."""
+    page = '<!DOCTYPE html><html lang="en"><head><title>t</title></head><body><p>no main, no heading</p></body></html>'
+    root = site(tmp_path, {"index.html": page})
+    found, _, _ = checker.check_site(root)
+    assert [(violation.rule, violation.line) for violation in found] == [
+        ("main-landmark", 1),
+        ("h1", 1),
+    ]
+
+
+def test_the_h1_rule_points_at_the_first_heading_it_can_name(checker, tmp_path: Path) -> None:
+    """An `h2` before the `h1` is reported on the line of that `h2`, not on the line of the next one."""
+    page = (
+        '<!DOCTYPE html><html lang="en"><head><title>t</title></head><body><main>\n'
+        "<h2>second</h2>\n"
+        "<h1>first</h1>\n"
+        "</main></body></html>"
+    )
+    root = site(tmp_path, {"index.html": page})
+    found, _, _ = checker.check_site(root)
+    assert [(violation.rule, violation.line) for violation in found] == [("h1", 2)]
+
+
+def test_the_tally_counts_each_element_once_and_in_the_order_the_report_prints_them(checker, tmp_path: Path) -> None:
+    """Two links named by text and one by a tooltip: counts are counts, and the biggest comes first."""
+    page = (
+        '<!DOCTYPE html><html lang="en"><head><title>t</title></head><body><main><h1>a</h1>'
+        '<a href="/one">one</a><a href="/two">two</a><a href="/three" title="tooltip"></a>'
+        '<input type="text" aria-label="Find">'
+        "</main></body></html>"
+    )
+    root = site(tmp_path, {"index.html": page})
+    _, _, report = checker.check_site(root)
+    tally = report["names_by_source"]
+    assert tally == {"text": 2, "title": 1, "control from aria-label": 1}
+    assert list(tally) == [
+        "text",
+        "control from aria-label",
+        "title",
+    ], "ties are broken by name, the largest count first"
+
+
+def test_an_unnamed_control_is_described_as_a_control(checker, tmp_path: Path) -> None:
+    """The detail names the element where it can and says `control` where it cannot."""
+    page = (
+        '<!DOCTYPE html><html lang="en"><head><title>t</title></head><body><main><h1>a</h1>'
+        '<input type="checkbox" name="nothing"></main></body></html>'
+    )
+    root = site(tmp_path, {"index.html": page})
+    found, _, _ = checker.check_site(root)
+    assert [violation.detail for violation in found] == [
+        "<input type='checkbox' name='nothing'> has no accessible name"
+    ]
+    assert "control" in checker._describe(checker.Node("input", {}, 1))
+
+
+def test_the_summary_line_says_where_the_names_came_from(checker, tmp_path: Path, capsys) -> None:
+    """The clause is part of the console output, and it is exact: a mutant that returns `None` shows."""
+    page = (
+        '<!DOCTYPE html><html lang="en"><head><title>t</title></head><body><main><h1>a</h1>'
+        '<a href="/x">text</a><a href="/y" aria-label="label"></a></main></body></html>'
+    )
+    root = site(tmp_path, {"index.html": page})
+    assert checker.main(["--site", str(root)]) == 0
+    printed = capsys.readouterr().out.strip().splitlines()[-1]
+    assert printed == (
+        "1 page(s) checked: no violation of the 10 rules; nothing was exempted; "
+        "1 name(s) from text and 1 from elsewhere (aria-label 1)"
+    )
+
+
+def test_the_summary_line_says_nothing_about_names_when_there_are_none(checker, tmp_path: Path, capsys) -> None:
+    """A page with no links and no controls prints no clause — and certainly not `None`."""
+    page = '<!DOCTYPE html><html lang="en"><head><title>t</title></head><body><main><h1>a</h1></main></body></html>'
+    root = site(tmp_path, {"index.html": page})
+    assert checker.main(["--site", str(root)]) == 0
+    printed = capsys.readouterr().out.strip().splitlines()[-1]
+    assert printed == "1 page(s) checked: no violation of the 10 rules; nothing was exempted"
+    assert checker.named_by({}) == ""
+    assert checker.named_by({"names_by_source": {"text": 2}}) == "; all 2 name(s) came from the element's own text"
+
+
+def test_a_failed_site_build_is_exit_2_not_a_check_of_the_previous_build(checker, tmp_path: Path, monkeypatch) -> None:
+    """`--build` runs the site build and refuses to check a stale directory when it fails."""
+
+    class Result:
+        returncode = 1
+
+    monkeypatch.setattr(checker.subprocess, "run", lambda *args, **kwargs: Result())
+    with pytest.raises(SystemExit) as raised:
+        checker.main(["--build", "--site", str(tmp_path / "nowhere")])
+    assert raised.value.code == 2
+
+
+def test_the_default_site_is_the_one_this_repository_builds(checker) -> None:
+    """`ROOT` is the repository root: the tool's default site is the `site/` beside `tools/`."""
+    assert checker.ROOT.name == "docket"
+    assert (checker.ROOT / "tools" / "a11y_check.py").is_file()
+    assert checker.DEFAULT_SITE == checker.ROOT / "site"

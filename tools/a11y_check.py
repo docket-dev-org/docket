@@ -129,7 +129,6 @@ class Tree(HTMLParser):
         self._open = [self.root]
         self.title: str | None = None
         self.lang: str | None = None
-        self._capturing_title = False
         self.parents: dict[int, Node] = {}
 
     def _attach(self, node: Node) -> None:
@@ -142,17 +141,29 @@ class Tree(HTMLParser):
         self._attach(node)
         if tag == "html":
             self.lang = node.attrs.get("lang", "")
-        if tag == "title":
-            self._capturing_title = True
         if tag not in VOID:
             self._open.append(node)
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self._attach(Node(tag, {key: (value or "") for key, value in attrs}, self.getpos()[0]))
 
+    def close(self) -> None:
+        """Finish parsing, then read the document title from the tree that was built.
+
+        A `_capturing_title` flag was the first implementation, and the mutation sweep of 2026-10-16
+        showed it could not be killed: both of its branches are unreachable, because `handle_data`
+        keeps only the *first* captured text and a page's `<title>` always precedes any other text. An
+        unkillable branch is a branch to delete, not to explain — so the title is a property of the
+        finished tree now, and a page whose text precedes its `<title>` (impossible in HTML, cheap to
+        survive) needs no flag to get it right.
+        """
+        super().close()
+        for node in self.root.descendants():
+            if node.tag == "title" and node.text_of().strip():
+                self.title = node.text_of().strip()
+                return
+
     def handle_endtag(self, tag: str) -> None:
-        if tag == "title":
-            self._capturing_title = False
         if tag in VOID:
             return
         for index in range(len(self._open) - 1, 0, -1):
@@ -162,8 +173,6 @@ class Tree(HTMLParser):
         # An end tag with no open element: ignore it rather than corrupting the tree above.
 
     def handle_data(self, data: str) -> None:
-        if self._capturing_title and self.title is None:
-            self.title = data.strip()
         self._open[-1].text += data
 
 
@@ -348,29 +357,32 @@ def name_parts(
             if wrapping is not None:
                 # The wrapper's text already contains the control's own text, so only the wrapper's
                 # text outside this control is used; joining the whole wrapper would double it.
-                outside = "".join(child.text_of() for child in wrapping.children if child is not node).strip()
-                if outside or wrapping.text_of().strip():
-                    return [("wrapper-label", outside or wrapping.text_of().strip())]
+                # Only the text outside the control counts, and only if there is any: a `<label>`
+                # that wraps a control and says nothing else names it as much as an empty `<label>`
+                # does, which is to say not at all. (An earlier version fell back to the whole
+                # wrapper's text, which for a `<textarea>` is its *content* — that is the value a
+                # reader types over, not a name.)
+                outside = "".join(
+                    [wrapping.text, *(child.text_of() for child in wrapping.children if child is not node)]
+                ).strip()
+                if outside:
+                    return [("wrapper-label", outside)]
 
-    content: list[tuple[str, str]] = []
-    if node.text.strip():
-        content.append(("text", node.text.strip()))
-    for child in node.children:
-        content.extend(_name_from_content(child, ids, "descendant:"))
-    if content:
-        return content
+    # Step 2.06 applies when the element's role allows naming from its content, and a form control's
+    # does not: WAI-ARIA gives `textbox`, `combobox` and `checkbox` the *author* as their name source,
+    # which is why `<label><textarea>draft</textarea></label>` says what the control will contain, not
+    # what it is called. Reading it the other way named the textarea `draft` — a value used as a name,
+    # and the one direction of this rule where a wrong answer is invisible to a reader.
+    if node.tag not in CONTROLS:
+        content: list[tuple[str, str]] = []
+        if node.text.strip():
+            content.append(("text", node.text.strip()))
+        for child in node.children:
+            content.extend(_name_from_content(child, ids, "descendant:"))
+        if content:
+            return content
 
     return [fragment for fragment in _own_attributes(node) if fragment[0] == "title"]
-
-
-def accessible_name(
-    node: Node,
-    ids: dict[str, Node],
-    labels: dict[str, Node],
-    parents: dict[int, Node] | None = None,
-) -> str:
-    """The name a screen reader would announce for this element. Empty means it would announce none."""
-    return " ".join(value for _, value in name_parts(node, ids, labels, parents)).strip()
 
 
 def check_page(
