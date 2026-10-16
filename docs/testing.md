@@ -12,7 +12,7 @@ and can be told to fail on cue.
 ## The suite
 
 ```console
-$ make test          # 1077 tests, no network (2-4 min on a 2-vCPU box)
+$ make test          # 1076 tests, no network (2-4 min on a 2-vCPU box)
 $ make check         # + ruff, + bandit, + the independent Node verifier
 ```
 
@@ -54,7 +54,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | `test_mutate.py` | 40 | the mutation harness itself: the splice is a byte-for-byte no-op, every mutant changes exactly one line and compiles, a site on a line with non-ASCII text splices by character not by byte (the regression that hid 82 of `verify.py`'s 177 sites), a site at byte zero is a candidate rather than a drop, every operator is exercised and labelled, the docstring rule answers `is True`/`is False` when it is asked directly, the verdict maps pytest's exit code to survived/killed/killed-import/timeout, timeouts stay out of the score, `--only-line` runs every mutant on a line and refuses a line with none, a dropped site is counted rather than lost, a sandbox that cannot be deleted does not replace the report or any of the three refusals beside it, and the CLI writes both reports, re-runs into a directory it already made, and decides its exit code against `--min-score` inclusively |
 | `test_helm_fidelity.py` | 17 | the comparison between the checker's chart render and a real Helm render: pairing by kind and name, the block scalar's final newline, the path of the first difference, exit 2 when Helm is absent, and — where Helm is installed — the end-to-end comparison |
 | `test_doc_links.py` | 22 | every `docs/…md` reference in the tree resolves, every page is in the nav, the scanner itself can fail, a staged site copy is not read as a second copy of the documentation, this table's own counts are reconciled against the suite, the counts written beside a test filename in the other pages are reconciled too, the size the README quotes for the whole suite is reconciled, every pytest command the Makefile and the CI jobs ship prints its counts and its skips, no document states a position inside a source list that does not publish one, every row of a graded table carries its grade, every `make` target the workflows and the help text name exists, every flag `docs/cli.md` documents is an option of the command it is filed under, and no document outside the raw measurements carries a path from the machine that wrote it, every source line cited in prose (`verify.py:186`) exists and carries a site the mutation harness would mutate, and the coverage maps have a row for every concept and practice they claim |
-| `test_a11y_check.py` | 43 | the site checker against pages built to break each rule it applies, and against pages built to be clean: every rule proves it can fail, and every way a link or a control can be named proves it does not cry wolf |
+| `test_a11y_check.py` | 42 | the site checker against pages built to break each rule it applies, and against pages built to be clean: every rule proves it can fail, and every way a link or a control can be named proves it does not cry wolf |
 | `test_fuzz_regressions.py` | 98 | one test per defect a fuzzer found (see below) |
 
 Counts are collected (`pytest --collect-only`), not remembered — and "they are checked" is now a
@@ -75,13 +75,13 @@ the same reason, and the verbosity trap that makes the difference is recorded un
 
 | installed | result | the skips |
 | --- | --- | --- |
-| `pytest` alone (`make test`) | 1,030 passed, 47 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below); the Ed25519 sealing and signing tests (need `cryptography`) |
-| `pip install pytest cryptography` | 1,035 passed, 42 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below) |
-| `pip install pytest pyyaml` | 1,072 passed, 5 skipped | the Ed25519 sealing and signing tests (need `cryptography`) |
-| `pip install -e '.[dev,sign]'` (**the documented dev setup**) | 1,077 passed, nothing skipped | none |
+| `pytest` alone (`make test`) | 1,029 passed, 47 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below); the Ed25519 sealing and signing tests (need `cryptography`) |
+| `pip install pytest cryptography` | 1,034 passed, 42 skipped | `tools/deploy_check.py`'s checks (need PyYAML); the chart comparison reads the chart's `values.yaml` — PyYAML is what these cells lack. The Helm client itself is installed on the machine that ran this matrix (see below) |
+| `pip install pytest pyyaml` | 1,071 passed, 5 skipped | the Ed25519 sealing and signing tests (need `cryptography`) |
+| `pip install -e '.[dev,sign]'` (**the documented dev setup**) | 1,076 passed, nothing skipped | none |
 
 Each cell is a fresh virtual environment with `pip install pytest` plus the extras its row names, then
-`pytest tests -ra` from the repository root. All four cells **collect the same 1,077 tests**: what
+`pytest tests -ra` from the repository root. All four cells **collect the same 1,076 tests**: what
 differs between them is whether a test runs or skips, which is what the last column is for. `-ra` is
 what makes that column checkable — every skip is a sentence with its reason, and a cell that skipped
 something without saying why would be indistinguishable from a cell that never had the test.
@@ -109,29 +109,45 @@ when PyYAML is absent — "could not run", a different code from the 1 that mean
 and `tests/test_deploy_check.py` includes the test that pins exactly that, on a machine that *has*
 PyYAML, by shadowing the import rather than uninstalling anything.
 
-**The round tabulated above ran at 2026-10-16T17:00Z, and it is the ninth measured on this tree.**
-The rounds before it are filed rather than overwritten — in the `mutation/` directory of the
-workspace that produced these documents, which is not part of this repository — because a matrix
-someone might check is evidence and a matrix edited in place is not. Six of them describe this
-same machine and differ only by the tree, one or two tests at a time. The newest, `17:00Z`,
-measured **1,030 / 1,035 / 1,072 / 1,077** with 47 / 42 / 5 / 0 skipped, and the round before it,
-`15:15Z` measured **984 / 989 / 1,026 / 1,031**, and `14:56Z` **982 / 987 / 1,024 / 1,029**,
-`14:29Z` **981 / 986 / 1,023 / 1,028**, `14:06Z` the same cells with the Helm client off the
-machine (6 and 1 skipped where this round has 5 and none, the difference being the single test
-that compares the two renders), and `11:06Z` the four cells of the tree before both. Before those,
-`08:21Z` measured 978 / 983 / 1,019 / 1,024, and `08:05Z`'s `+ PyYAML` cell exited 1 on the
-wall-clock flake in
-`tests/test_snapshot_restore.py` that is recorded under *Found by testing*. A skip count is only
-evidence when the environment that produced it is stated, which is why each round is named and what
-its machine had is written beside it.
+**The round tabulated above ran at 2026-10-16T17:15:10Z, and it is the tenth measured on this tree.** The
+rounds before it are filed rather than overwritten — in the `mutation/` directory of the workspace that
+produced these documents, which is not part of this repository — because a matrix someone might check
+is evidence and a matrix edited in place is not. Until 2026-10-16T17:15Z the filing was a manual step
+taken between rounds, and one round was lost to it: the `16:49:21Z` cells were overwritten by the next
+round's own first command, which is why the table below carries their numbers with nothing behind them
+but the run's output. The script files the previous round before it clears the directory now, and the
+table names every round by the stamp *that round's own summary wrote*, which is also a correction: the
+earlier prose on this page labelled three rounds by the time their directory was filed rather than by
+the time they ran. The newest, `17:15:10Z`, measured **1,029 / 1,034 / 1,071 / 1,076** with
+47 / 42 / 5 / 0 skipped. Every round, and what its machine had:
 
-Three of these nine rounds were quoted with a *derived* number before they ran, and all three times
+| round (start, UTC) | tests collected | passed per cell | skipped per cell | the environment, and what the round was |
+| --- | --- | --- | --- | --- |
+| `08:05:28Z` | 1,024 | 977 / 982 / 1,017 / 1,023 | 47 / 42 / 6 / 1 | the first round kept here; the `+ PyYAML` cell exited 1 on the wall-clock flake in `tests/test_snapshot_restore.py` |
+| `08:21:47Z` | 1,025 | 978 / 983 / 1,019 / 1,024 | 47 / 42 / 6 / 1 | the same tree an hour later, the flake not repeating |
+| `10:39:50Z` | 1,027 | 980 / 985 / 1,022 / 1,027 | 46 / 41 / 5 / 0 | cells red: the comparison test had one gate and two prerequisites |
+| `10:54:56Z` | 1,027 | 980 / 985 / 1,022 / 1,027 | 47 / 42 / 5 / 0 | the gate and the prerequisite both in place |
+| `14:06:58Z` | 1,028 | 981 / 986 / 1,022 / 1,027 | 47 / 42 / 6 / 1 | taken with the Helm client **off** the machine |
+| `14:45:28Z` | 1,029 | 982 / 987 / 1,024 / 1,029 | 47 / 42 / 5 / 0 | the Helm client back on the machine |
+| `15:04:24Z` | 1,031 | 984 / 989 / 1,026 / 1,031 | 47 / 42 / 5 / 0 | the two document guards of that hour added |
+| `15:21:56Z` | 1,033 | 986 / 991 / 1,028 / 1,033 | 47 / 42 / 5 / 0 | the release record re-based onto them |
+| `16:49:21Z` | 1,077 | 1,030 / 1,035 / 1,072 / 1,077 | 47 / 42 / 5 / 0 | the round whose cells were overwritten: the next round cleared `matrix/` before filing it, so its numbers survive here and in the run's own output and nowhere else. `tools_matrix.sh` files the previous round now |
+| `17:15:10Z` | 1,076 | 1,029 / 1,034 / 1,071 / 1,076 | 47 / 42 / 5 / 0 | this round: one test fewer than the round above, because the release-record wiring assertion was moved out of the repository (see below) |
+
+A skip count is only evidence when the environment that produced it is stated, which is why each round
+is named and what its machine had is written beside it. All of them describe this machine except the
+`14:06:58Z` round, which was taken with the Helm client off it. Every round is four fresh virtual
+environments, `pip install pytest` plus the extras the row above the table names, `PYTHONPATH=src`,
+`pytest tests -ra` from the repository root, and a separate `--collect-only -q` for the collected
+count.
+
+Three of the earlier rounds were quoted with a *derived* number before they ran, and all three times
 the derivation was wrong — by one, by two, and by two again: a re-base by hand is a prediction, and the
 cells are the measurement. That is the same lesson the table itself records about `paste | bc` — the sum is a
 command now, or it is a guess.
 
 The matrix is also where a defect was found, in the same family as the one this page already records
-for `tools/deploy_check.py`: the `11:06Z` round is the one in which the comparison test showed that it
+for `tools/deploy_check.py`: the `10:39:50Z` round is the one in which the comparison test showed that it
 had **one gate and two prerequisites**. It skipped when the Helm *client* was missing, and with the
 client reachable and PyYAML absent — rows 1 and 2 above — it ran and *failed* on the tool's `PyYAML is
 not installed` exit 2, a red suite for a setup the README describes. It carries a second gate now, in
@@ -160,7 +176,7 @@ kept beside the green one.
 | security | `test_security.py` (red team) + `bandit` in CI + the URL-guard walk + `tests/test_supply_chain.py` (the manifest and the imports agreeing) + `pip-audit` over the development toolchain on a schedule (`.github/workflows/security.yml`): *no known vulnerabilities* as of 2026-10-15 |
 | penetration | the red team's forgery cases: a doctored receipt, a doctored ledger, a doctored manifest, a path traversal, a setuid mode, a swapped blob |
 | usability | the transcripts are the usability test; a change that makes the output harder to read shows up in the golden files |
-| accessibility | the terminal output is plain UTF-8 box drawing with a `NO_COLOR` path, and the machine-readable form (`--json`, the markdown report) carries the same content — so nothing is *only* conveyed by colour |
+| accessibility | two artefacts. The terminal output is plain UTF-8 box drawing with a `NO_COLOR` path, and the machine-readable form (`--json`, the markdown report) carries the same content, so nothing is *only* conveyed by colour. And the **built documentation site** — the only HTML this project publishes — is checked by `tools/a11y_check.py` against ten mechanical rules (language, title, one `h1`, no skipped heading level, a single `main` landmark, `alt` present on every image, an accessible name on every link and every rendered form control, a header cell or caption on every table, no duplicate `id`): `tests/test_a11y_check.py` (42) makes every rule prove it can fail, and every path by which a link or a control can be named prove it does not cry wolf |
 | compatibility | CI matrix: Python 3.11, 3.12, 3.13; Node 20 for the independent verifier |
 | reliability | `chaos.py` + the nine game-day phases; a broken ledger tails off, a full one is declared |
 | the practices rather than the kinds | [`docs/sre-coverage.md`](sre-coverage.md): 22 resilience practices — stress, fuzzing, chaos monkey, game days, red teaming, synthetic monitoring, FMEA, rejuvenation, post-mortems (postmortems) — with the status of each |
@@ -593,7 +609,9 @@ argued equivalent, with the argument written out below it".
   already handed to an autonomous agent, is out of scope and named as such in the threat model.
 - **Accessibility beyond the terminal.** There is no GUI to test. The `NO_COLOR` path, the
   monochrome golden files and the markdown report are what "nothing is only conveyed by colour"
-  means here.
+  means here. The documentation site is the one HTML artefact and `tools/a11y_check.py` decides ten
+  mechanical questions about it; it is a static check, not a substitute for a person using a screen
+  reader on a real page, and WCAG 2.2 conformity is not claimed here.
 - **A suite that has been proved to hold under heavy CPU contention.** Under artificial load —
   two busy loops on a two-core box, a third process's worth of oversubscription — `test_chaos.py`'s
   rollback drill failed once: it drives a whole game-day phase as a subprocess with a wall-clock

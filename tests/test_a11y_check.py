@@ -19,10 +19,13 @@ and the same page must report the control, or the exemption is a special case th
 `::-ms-clear` is in the fixtures for the same reason: a pseudo-element hidden by a rule is not its
 owner being hidden, and reading it that way would exempt the search box a reader types into.
 
-The last three tests read the repository rather than the tool: the rule list has to match the table
-in the tool's docstring, `CODE_OF_CONDUCT.md` has to keep exactly one `h1` (the defect the checker
-found on its first run), and the checker has to exit 2 rather than pass when it is pointed at a
-directory that is not a built site.
+Two of the tests read the repository rather than the tool: the rule list has to match the table in the
+tool's docstring, and `CODE_OF_CONDUCT.md` has to keep exactly one `h1` (the defect the checker found
+on its first run). The check that the tool is wired into the release record is *not* here: that record
+(`mutation/run_final_checks.sh`) lives in the authoring workspace and not in this repository, so a test
+for it could only pass on the machine that has the workspace and would fail in every clone — which is
+what it did, in the clone, the first time this file ran there. The wiring is asserted where both files
+exist, in `mutation/rebase_workspace_numbers.py`, and the record itself prints the check's verdict.
 """
 
 from __future__ import annotations
@@ -360,8 +363,3 @@ def test_the_code_of_conduct_keeps_one_h1() -> None:
     text = (ROOT / "CODE_OF_CONDUCT.md").read_text(encoding="utf-8")
     assert sum(1 for line in text.splitlines() if line.startswith("# ")) == 1
     assert text.startswith("# Contributor Covenant Code of Conduct\n")
-
-
-def test_the_checker_is_wired_into_the_release_record() -> None:
-    script = (ROOT.parent / "mutation" / "run_final_checks.sh").read_text(encoding="utf-8")
-    assert "a11y_check.py" in script
