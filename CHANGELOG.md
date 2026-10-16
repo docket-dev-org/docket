@@ -456,6 +456,20 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Fixed
 
+- **Two survivor rows in `docs/testing.md` account for their mutants line by line now, and one of
+  them gave the wrong reason.** `ledger.py:628-646` is six mutants under one verdict, and the verdict
+  was written as if all six sat in dead code: "those branches are the `else` of `fcntl is not None`,
+  so on any platform with `flock` they cannot run at all". Five of them do — `:628`'s `and`/`not` and
+  the `unlink`, `return` and `True`→`False` beside it are all inside `_acquire_lock`'s
+  `try: # pragma: no cover - Windows` block, past the `fcntl` early return. The sixth, `:646`'s
+  `unlink(missing_ok=True)` in `_release_lock`, is **reached on this platform** and is a different
+  kind of survivor: `missing_ok=False` raises `FileNotFoundError` for a lock file that is already
+  gone, and the line above suppresses `OSError`, so the two spellings cannot be told apart here. The
+  row now says which is which and cites every line. The Windows-probe row (`ledger.py:664-672`) does
+  the same: it names all ten of its mutants — the two `WinDLL`/`OpenProcess` arguments, the two
+  `if not …` guards, what each guard returns in both spellings, and the liveness comparison in both
+  — instead of naming four families of them and leaving the count to the reader's arithmetic.
+
 - **The Helm-fidelity comparison had one gate and two prerequisites.** With a Helm client on `PATH`
   and PyYAML absent, `test_the_checkers_render_is_the_render_helm_produces` ran and failed on
   `tools/helm_fidelity.py`'s `PyYAML is not installed` exit 2 — a red suite for a setup the README
