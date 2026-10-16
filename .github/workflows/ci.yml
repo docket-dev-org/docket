@@ -129,6 +129,14 @@ jobs:
         # `docs/` stay valid on GitHub and on the site at the same time.
         run: make site-check
 
+      # The site is the only HTML this project publishes, and --strict only proves it builds.
+      # `make a11y` builds `site/` for real and then checks it — not `--site site` on its own,
+      # because the step above builds to a temp directory and leaves nothing to read: the first
+      # version of this step pointed at a directory that did not exist, which the checker would
+      # have reported as exit 2 (could not run) rather than as a pass.
+      - name: Build the site, then check it for accessibility defects
+        run: make a11y
+
   package:
     name: package (clean install, then run it)
     runs-on: ubuntu-latest

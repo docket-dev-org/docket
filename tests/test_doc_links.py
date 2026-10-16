@@ -512,6 +512,12 @@ def test_every_flag_the_cli_reference_documents_is_an_option_of_that_command():
 #: rule that kept two measurement reports out of every clone while the documents cited them).
 AUTHORING_PATHS_ALLOWED_IN = ("docs/measurements/",)
 
+#: Directories the tree generates and the repository ignores. A staged copy of the docs is not a
+#: document a reader can be sent to, and neither is a built site: scanning them made this test fail on
+#: its first full-suite run, on `.mkdocs-site/`, a directory `tools/build_docs_site.py` had left behind
+#: from an earlier build. The list is the same set that tool skips when it stages the tree.
+GENERATED_DIRECTORIES = (".mkdocs-site", "site", "dist", "build", ".venv", "node_modules", "__pycache__")
+
 
 def test_no_prose_document_leaks_a_path_from_the_machine_that_wrote_it():
     """`/home/user/…` in a document that is not raw evidence means the reader cannot follow it."""
@@ -522,6 +528,8 @@ def test_no_prose_document_leaks_a_path_from_the_machine_that_wrote_it():
     for path in sorted(root.rglob("*.md")):
         relative = path.relative_to(root).as_posix()
         if any(relative.startswith(prefix) for prefix in AUTHORING_PATHS_ALLOWED_IN):
+            continue
+        if any(part in GENERATED_DIRECTORIES for part in path.relative_to(root).parts):
             continue
         checked_files += 1
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -1162,3 +1170,25 @@ def test_the_standards_map_states_a_source_and_a_strength_for_every_mechanism():
     assert (
         f"{len(rows)} mechanisms" in companion
     ), f"docs/sre-coverage.md no longer quotes the standards map's size ({len(rows)} mechanisms)"
+
+
+def test_the_scan_skips_exactly_the_directories_the_site_stager_skips():
+    """`GENERATED_DIRECTORIES` above claims to be the stager's list; a claim with no guard is a comment.
+
+    Loaded from its path and registered in `sys.modules` first: importing a file that defines no
+    dataclass would work without it, but the loader that skips the registration is the same one that
+    breaks the next file, so it is registered here too.
+    """
+    import importlib.util
+    import sys as _sys
+
+    root = Path(__file__).resolve().parents[1]
+    name = "build_docs_site_under_test"
+    spec = importlib.util.spec_from_file_location(name, root / "tools" / "build_docs_site.py")
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    _sys.modules[name] = module
+    spec.loader.exec_module(module)
+    assert set(GENERATED_DIRECTORIES) == set(module.SKIP_DIRS) - {".git"}, (
+        f"this scan skips {sorted(GENERATED_DIRECTORIES)}; the stager skips " f"{sorted(module.SKIP_DIRS)}"
+    )

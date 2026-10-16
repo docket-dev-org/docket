@@ -10,6 +10,24 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **`tools/a11y_check.py`: the built documentation site is checked for the accessibility defects a
+  program can decide.** The site is the only HTML this project publishes; `mkdocs --strict` proved it
+  built, and nothing looked at whether a reader using a screen reader could use it. Ten rules —
+  language, title, exactly one `h1` and no skipped heading level, a single `main` landmark, `alt` on
+  every image, an accessible name on every link and every rendered form control, a header cell or
+  caption on every table, no duplicate `id` — with the accessible name computed from `aria-label`,
+  `aria-labelledby` resolved through the page's own ids, element text, a nested `<img alt>`, a nested
+  `<svg><title>`, a `<label for=…>` elsewhere on the page, or a `<label>` that wraps the control.
+  `tests/test_a11y_check.py` (43 tests) makes every rule prove it can fail and every one of those
+  naming paths prove it does not cry wolf, and the check runs in the release record beside the docs
+  build.
+- **One exemption, and it expires.** material renders its drawer and search toggles as
+  `<input class="md-toggle" type="checkbox">`, and the theme's stylesheet says `.md-toggle{
+  display:none}`: a control that is not rendered is not announced, so no name is due. The checker
+  reads the CSS of the site it is inspecting rather than trusting a class name, prints which class
+  exempted how many controls, and stops exempting the moment that rule is gone — an exemption that
+  cannot expire is how a checker rots into a rubber stamp.
+
 - **Two more guards, both green on the tree they were written for.** `docs/cli.md` is 397 lines of
   flags and none of them had ever been checked against the parser: the new test reads the level-2
   sections whose heading is a `docket <command>` line, requires the command to exist, and requires
@@ -491,6 +509,15 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   size the page has. It caught one row on its first run: a book, named with neither a link nor a year.
 
 ### Fixed
+
+- **The code of conduct carried two `h1` headings, which the new site check found on its first run.**
+  `CODE_OF_CONDUCT.md` opened with a title line above the Contributor Covenant's own heading, so the
+  rendered page had two roots for the outline a screen reader announces. The Covenant's heading is
+  the document's heading now.
+- **`tools/a11y_check.py`'s "could not run" path exited 1, not the 2 its docstring promises.**
+  `sys.exit("message")` exits 1 — the code this project reserves for "found a problem" — so a
+  directory that was not a built site would have been recorded as a failing check. The tool's own
+  test caught it: `test_exit_codes_are_0_1_and_2`.
 
 - **A documented-flag class of defect that had never been checked, and a re-base that was typed rather
   than measured.** Three of the last four dependency-matrix rounds were quoted in this page with a

@@ -1,4 +1,4 @@
-.PHONY: help game-day selftest helm-fidelity test demo lint fmt audit mutation verify-js vectors wheel clean check site site-check deploy-check load soak cache-load
+.PHONY: help game-day selftest helm-fidelity test demo lint fmt audit mutation verify-js vectors wheel clean check site site-check a11y deploy-check load soak cache-load
 
 help:
 	@echo "make test       run the full test suite (offline, no API keys)"
@@ -14,6 +14,7 @@ help:
 	@echo "make game-day   every failure phase, end to end, with a post-mortem (~20 s)"
 	@echo "make site       build the docs site (needs mkdocs-material)"
 	@echo "make site-check build the docs site to a temp dir, strict: catches broken links"
+	@echo "make a11y       build the site and check its HTML (language, headings, alt, names, ids)"
 	@echo "make deploy-check check deploy/ statically (no container runtime needed; none is present)"
 	@echo "make helm-fidelity compare the checker's chart render against real Helm (needs helm; exits 2 without it)"
 	@echo "make load       measure throughput and latency through a real boundary (a number about this host)"
@@ -55,6 +56,9 @@ site:
 
 site-check:
 	python3 tools/build_docs_site.py --check
+
+a11y: # build the site, then check it for the accessibility defects a program can decide
+	python3 tools/a11y_check.py --build
 
 # The mutation sweep is slow on purpose: every mutant is a full pytest run over the module's
 # declared subset, and the honest answer to "does the suite notice" is worth minutes, not seconds.
