@@ -22,7 +22,9 @@ from __future__ import annotations
 import importlib.util
 import re
 import sys
-from pathlib import Path
+from dataclasses import dataclass
+from fnmatch import fnmatch
+from pathlib import Path, PurePosixPath
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -706,6 +708,138 @@ def test_every_failure_mode_in_the_fmea_names_a_detector_that_exists():
     assert risks == sorted(
         risks, reverse=True
     ), f"the FMEA's rows are no longer ordered by risk, highest first: {risks}"
+
+
+#: Documentation that a reader is expected to open, and therefore paths in it that a clone must
+#: carry. `docs/measurements/**` is in here on purpose: it is evidence, and the defect these two
+#: tests were written for was a report the FMEA cited and no clone had.
+DOCUMENTATION = ("README.md", "CONTRIBUTING.md", "SUPPORT.md")
+
+#: A file named in prose. Narrow by suffix, for the same reason the citation scanner is: a backticked
+#: word is not a path, and a backticked path with an extension in this set can only be one.
+NAMED_FILE = re.compile(r"`([A-Za-z0-9_][A-Za-z0-9_./-]*\.(?:py|md|json|mjs|yaml|yml|toml|txt|cfg|sh|html))`")
+
+
+@dataclass(frozen=True)
+class _Ignore:
+    """One `.gitignore` rule, read into the four things matching needs."""
+
+    number: int
+    line: str
+    negated: bool
+    directory: bool
+    anchored: bool
+    pattern: str
+
+
+def _ignore_rules(text: str) -> list[_Ignore]:
+    """Read `.gitignore`, and refuse what this reader cannot model rather than guess at it.
+
+    A hand-written reader of `.gitignore` is a liability if it quietly models half the grammar, so
+    this one implements the forms this repository uses — `name`, `name/`, `/name`, `dir/name`,
+    `*.ext`, `[abc]` character classes and `!` re-includes — and raises on `**`, which changes the
+    meaning of every other wildcard. That refusal is a feature: if someone reaches for `**`, this
+    canary stops and says so instead of answering a question it cannot answer.
+    """
+    rules: list[_Ignore] = []
+    for number, raw in enumerate(text.splitlines(), start=1):
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        negated = line.startswith("!")
+        body = line[1:] if negated else line
+        directory = body.endswith("/")
+        anchored = body.startswith("/") or "/" in body.rstrip("/")
+        body = body.strip("/")
+        assert "**" not in body, f".gitignore:{number}: {line!r}: this canary does not model `**`"
+        assert body, f".gitignore:{number}: {line!r}: names nothing"
+        rules.append(_Ignore(number, line.strip(), negated, directory, anchored, body))
+    return rules
+
+
+def _matches(rule: _Ignore, relpath: str) -> bool:
+    """Git's two matching modes: a path anchored at the root, or a name at any level."""
+    parts = PurePosixPath(relpath).parts
+    if rule.anchored:
+        if fnmatch(relpath, rule.pattern):
+            return True
+        if rule.directory:
+            return any(fnmatch("/".join(parts[: i + 1]), rule.pattern) for i in range(len(parts) - 1))
+        return False
+    if rule.directory:
+        return any(fnmatch(part, rule.pattern) for part in parts[:-1])
+    return any(fnmatch(part, rule.pattern) for part in parts)
+
+
+def _ignoring_rule(rules: list[_Ignore], relpath: str) -> _Ignore | None:
+    """The rule that decides the file's fate: the last one that matches, `!` included."""
+    verdict: _Ignore | None = None
+    for rule in rules:
+        if _matches(rule, relpath):
+            verdict = None if rule.negated else rule
+    return verdict
+
+
+def _documented_paths() -> dict[str, set[str]]:
+    """Every existing file named in the documentation, and the documents that name it."""
+    paths: dict[str, set[str]] = {}
+    documents = [REPO / name for name in DOCUMENTATION] + sorted((REPO / "docs").rglob("*.md"))
+    for document in documents:
+        where = document.relative_to(REPO).as_posix()
+        for match in NAMED_FILE.finditer(document.read_text(encoding="utf-8")):
+            named = match.group(1)
+            for candidate in (REPO / named, document.parent / named):
+                if candidate.is_file() and not _is_build_output(candidate):
+                    paths.setdefault(candidate.relative_to(REPO).as_posix(), set()).add(where)
+                    break
+    return paths
+
+
+def test_no_document_names_a_file_a_clone_would_not_carry():
+    """A path in a document is a promise the reader can open it — and `.gitignore` can break it.
+
+    Not a hypothetical, and not a small one. The FMEA in `docs/resilience.md` named
+    `docs/measurements/2026-10-15-2core/load-report.json` as what catches "the provider goes slow
+    (tail latency)", and `.gitignore` carried a bare `load-report.json` line — which ignores that
+    name *anywhere* in the tree. The report was in the authoring checkout and in no clone: the suite
+    was green where it was written and red the first time the release check ran against a clone of
+    the bundle, which is the whole reason that check runs against a clone.
+
+    So: a file the documentation names, in a directory a reader can browse, must be a file the
+    repository ships. Build outputs are not promises (`dist/` and `site/` are outputs by
+    definition, and `_is_build_output` says which), and nothing else is exempt.
+    """
+    rules = _ignore_rules((REPO / ".gitignore").read_text(encoding="utf-8"))
+    report: list[str] = []
+    for relpath, documents in sorted(_documented_paths().items()):
+        rule = _ignoring_rule(rules, relpath)
+        if rule is not None:
+            report.append(
+                f"`{relpath}` is named in {', '.join(sorted(documents))} and a clone would not carry "
+                f"it: .gitignore:{rule.number} ({rule.line!r}) ignores it. Anchor the rule to the "
+                f"repository root (`/{rule.pattern}`) if only the copy written there is an output."
+            )
+    assert not report, "documented files that a clone would not have:\n  " + "\n  ".join(report)
+
+
+def test_the_documented_file_canary_notices_the_rule_that_hid_a_measurement():
+    """The canary above is only worth its runtime if it fails on the defect that produced it.
+
+    The check is fed the rule that shipped — a bare `load-report.json` — and the rule that replaced
+    it, anchored with a leading `/`, and has to say `ignored` to the first and `shipped` to the
+    second. A checker that cannot fail is decoration.
+    """
+    target = "docs/measurements/2026-10-15-2core/load-report.json"
+    historical = _ignore_rules("#!/\nload-report.json\n/soak-report.json\n")
+    assert _ignoring_rule(historical, target) is not None, (
+        "the canary no longer notices a basename rule that hides a curated measurement report; "
+        "the regression test for .gitignore is worthless until it does"
+    )
+    current = _ignore_rules((REPO / ".gitignore").read_text(encoding="utf-8"))
+    assert _ignoring_rule(current, target) is None, "the shipped .gitignore now hides a report the documentation names"
+    assert (
+        _ignoring_rule(current, "load-report.json") is not None
+    ), "the anchored rule must still ignore the copy `make load` writes to the repository root"
 
 
 #: The vocabulary the standards map's strength column is allowed to use. It is deliberately small:

@@ -1,0 +1,76 @@
+{
+  "command": "--calls 200000 --concurrency 2 --seconds 600 --rate 20 --work-dir /home/user/.cache/tmp/soak1 --report /home/user/.cache/tmp/soak1/report.json --markdown /home/user/.cache/tmp/soak1/report.md",
+  "host": {
+    "cpu_count": 2,
+    "note": "one machine, one supervisor process; not a benchmark of the provider or of any other host",
+    "platform": "Linux-6.1.158+-x86_64-with-glibc2.41",
+    "python": "3.13.16"
+  },
+  "load": {
+    "achieved_calls_per_second": "20.00",
+    "attempts_issued": 12002,
+    "calls_error": 0,
+    "calls_ok": 12002,
+    "calls_refused": 0,
+    "calls_requested": 200000,
+    "client_latency": {
+      "max_ms": 35,
+      "measured_calls": 12002,
+      "method": "nearest-rank",
+      "p50_ms": 4,
+      "p95_ms": 5,
+      "p99_ms": 7,
+      "total_ms": 52393
+    },
+    "concurrency": 2,
+    "refused_codes": {},
+    "seconds": "600.166",
+    "target_rate_per_second": "20.00"
+  },
+  "problems": [],
+  "recorder": {
+    "driver_rss_kib": {
+      "end": 25472,
+      "max": 25472,
+      "samples": 601,
+      "start": 24356
+    },
+    "ledger": {
+      "lines": 24014,
+      "model_responses": 12002,
+      "responses_with_latency": 12002
+    },
+    "ledger_path": "/home/user/.cache/tmp/soak1/.docket/runs/3e6df764f24b.jsonl",
+    "receipt": {
+      "events": 24014,
+      "latency": {
+        "max_ms": 28,
+        "measured_calls": 12002,
+        "method": "nearest-rank",
+        "p50_ms": 2,
+        "p95_ms": 3,
+        "p99_ms": 4,
+        "total_ms": 26364,
+        "total_rows": 12002
+      },
+      "session": null
+    },
+    "receipt_path": "/home/user/.cache/tmp/soak1/.docket/receipts/DKT-20261015-FE8F2D.receipt.json",
+    "supervisor_exit_code": 0,
+    "supervisor_rss_kib": {
+      "discarded_while_starting": 1,
+      "end": 54328,
+      "max_sampled": 54328,
+      "peak_kib": 54328,
+      "samples": 600,
+      "start": 27148
+    }
+  },
+  "usable_as_evidence": true,
+  "verification": {
+    "failed": 0,
+    "ok": true,
+    "passed": 7,
+    "skipped": 4
+  }
+}

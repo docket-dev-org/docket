@@ -26,12 +26,17 @@ venv/
 mutation-report.json
 mutation-report.md
 
-# load and soak measurements (regenerate with `make load` / `make soak`)
-load-report.json
-load-report.md
-soak-report.json
-soak-report.md
-.docket-soak/
+# measurements written to the repository root by `make load` / `make soak` / `make cache-load`.
+# These are anchored on purpose: the curated reports that ship under docs/measurements/ are
+# evidence, they are cited by name in docs/sre-coverage.md and README.md, and a basename pattern
+# would leave them out of every clone while the authoring checkout still had them.
+/load-report.json
+/load-report.md
+/soak-report.json
+/soak-report.md
+/cache-report.json
+/cache-report.md
+/.docket-soak/
 
 # editors / OS
 .vscode/

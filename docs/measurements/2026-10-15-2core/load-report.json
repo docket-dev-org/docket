@@ -1,0 +1,76 @@
+{
+  "command": "--calls 2000 --concurrency 8 --work-dir /home/user/.cache/tmp/load2 --report /home/user/.cache/tmp/load2/report.json",
+  "host": {
+    "cpu_count": 2,
+    "note": "one machine, one supervisor process; not a benchmark of the provider or of any other host",
+    "platform": "Linux-6.1.158+-x86_64-with-glibc2.41",
+    "python": "3.13.16"
+  },
+  "load": {
+    "achieved_calls_per_second": "175.93",
+    "attempts_issued": 2000,
+    "calls_error": 0,
+    "calls_ok": 2000,
+    "calls_refused": 0,
+    "calls_requested": 2000,
+    "client_latency": {
+      "max_ms": 58,
+      "measured_calls": 2000,
+      "method": "nearest-rank",
+      "p50_ms": 44,
+      "p95_ms": 48,
+      "p99_ms": 53,
+      "total_ms": 90557
+    },
+    "concurrency": 8,
+    "refused_codes": {},
+    "seconds": "11.368",
+    "target_rate_per_second": "0.00"
+  },
+  "problems": [],
+  "recorder": {
+    "driver_rss_kib": {
+      "end": 25732,
+      "max": 25732,
+      "samples": 13,
+      "start": 24984
+    },
+    "ledger": {
+      "lines": 4010,
+      "model_responses": 2000,
+      "responses_with_latency": 2000
+    },
+    "ledger_path": "/home/user/.cache/tmp/load2/.docket/runs/a4a105c7bfc2.jsonl",
+    "receipt": {
+      "events": 4010,
+      "latency": {
+        "max_ms": 11,
+        "measured_calls": 2000,
+        "method": "nearest-rank",
+        "p50_ms": 1,
+        "p95_ms": 3,
+        "p99_ms": 5,
+        "total_ms": 2916,
+        "total_rows": 2000
+      },
+      "session": null
+    },
+    "receipt_path": "/home/user/.cache/tmp/load2/.docket/receipts/DKT-20261015-E06DF3.receipt.json",
+    "supervisor_exit_code": 0,
+    "supervisor_rss_kib": {
+      "discarded_while_starting": 1,
+      "end": 31408,
+      "max_sampled": 31408,
+      "peak_kib": 31408,
+      "samples": 11,
+      "start": 27220
+    }
+  },
+  "usable_as_evidence": true,
+  "verification": {
+    "failed": 0,
+    "ok": true,
+    "passed": 7,
+    "skipped": 4
+  }
+}
