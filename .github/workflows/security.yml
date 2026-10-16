@@ -1,0 +1,44 @@
+name: Security
+
+# `ci.yml` runs bandit on every push: the code's own dangerous patterns, checked per change. This
+# workflow checks the other half — *known-bad versions of what the project installs* — and it runs on
+# a schedule rather than on every pull request, on purpose. A CVE disclosed in pytest or PyYAML this
+# morning has nothing to do with tonight's commit, and a job that turns an unrelated pull request red
+# teaches people to ignore it. On a schedule, a failure means one thing: the toolchain now has a known
+# vulnerability, and it is somebody's job to look.
+
+on:
+  schedule:
+    # Mondays, 06:17 UTC. Not on the hour: cron on GitHub is shared and the top of the hour is busy.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+  push:
+    # A dependency change is the one push where this is relevant immediately.
+    paths:
+      - "pyproject.toml"
+      - ".github/workflows/security.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  dependencies:
+    name: "dependencies: known vulnerabilities (pip-audit)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the toolchain the project actually develops with
+        # The same set `ci.yml` installs, plus pip, because auditing pip is part of auditing the
+        # toolchain. `docket` itself contributes nothing to this list: `dependencies = []`.
+        run: pip install --upgrade pip && pip install pytest cryptography pyyaml ruff==0.6.9 bandit build pip-audit
+      - name: Audit every installed distribution against the advisory databases
+        run: pip-audit --progress-spinner off
+      - name: The installable package still has nothing to audit
+        # The strongest supply-chain claim in the project is `dependencies = []`. It is read from the
+        # manifest and cross-checked against the source's imports by tests/test_supply_chain.py —
+        # including that the two optional extras are imported only behind a guard, so a user who
+        # installed nothing can still run the thing.
+        run: PYTHONPATH=src python -m pytest tests/test_supply_chain.py -q

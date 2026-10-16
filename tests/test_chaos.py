@@ -13,6 +13,7 @@ Two things are being tested, and the second matters more than the first:
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,7 @@ import pytest
 from docket import events as ev
 from docket.chaos import (
     GAME_DAY_PHASES,
+    _phase_policy,
     agent_summary,
     audit_run,
     ledger_facts,
@@ -309,6 +311,125 @@ def test_the_ledger_pressure_phase_stops_the_run_instead_of_dropping_events(tmp_
     assert record["facts"]["diagnostics"]["healthy"] is True, "nothing was lost; the run refused instead"
 
 
+def test_the_reference_agent_can_repeat_itself_identically_and_normally_does_not(tmp_path: Path):
+    """`mode = loop` is what makes the cache phase possible, so it gets its own check.
+
+    Every other mode appends a step counter to the prompt, which means every request differs — and
+    a cache can only be tested against traffic that repeats itself. The agent is run as a real
+    subprocess against a capture server, and the *bodies the server received* are compared, because
+    that is what the cache keys on: anything else would be testing an intention rather than a fact.
+    """
+    import os
+    import subprocess
+    import sys
+
+    from docket.fakeupstream import FakeUpstream, Step
+
+    upstream = FakeUpstream(steps=[Step(model="claude-sonnet-5")])
+    upstream.start()
+    try:
+        env = dict(
+            os.environ,
+            PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src"),
+            DOCKET_PROXY_URL=upstream.url,
+            OPENAI_BASE_URL=upstream.url + "/openai/v1",
+            DOCKET_AGENT_CALLS="3",
+            DOCKET_AGENT_MAX_SLEEP="0",
+        )
+        for mode, expect_identical in (("loop", True), ("bounded", False)):
+            upstream.requests.clear()
+            completed = subprocess.run(
+                [sys.executable, "-m", "docket.scriptagent"],
+                env={**env, "DOCKET_AGENT_MODE": mode},
+                cwd=str(tmp_path),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            assert completed.returncode == 0, completed.stderr
+            # The capture server also receives the agent's own write-back posts, so only the
+            # completion calls are compared — those are the requests a cache would key on.
+            bodies = [
+                json.dumps(request["body"], sort_keys=True)
+                for request in upstream.requests
+                if str(request["path"]).endswith("/chat/completions")
+            ]
+            assert len(bodies) == 3, f"{mode}: the agent should have made three calls, got {len(bodies)}"
+            assert (
+                len(set(bodies)) == 1
+            ) is expect_identical, f"{mode}: identical={len(set(bodies)) == 1}, expected identical={expect_identical}"
+    finally:
+        upstream.stop()
+
+
+def test_a_phase_policy_is_that_phases_policy_and_not_the_previous_phases() -> None:
+    """One experiment's limits must not travel to the next one.
+
+    The phase order is a sequence of experiments, and for the first runs of this drill they were
+    not independent: every phase was handed the same `Resilience` object, so `rate-limit`'s
+    two-calls-per-second bucket and `ledger-pressure`'s eight-event ceiling were still in force for
+    every phase after them. `cache-brake` is where it showed — it was stopped by a ledger ceiling
+    it never declared, after one provider call, with zero hits, and two of its own checks failed;
+    `rollback` "passed" with a cap breach that was not the one it declares. The property asserted
+    here is the general one: building a phase against a base another phase has already been built
+    against must give the same policy as building it against a fresh base, and the base must come
+    back untouched.
+    """
+    fresh = Policy(name="game day", caps=Caps(max_usd=None))
+    shared = Policy(name="game day", caps=Caps(max_usd=None))
+    for phase in GAME_DAY_PHASES:
+        alone = _phase_policy(phase, fresh)
+        in_series = _phase_policy(phase, shared)
+        assert in_series == alone, (
+            f"{phase.name} was handed a policy another phase had already changed: "
+            f"resilience={in_series.resilience} instead of {alone.resilience}, "
+            f"caps={in_series.caps} instead of {alone.caps}"
+        )
+        assert in_series.resilience is not shared.resilience
+        assert in_series.caps is not shared.caps
+    assert shared == fresh, "a phase edited the base policy it was derived from"
+
+    # The two values that leaked, named for the reader: the phase the bug was found in declares no
+    # ceiling of its own, and the phase that does declare one gets exactly the one it declares.
+    cache_phase = _phase_policy(next(p for p in GAME_DAY_PHASES if p.name == "cache-brake"), shared)
+    assert cache_phase.resilience.max_events is None
+    assert cache_phase.resilience.max_calls_per_second is None
+    assert cache_phase.cache.enabled and cache_phase.cache.max_hits == 2
+    pressure = _phase_policy(next(p for p in GAME_DAY_PHASES if p.name == "ledger-pressure"), shared)
+    assert pressure.resilience.max_events == 8
+    assert (
+        pressure.resilience.max_calls_per_second is None
+    ), "the ledger-pressure phase inherited the rate-limit phase's bucket"
+
+
+def test_the_cache_brake_phase_proves_a_saving_and_the_ceiling_that_ends_it(tmp_path: Path):
+    """The one phase whose subject is a number rather than a failure.
+
+    A cached loop spends nothing, so a phase that only asserted "the cache saved money" would be
+    asserting the easy half. What is checked here is the *pair*: hits that never reached the
+    provider and were recorded as events, and a ceiling that was reached, written to the ledger,
+    and after which the run paid again — with verification recomputing the saving and the spend
+    still describing money that was actually spent.
+    """
+    phase = next(p for p in GAME_DAY_PHASES if p.name == "cache-brake")
+    record = run_phase(phase, root=tmp_path)
+    assert record["phase_ok"] is True, [c for c in record["checks"] if c["status"] == "fail"]
+    facts = record["facts"]
+    block = record["receipt_cache"]
+    assert facts["cache_hits"] >= 2
+    assert block["hits"] == facts["cache_hits"]
+    assert block["hits_ceiling_reached"] is True
+    assert facts["cache_ceiling_note"] is True
+    # The brake engaged: calls after the second hit reached the provider, and the spend is the
+    # evidence that something was paid for at all (a cache that answered everything would show a
+    # spend of zero and a loop nothing could stop).
+    assert facts["model_responses"] >= 1
+    assert Decimal(str(record["receipt_totals"]["cost_usd"])) > 0
+    assert Decimal(str(block["saved_usd"])) > 0
+    assert record["verification"]["ok"] is True, record["verification"]["failures"]
+    assert record["verification"]["failed"] == 0
+
+
 def test_a_subset_of_phases_runs_and_the_post_mortem_lists_expectations(tmp_path: Path):
     report = run_game_day(root=tmp_path, phases=[p for p in GAME_DAY_PHASES if p.name == "baseline"])
     assert report["phases_total"] == 1
@@ -319,6 +440,61 @@ def test_a_subset_of_phases_runs_and_the_post_mortem_lists_expectations(tmp_path
     assert "## What this does not prove" in text, "a post-mortem that oversells is a marketing document"
     assert "## Known limits" in text
     assert "Expected:" in text and "Observed:" in text
+
+
+def test_the_reference_agent_can_repeat_itself_on_request(tmp_path: Path):
+    """`DOCKET_AGENT_MODE=loop` sends the same body every time — and nothing else does.
+
+    The game day's `cache-brake` phase needs traffic that repeats itself, because a cache can only
+    answer a request it has already seen. The agent's normal modes append a step counter to the
+    prompt, which is deliberate: an agent that repeats itself exactly is a *bug* being simulated,
+    not the shape of a normal run. So the mode that produces it is asserted here, at the wire: the
+    child is run against a capture server, and the bodies the server received are compared.
+    """
+    import os
+    import subprocess
+    import sys
+
+    from docket.fakeupstream import FakeUpstream, Step
+
+    upstream = FakeUpstream(steps=[Step(model="claude-sonnet-5")])
+    upstream.start()
+    try:
+        env = dict(
+            os.environ,
+            PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src"),
+            DOCKET_PROXY_URL=upstream.url,
+            OPENAI_BASE_URL=upstream.url + "/openai/v1",
+            DOCKET_AGENT_CALLS="3",
+            DOCKET_AGENT_MAX_SLEEP="0",
+        )
+        seen: dict[str, list[str]] = {}
+        for mode in ("loop", "bounded", "retry", "backoff"):
+            upstream.requests.clear()
+            completed = subprocess.run(
+                [sys.executable, "-m", "docket.scriptagent"],
+                env={**env, "DOCKET_AGENT_MODE": mode},
+                cwd=str(tmp_path),
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            assert completed.returncode == 0, f"{mode}: {completed.stderr[-400:]}"
+            bodies = [
+                json.dumps(request["body"], sort_keys=True)
+                for request in upstream.requests
+                if str(request["path"]).endswith("/chat/completions")
+            ]
+            assert len(bodies) == 3, f"{mode}: expected three calls, saw {len(bodies)}"
+            seen[mode] = bodies
+        for mode, bodies in seen.items():
+            distinct = len(set(bodies))
+            if mode == "loop":
+                assert distinct == 1, "loop mode exists to produce identical requests"
+            else:
+                assert distinct == 3, f"{mode} should send a different body every step, saw {distinct}"
+    finally:
+        upstream.stop()
 
 
 def test_ledger_facts_re_derives_counts_from_the_file(tmp_path: Path):

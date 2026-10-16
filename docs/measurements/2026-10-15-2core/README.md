@@ -1,7 +1,8 @@
 # Measurements: one host, 2026-10-15
 
-Three runs of [`tools/loadtest.py`](../../../tools/loadtest.py), kept as raw reports so that every
-number quoted in [`docs/testing.md`](../../testing.md) and
+Four runs of [`tools/loadtest.py`](../../../tools/loadtest.py), kept as raw reports so that every
+number quoted in [`docs/testing.md`](../../testing.md),
+[`docs/caching.md`](../../caching.md) and
 [`docs/production-coverage.md`](../../production-coverage.md) can be checked against the document
 that produced it instead of being taken on trust.
 
@@ -14,14 +15,16 @@ benchmarks of Docket, of a model provider, or of your machine:
 | provider | `python -m docket.fakeupstream` on loopback, one scripted step, no network |
 | boundary | `docket run` (supervisor + boundary in one process), one usage row per call, fsync per event |
 | clock | this container's, with other jobs on the same 2 cores between runs |
+| paths | the container's own: the reports are the JSON the harness wrote, unedited, so their `command`, `ledger_path` and `receipt_path` fields carry absolute paths under `/home/user/.cache/tmp/…` |
 
-The runs answer three different questions, and the reports are deliberately separate artefacts:
+The runs answer four different questions, and the reports are deliberately separate artefacts:
 
 | report | question | shape |
 | --- | --- | --- |
 | `load-report.json` | how fast can the recorder go, and what does a call cost in round trips? | 2,000 calls, 8 threads, as fast as the boundary answers |
 | `soak-report.json` | does anything drift or grow over ten minutes of steady traffic? | 12,002 calls, 2 threads, paced to 20 calls/s for 600 s |
 | `control-report.json` | is that growth a leak, or the bounded cost of the events recorded? | 6,002 calls, the same rate for half the time |
+| `cache-report.json` | what does the response cache answer under the same 8-thread load, and does the receipt still reconcile? | 2,000 identical calls, 8 threads, cache capped at 5,000 answers |
 
 Every run ends the same way: the receipt is read back, the ledger is located **by the digest the
 receipt claims**, the client's count of answered calls is compared with the ledger's rows, and
@@ -96,13 +99,52 @@ and why [`docs/production-coverage.md`](../../production-coverage.md) lists read
 scale as unmeasured. The measured claim here is narrower and checkable: **memory tracks events
 recorded, not time elapsed, at ~1.1 KiB per event, on this host, up to 24,014 events.**
 
+## The cached point: what the cache answers under the same load
+
+The load point repeated with the response cache on (`make cache-load`, raw report in
+`cache-report.json`). The driver sends **one identical body** from eight threads for the same call
+budget, so the cache's ceiling is set to 5,000 answers — high enough that no call in this run hits
+the brake:
+
+| measurement | cached (`cache-report.json`) | uncached (`load-report.json`) |
+| --- | --- | --- |
+| calls answered | 2,000 | 2,000 |
+| reached the provider | **8** | 2,000 |
+| answered from cache | **1,992** | — |
+| not spent, recomputed by the verifier | **$11.952000** | — |
+| spend kept in `totals.cost_usd` | $0.048000 | $12.000000 |
+| wall clock | 11.018 s | 11.368 s |
+| throughput | 181.53 calls/s | 175.93 calls/s |
+| client latency p50 / p95 / p99 | 44 / 48 / 48 ms (max 52) | 44 / 48 / 53 ms (max 58) |
+| supervisor RSS start → end | 27,284 → 29,624 KiB | 27,220 → 31,408 KiB |
+| `docket verify` afterwards | 11 pass / 0 fail / 3 skip | 11 pass / 0 fail / 3 skip |
+
+The saving is the measurement: 1,992 of 2,000 calls never left the process, and the receipt states
+the amount the verifier recomputes. The *spend* line is the second half of the same claim — the
+totals carry the eight calls that really happened and no trace of the 1,992 that did not, which is
+the property that keeps a receipt describing a run rather than a story about one.
+
+Two things this table does **not** support, both of them stated rather than implied:
+
+* **Not a throughput claim.** 181.53 vs 175.93 calls/s is a 3% difference between two runs on a
+  shared 2-vCPU host, the same order as the run-to-run spread already recorded above (99.69 →
+  166.56 → 175.93 calls/s as the host settled). What makes the cached calls cheap is that they do
+  not do work, not that the code got faster.
+* **Not one call for 2,000.** Eight calls reached the provider because eight threads missed the same
+  key at the same instant and there is **no request coalescing**: each thread that finds nothing
+  forwards, and the last store wins. Eight metered responses produced six cache groups (two origins
+  were replaced before anything replayed them) — visible in the receipt rather than in a footnote.
+  `docs/caching.md` names this as a limit; this run is the number behind it.
+* **Not a saving on your workload.** One identical body is the best case a cache can be given. The
+  honest version of this measurement for a real agent is `cache.hits` in its own receipt.
+
 ## What these numbers cannot support
 
 * **Not a provider benchmark.** The upstream is scripted and local; a real provider's latency would
   dominate everything here and would say nothing about Docket.
 * **Not a load curve.** One machine, one process, one concurrency point (8 threads) and one paced
   rate (20 calls/s). There is no scaling curve, no saturation knee, no queueing analysis, and no
-  p99-vs-concurrency plot — claiming any of those from these three runs would be inventing them.
+  p99-vs-concurrency plot — claiming any of those from these four runs would be inventing them.
 * **Not a leak-free claim.** Ten minutes at 20 calls/s is a bounded test that would catch a gross
   leak; it cannot speak to hours. What it does support is the observation above — memory tracks the
   number of recorded events, bounded by the run's own ceilings — with a control run rather than an
@@ -114,11 +156,12 @@ recorded, not time elapsed, at ~1.1 KiB per event, on this host, up to 24,014 ev
 ## Reproducing
 
 ```bash
-make load   # 2,000 calls, 8 threads
-make soak   # 12,000 calls paced over ten minutes
+make load        # 2,000 calls, 8 threads
+make soak        # 12,000 calls paced over ten minutes
+make cache-load  # 2,000 identical calls, 8 threads, response cache on
 ```
 
-Both write their ledger and receipt next to the report (`--work-dir`), so the evidence for a number
+Each writes its ledger and receipt next to the report (`--work-dir`), so the evidence for a number
 you want to argue about is on disk. `make check` does *not* run either one: a shared CI runner's
 throughput would be a fact about the runner. CI runs the harness's own tests instead
 (`tests/test_loadtest.py`), including the ones that assert a dropped call, a missing latency, a

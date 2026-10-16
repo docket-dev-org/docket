@@ -74,6 +74,7 @@ nav:
   - Using it:
       - CLI reference: docs/cli.md
       - Policy reference: docs/policy-reference.md
+      - Response cache: docs/caching.md
       - Integrations: docs/integrations.md
   - Trust:
       - What verification proves: docs/verification.md
@@ -87,12 +88,20 @@ nav:
       - Measurements (one host, 2026-10-15): docs/measurements/2026-10-15-2core/README.md
       - Resilience: docs/resilience.md
       - Deployment: docs/deployment.md
+      - Deploy recipes: deploy/README.md
       - Production coverage: docs/production-coverage.md
+      - Resilience practice coverage: docs/sre-coverage.md
+      - Standards and papers behind the mechanisms: docs/standards.md
       - Comparison: docs/comparison.md
+      - Changelog: CHANGELOG.md
       - Roadmap: ROADMAP.md
       - Governance: GOVERNANCE.md
+      - Maintainers: MAINTAINERS.md
+      - Contributors: CONTRIBUTORS.md
+      - Code of conduct: CODE_OF_CONDUCT.md
       - Contributing: CONTRIBUTING.md
       - Security policy: SECURITY.md
+      - Support: SUPPORT.md
       - Sponsorship: SPONSORS.md
       - Adoption model: docs/strategy.md
       - Sponsorship detail: docs/sponsorship.md
@@ -102,11 +111,10 @@ nav:
           - 0003 Verification uses recomputed hashes: docs/adr/0003-verification-uses-recomputed-hashes.md
           - 0004 Content snapshots and confinement: docs/adr/0004-content-snapshots-and-confinement.md
           - 0005 One writer at a time: docs/adr/0005-concurrency-and-one-writer-at-a-time.md
-          - 0002 No floating point in hashed structures: docs/adr/0002-no-floating-point-in-hashed-structures.md
-          - 0003 Verification uses recomputed hashes: docs/adr/0003-verification-uses-recomputed-hashes.md
   - Examples:
       - Examples index: examples/README.md
       - Quickstart example: examples/quickstart/README.md
       - CI example: examples/ci/README.md
       - Client deliverable: examples/client-deliverable/README.md
       - Subscription mode: examples/subscription/README.md
+      - Custom agent (policy + script): examples/custom-agent/README.md

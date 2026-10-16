@@ -21,6 +21,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from . import cache as response_cache
 from . import events as ev
 from .canon import digest_of, merkle_proof, usd
 from .explain import analyse
@@ -68,6 +69,12 @@ def _usage_rows(events: list[Event], proofs: dict[int, list[dict[str, str]]] | N
             row["latency_ms"] = int(data["latency_ms"])
         if data.get("reported_by") == "agent":
             row["asserted_by"] = "agent"
+        # A row for a response that the cache kept carries the key it was kept under,
+        # which is what lets a reader check a cache hit without the ledger: the hit
+        # names the key and the origin sequence, and this row is that sequence.
+        cache_meta = data.get("cache") if isinstance(data.get("cache"), dict) else {}
+        if cache_meta.get("stored") is True and cache_meta.get("key"):
+            row["cache_key"] = str(cache_meta["key"])
         if proofs is not None and event.seq in proofs:
             row["merkle_path"] = proofs[event.seq]
         rows.append(row)
@@ -163,6 +170,7 @@ def build_receipt(
     limiter: Any | None = None,
     injector: Any | None = None,
     health: Any | None = None,
+    cache: Any | None = None,
 ) -> dict[str, Any]:
     """Assemble a receipt from a finished session.
 
@@ -171,9 +179,20 @@ def build_receipt(
     hashes = [e.hash for e in events]
     proof_map: dict[int, list[dict[str, str]]] = {}
     if len(events) <= MAX_PROVEN_USAGE_ROWS:
+        # Proofs are built for the two kinds of event a reader checks a number
+        # against: the metered responses behind `appendix.usage`, and the cache hits
+        # behind the saving — one per group, which is what pins a hit count to the
+        # ledger without shipping a proof for every one of thousands of hits.
+        first_hit_of_group: dict[tuple[Any, ...], int] = {}
         for index, event in enumerate(events):
             if event.type == ev.MODEL_RESPONSE:
                 proof_map[event.seq] = merkle_proof(hashes, index)
+            elif event.type == ev.MODEL_CACHE_HIT:
+                origin = (event.data or {}).get(response_cache.HIT_ORIGIN) or {}
+                identity = (origin.get("seq"), (event.data or {}).get("key"), (event.data or {}).get("model"))
+                if identity not in first_hit_of_group:
+                    first_hit_of_group[identity] = index
+                    proof_map[event.seq] = merkle_proof(hashes, index)
 
     usage_rows = _usage_rows(events, proof_map)
     counts = ledger.types()
@@ -346,6 +365,12 @@ def build_receipt(
     measured = [row["latency_ms"] for row in usage_rows if "latency_ms" in row]
     if measured:
         receipt["latency"] = latency_summary(measured, total_rows=len(usage_rows))
+    # The cache member appears only when the run had a cache: `None` from `summary`
+    # means the policy said nothing about caching, and a member claiming
+    # `enabled: false` would be a different (and louder) statement than silence.
+    cache_block = response_cache.summary(cache, events, proof_map if proof_map else None)
+    if cache_block is not None:
+        receipt["cache"] = cache_block
     if proxy_stats is not None:
         receipt["proxy"] = {
             "bytes_from_upstream": proxy_stats.bytes_from_upstream,

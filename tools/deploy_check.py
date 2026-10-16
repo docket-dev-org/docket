@@ -70,10 +70,17 @@ def set_root(path: Path | str) -> None:
 #: skipped file: a checker that quietly ignores the template it does not understand reports a green
 #: tick for an artefact it never looked at.
 SUPPORTED_TEMPLATE_DOC = (
-    "{{ .Values.a.b }}, {{ .Values.a.b | quote }}, {{ . }} and {{ .field }} inside a range, "
-    "{{ if .Values.x }}/{{ if not .Values.x }}, {{ else }}, {{ range .Values.list }}, {{ end }}, "
-    "and the {{- -}} trim markers"
+    "{{ .Values.a.b }}, {{ .Values.a.b | quote }}, {{ .Values.a.b | int64 }}, {{ . }} and "
+    "{{ .field }} inside a range, {{ if .Values.x }}/{{ if not .Values.x }}, {{ else }}, "
+    "{{ range .Values.list }}, {{ end }}, and the {{- -}} trim markers"
 )
+
+#: The pipes this checker implements. `quote` is Helm's, `int64` is sprig's — and `int64` is the one
+#: a chart needs: Helm hands templates a `float64` for every number in `values.yaml`, so a large
+#: integer pasted straight into a document renders as `6.7108864e+07` unless a template says what
+#: type it means. Refusing an unimplemented pipe by name (rather than passing the text through) is
+#: what keeps that honest.
+SUPPORTED_PIPES = {"quote", "int64"}
 
 VALUES_REF = re.compile(r"\.Values\.([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)")
 #: A bare substitution: a `.Values` path, `.` or a field of the ranged item, optionally quoted.
@@ -175,7 +182,7 @@ def _parse(pieces: list[tuple[str, str, bool, bool]], where: str, index: int = 0
         # `{{ include "x" . }}` or `{{ default "a" .Values.b }}` is refused by name instead of
         # being substituted as a literal string and reported as a pass.
         head, _, pipe = payload.partition("|")
-        if EXPRESSION_OK.match(head.strip()) and (not pipe or pipe.strip() == "quote"):
+        if EXPRESSION_OK.match(head.strip()) and (not pipe or pipe.strip() in SUPPORTED_PIPES):
             nodes.append(Expr(value=payload, where=where))
             index += 1
             continue
@@ -220,11 +227,100 @@ def _evaluate(expression: str, values: dict[str, Any], item: Any, where: str) ->
             if not isinstance(value, str):
                 raise DeployCheckError(f"{where}: `| quote` applied to a non-string value {value!r}")
             value = f'"{value}"'
+        elif pipe == "int64":
+            if isinstance(value, bool):
+                raise DeployCheckError(f"{where}: `| int64` applied to a boolean value {value!r}")
+            try:
+                value = int(value)
+            except (TypeError, ValueError) as exc:
+                raise DeployCheckError(f"{where}: `| int64` applied to a non-number {value!r}") from exc
         else:
             raise DeployCheckError(
                 f"{where}: unsupported pipe {pipe!r}; this checker implements {SUPPORTED_TEMPLATE_DOC}"
             )
     return value
+
+
+def _go_float(value: float) -> str:
+    """Format a ``float64`` the way Helm's templates do: Go's ``%v``, i.e. shortest ``%g``.
+
+    This is not a detail. Helm loads ``values.yaml`` through YAML → JSON → ``map[string]any``, so
+    *every* number in a values file arrives in a template as a ``float64``; Go prints a ``float64``
+    with the shortest representation that round-trips, in scientific notation once the exponent
+    falls outside ``-4 <= exp < 6``. So ``67108864`` renders as ``6.7108864e+07`` — and a chart that
+    pastes that into a TOML policy writes a *float* where the document says integer.
+
+    The table in ``tests/test_deploy_check.py`` was produced by running Helm itself (``helm
+    template``, Helm v3.16.3, 2026-10-15) over a chart containing those exact values. This function
+    exists because the checker's whole claim is that it renders what Helm renders, and the day it
+    renders something else is the day its verdicts stop meaning anything.
+    """
+    if value != value or value in (float("inf"), float("-inf")):  # pragma: no cover - refused earlier
+        return str(value)
+    text = repr(float(value))
+    exponent = 0
+    if "e" in text or "E" in text:
+        text, _, suffix = text.partition("e")
+        exponent = int(suffix)
+    sign = ""
+    if text.startswith("-"):
+        sign, text = "-", text[1:]
+    whole, _, fraction = text.partition(".")
+    if whole.lstrip("0"):
+        point = len(whole.lstrip("0")) + exponent
+        digits = (whole + fraction).lstrip("0")
+    else:
+        leading = len(fraction) - len(fraction.lstrip("0"))
+        point = -leading + exponent
+        digits = fraction.lstrip("0")
+    digits = digits.rstrip("0") or "0"
+    if digits == "0":
+        # Go prints negative zero as `-0`; a values file that says `-0` should render as it was
+        # written rather than being quietly normalised.
+        return sign + "0"
+    normalised = point - 1
+    if normalised < -4 or normalised >= 6:
+        head, tail = digits[0], digits[1:]
+        mantissa = head + ("." + tail if tail else "")
+        return f"{sign}{mantissa}e{'+' if normalised >= 0 else '-'}{abs(normalised):02d}"
+    if normalised >= 0:
+        head = digits[: normalised + 1].ljust(normalised + 1, "0")
+        tail = digits[normalised + 1 :]
+        return sign + head + ("." + tail if tail else "")
+    return sign + "0." + "0" * (-normalised - 1) + digits
+
+
+def _helm_numbers(node: Any) -> Any:
+    """Convert a values tree to what Helm's templates actually receive: ``float64`` numbers.
+
+    Claiming to render what Helm renders while keeping Python's ``int`` would be a checked-in
+    fiction: it is the reason the static render disagreed with ``helm template`` on this chart's
+    two MiB-scale policy numbers, and the reason the disagreement was invisible.
+    """
+    if isinstance(node, bool):
+        return node
+    if isinstance(node, int):
+        return float(node)
+    if isinstance(node, float):
+        return node
+    if isinstance(node, dict):
+        return {key: _helm_numbers(value) for key, value in node.items()}
+    if isinstance(node, list):
+        return [_helm_numbers(value) for value in node]
+    return node
+
+
+def _helm_scalar(value: Any) -> str:
+    """The text Go's ``%v`` would print for a template's scalar value."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        # An `int64` from a filter: a real integer, printed exactly, which is the whole point of
+        # writing the filter in the template.
+        return str(value)
+    if isinstance(value, float):
+        return _go_float(value)
+    return str(value)
 
 
 def _render_nodes(nodes: list[Any], values: dict[str, Any], item: Any, where: str) -> str:
@@ -236,7 +332,7 @@ def _render_nodes(nodes: list[Any], values: dict[str, Any], item: Any, where: st
             value = _evaluate(node.value, values, item, node.where)
             if not isinstance(value, str | int | float | bool):
                 raise DeployCheckError(f"{where}: {node.value!r} does not render as a scalar")
-            out.append(str(value))
+            out.append(_helm_scalar(value))
         elif isinstance(node, If):
             condition = node.condition
             negate = condition.startswith("not ")
@@ -255,7 +351,13 @@ def _render_nodes(nodes: list[Any], values: dict[str, Any], item: Any, where: st
 
 
 def render(template: str, values: dict[str, Any], where: str) -> str:
-    """Render ``template`` with ``values`` under the declared subset."""
+    """Render ``template`` with ``values`` under the declared subset.
+
+    The values are converted to the types Helm's templates actually receive before anything is
+    substituted, because a renderer that is *almost* Helm is worse than none: it produces confident
+    text about a document no cluster would ever see (``_helm_numbers``).
+    """
+    values = _helm_numbers(values)
     pieces = _tokenise(template, where)
     nodes, index = _parse(pieces, where)
     if index != len(pieces):  # pragma: no cover - _parse consumes end/else only via blocks
@@ -594,12 +696,67 @@ def deployment_one_writer() -> list[str]:
     return problems
 
 
+def _integer_policy_keys() -> set[str]:
+    """The policy keys whose documented type is an integer, derived from the dataclasses.
+
+    Deriving the list means it cannot drift: adding ``int`` field to ``Caps`` or ``Resilience``
+    puts it under this check without anyone remembering to.
+    """
+    from dataclasses import fields  # noqa: PLC0415
+    from decimal import Decimal  # noqa: PLC0415
+    from typing import get_args, get_type_hints  # noqa: PLC0415
+
+    from docket.policy import Cache, Caps, Resilience  # noqa: PLC0415
+
+    keys: set[str] = set()
+    for section, cls in (("caps", Caps), ("resilience", Resilience), ("cache", Cache)):
+        hints = get_type_hints(cls)
+        for policy_field in fields(cls):
+            options = get_args(hints[policy_field.name]) or (hints[policy_field.name],)
+            if int in options and not any(option in options for option in (float, Decimal, str)):
+                keys.add(f"{section}.{policy_field.name}")
+    return keys
+
+
+def _integer_fields_that_arrived_as_floats(
+    path: str, key: str, body: str, parsed: dict[str, Any], integer_keys: set[str]
+) -> list[str]:
+    """Report an integer key that the rendered document spells as a float, with the line quoted."""
+    problems: list[str] = []
+    lines = {line.split("=", 1)[0].strip(): line.strip() for line in body.splitlines() if "=" in line}
+    for dotted in sorted(integer_keys):
+        section, _, field = dotted.partition(".")
+        table = parsed.get(section)
+        if not isinstance(table, dict) or field not in table:
+            continue
+        value = table[field]
+        if isinstance(value, int):  # a bool is an int here too, and neither is a float
+            continue
+        rendered = lines.get(field, f"{field} = {value!r}")
+        problems.append(
+            f"{path}: {key}: {rendered} — {dotted} is documented as an integer, and TOML reads that "
+            f"as a {type(value).__name__}. Helm renders every number in values.yaml as a float64, so "
+            f"a value at or above 1e6 comes out in scientific notation unless the template says what "
+            f"type it means: write it as {{{{ .Values.<path> | int64 }}}}"
+        )
+    return problems
+
+
 @check("configmap.policy-parses")
 def configmap_policy_parses() -> list[str]:
-    """Every policy embedded in a ConfigMap is read by Docket's own policy loader."""
+    """Every policy embedded in a ConfigMap is read by Docket's own policy loader.
+
+    Reading is not enough on its own. A policy written by a *template* can be readable and still
+    wrong: Helm hands a template a ``float64`` for every number in ``values.yaml``, so a large
+    integer pasted into the document arrives as ``6.7108864e+07``, which TOML reads as a float —
+    accepted by the loader (a whole float is a whole number) and silently a different type from
+    the one the key documents. Values that must be integers are therefore checked as integers,
+    against the type the policy dataclasses declare rather than a list kept in step by hand.
+    """
     sys.path.insert(0, str(HERE / "src"))
     from docket.policy import Policy  # noqa: PLC0415 - imported here so the failure is legible
 
+    integer_keys = _integer_policy_keys()
     problems: list[str] = []
     seen = 0
     for path, text in _all_documents():
@@ -624,6 +781,7 @@ def configmap_policy_parses() -> list[str]:
                     loader(parsed)
                 except Exception as exc:  # noqa: BLE001 - whatever the loader says is the answer
                     problems.append(f"{path}: {key} is not a policy Docket accepts: {exc}")
+                problems.extend(_integer_fields_that_arrived_as_floats(path, key, body, parsed, integer_keys))
     if seen == 0:
         problems.append("no policy TOML found in any ConfigMap: the manifests do not configure a run")
     return problems

@@ -27,12 +27,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 STAGE = ROOT / ".mkdocs-site"
 SKIP_DIRS = {".git", ".mkdocs-site", "site", "dist", "build", "node_modules", "__pycache__", ".venv"}
+#: Directories that are part of the repository but not part of the site. `tests/golden` holds the
+#: rendered-output fixtures the golden tests compare against; no document links to them, and mkdocs
+#: reported each one as "a page not in the nav" — which is the right complaint about a fixture that
+#: was staged as documentation.
+SKIP_PATHS = {"tests/golden"}
 
 
 def stage(destination: Path) -> None:
     """Copy the Markdown tree, preserving relative paths, plus the assets it references."""
     for path in sorted(ROOT.rglob("*")):
-        if any(part in SKIP_DIRS for part in path.relative_to(ROOT).parts):
+        relative_to_root = path.relative_to(ROOT)
+        if any(part in SKIP_DIRS for part in relative_to_root.parts):
+            continue
+        if any(
+            relative_to_root == Path(skipped) or Path(skipped) in relative_to_root.parents for skipped in SKIP_PATHS
+        ):
             continue
         if path.is_dir():
             continue

@@ -5,6 +5,7 @@
   duration   2.5s
   spend      $0.01 of $5.00 cap
   calls      4   denied: 0
+  latency    p50 101ms · p95 103ms · p99 103ms · max 103ms  (4 call(s), nearest-rank)
   tokens     9,900 (in 9,000 · cached 1,000 · out 900)
   pricing    assumed for: unlisted-model-1 (not in price table)
   files      0 changed (+0 ~0 -0)

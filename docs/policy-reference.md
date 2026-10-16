@@ -100,6 +100,30 @@ embeds, so it is visible in the evidence rather than implied by the code. It is 
 when `--docket-dir` is the working directory itself (there would be nothing left to watch): that
 run proceeds with no exclusion and says so on stderr.
 
+## `[cache]`
+
+The boundary's response cache. Off unless `enabled` says otherwise, and every hit it makes is a
+`model.cache_hit` event in the ledger — see [the response cache](caching.md) for the full account,
+including the hazard this section exists to bound.
+
+| key | type | default | meaning |
+| --- | --- | --- | --- |
+| `enabled` | bool | `false` | answer an identical request (same upstream path, same canonical body) from the cache instead of the provider |
+| `ttl_seconds` | number ≥ 0 | `300` | how long an entry stays usable; `0` = never expire on time, with capacity still bounding memory |
+| `max_entries` | int ≥ 1 | `256` | least-recently-used entries are evicted above this |
+| `max_hits` | int ≥ 0 | `1000` | ceiling on calls the cache may answer in this run; `0` = no ceiling. **A cached loop spends nothing, so no dollar or call cap can stop it** — this ceiling makes the run start paying again, and the moment it engages is recorded as a `note` event |
+
+`[cache]` appears in the receipt's policy document — and therefore in its digest — **only when it is
+enabled**. A policy that says nothing about caching is the policy it always was, with the digest it
+always had: receipts and signatures name that digest, and a feature that moved it would turn every
+earlier receipt into a document nobody could re-derive. `tests/test_cache.py` asserts exactly that.
+
+Naming any tuning key turns the cache on, in the policy file and on the command line alike:
+`ttl_seconds` alone in `[cache]`, or `--cache-max-entries 4`, would otherwise configure a cache that
+never answers — a policy nobody means. `enabled = false` written beside other keys is the one
+explicit way to say "tuned, but off", and it wins because it is the explicit statement. An empty
+`[cache]` section says nothing and leaves the cache off.
+
 ## `[egress]`
 
 Applies to `--http-proxy` mode (and to CONNECT tunnels generally).

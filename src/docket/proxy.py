@@ -44,6 +44,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlsplit
 
+from . import cache as response_cache
 from . import events as ev
 from .canon import digest_of, num, usd
 from .ledger import Ledger, LedgerFullError
@@ -724,6 +725,21 @@ class _Handler(BaseHTTPRequestHandler):
                     return
 
     # -- the main path ------------------------------------------------------ #
+    def _request_sha256(self, body: bytes, parsed: dict[str, Any] | None) -> str:
+        """The identity of this request, exactly as the ledger will record it.
+
+        It is computed *here*, once, and then used for three things that must never
+        disagree: the ``request_sha256`` member of the request event, the cache key,
+        and the ``cache.key`` member of the response. A second computation would be
+        a second chance to differ.
+        """
+        return digest_of(
+            {
+                "body": parsed if parsed is not None else body.decode("utf-8", "replace"),
+                "path": self.path,
+            }
+        )
+
     def _handle(self, with_body: bool) -> None:
         proxy = self.proxy
         started = time.time()
@@ -878,6 +894,28 @@ class _Handler(BaseHTTPRequestHandler):
                 self._deny("a spending cap was already crossed earlier in this run", model, provider, cap)
                 return
 
+            # -- is this call one the cache has already answered? --------------- #
+            # Placed after every refusal and before the breaker, on purpose. After,
+            # because a request that policy would refuse must still be refused: the
+            # cache is a saving, not an exemption. Before, because a hit contacts no
+            # upstream, so an open breaker has nothing to do with it — a run can keep
+            # working through a provider outage on what it already has, and the
+            # breaker's state is recorded on the hit so a reader sees that is what
+            # happened rather than inferring a healthy provider.
+            request_sha = self._request_sha256(body_bytes, parsed_body)
+            if proxy.cache.enabled:
+                if proxy.cache.exhausted and not proxy._cache_ceiling_noted:
+                    # Once, and in the ledger: the moment the cache stopped answering
+                    # is the moment the run's economics changed, and a hit rate that
+                    # drops with no explanation is exactly what this project records
+                    # events to prevent.
+                    proxy._cache_ceiling_noted = True
+                    proxy.record(ev.NOTE, response_cache.ceiling_note(proxy.cache.max_hits))
+                entry = proxy.cache.lookup(request_sha)
+                if entry is not None:
+                    self._serve_from_cache(entry, provider=provider, model=model, key=request_sha)
+                    return
+
             # -- is the upstream worth talking to? ----------------------------- #
             if proxy.breaker is not None:
                 breaker_ok, breaker_reason = proxy.breaker.allow(provider)
@@ -893,9 +931,57 @@ class _Handler(BaseHTTPRequestHandler):
                     )
                     return
 
-            self._forward_and_record(provider, upstream_path, body_bytes, parsed_body, model, streaming, started)
+            self._forward_and_record(
+                provider, upstream_path, body_bytes, parsed_body, model, streaming, started, request_sha
+            )
         finally:
             proxy.health.counter("in_flight", -1)
+
+    def _serve_from_cache(self, entry: response_cache.Entry, *, provider: str, model: str, key: str) -> None:
+        """Answer a call the cache already has: the origin's bytes, no upstream, one event.
+
+        Nothing here touches the meter's totals, the call count or the token count.
+        The money this call would have cost is *quoted* (the same arithmetic the
+        meter uses when it records a call) and reported on the event as
+        ``avoided_cost_usd``, where verification recomputes it from the origin's row
+        and the embedded price table. A saving that was folded into the spend would
+        be a number no reader could check, and a spend figure that moved when a
+        request was *not* sent would be a lie about the run.
+        """
+        proxy = self.proxy
+        avoided = proxy.meter.quote(entry.model, entry.input_tokens, entry.cached_input_tokens, entry.output_tokens)
+        proxy.cache.note_served(entry, avoided)
+        proxy.record(
+            ev.MODEL_CACHE_HIT,
+            {
+                "provider": provider,
+                "model": entry.model,
+                "requested_model": model,
+                "key": key,
+                response_cache.HIT_ORIGIN: {"seq": entry.origin_seq, "hash": entry.origin_hash},
+                "status": entry.status,
+                "streaming": entry.streaming,
+                "usage": entry.usage(),
+                "usage_source": entry.usage_source,
+                "avoided_cost_usd": usd(avoided),
+                "response_sha256": entry.body_sha256,
+                "response_bytes": len(entry.body),
+                "age_seconds": num(round(entry.age_seconds(proxy.cache.now()), 3)),
+                "circuit_state": proxy.breaker.state_of(provider) if proxy.breaker else None,
+            },
+        )
+        if entry.streaming:
+            self._send_stream_head(list(entry.headers))
+            with contextlib.suppress(OSError):  # pragma: no cover - client went away
+                self.wfile.write(entry.body)
+                self.wfile.flush()
+        else:
+            self.send_response(entry.status)
+            self._copy_headers(list(entry.headers))
+            self.send_header("Content-Length", str(len(entry.body)))
+            self.end_headers()
+            with contextlib.suppress(OSError):  # pragma: no cover - client hung up
+                self.wfile.write(entry.body)
 
     def _forward_and_record(
         self,
@@ -906,6 +992,7 @@ class _Handler(BaseHTTPRequestHandler):
         model: str,
         streaming: bool,
         started: float,
+        request_sha256: str,
     ) -> None:
         """The forwarding half of :meth:`_handle`, so admission control can return early."""
         proxy = self.proxy
@@ -977,12 +1064,7 @@ class _Handler(BaseHTTPRequestHandler):
             "path": upstream_path,
             "streaming": streaming,
             "fingerprint": fingerprint,
-            "request_sha256": digest_of(
-                {
-                    "body": parsed_body if parsed_body is not None else body_bytes.decode("utf-8", "replace"),
-                    "path": self.path,
-                }
-            ),
+            "request_sha256": request_sha256,
             "body_bytes": len(body_bytes),
         }
         if proxy.record_bodies and parsed_body is not None:
@@ -1160,7 +1242,36 @@ class _Handler(BaseHTTPRequestHandler):
                 + "; ".join(usage_problems[:4])
                 + "); the token counts recorded here are estimated from the request and response text, not reported"
             )
-        proxy.record(ev.MODEL_RESPONSE, response_data)
+        # Whether this response may be cached is decided *before* the event is
+        # written, so the event and the cache cannot disagree, and the reason a
+        # response was not stored travels with the event instead of living only in a
+        # counter. Storing happens after, because an entry needs the sequence number
+        # and hash of the response event it copies: that is what makes a later hit
+        # checkable against the ledger rather than merely plausible.
+        decision = response_cache.storable(
+            status=status,
+            truncated=bool(payload.get("truncated")),
+            injected=injected,
+        )
+        if proxy.cache.enabled:
+            response_data["cache"] = response_cache.response_cache_metadata(request_sha256, decision)
+        response_event = proxy.record(ev.MODEL_RESPONSE, response_data)
+        if proxy.cache.enabled and decision[0] and response_event is not None:
+            proxy.cache.store(
+                response_cache.build_entry(
+                    key=request_sha256,
+                    origin=response_event,
+                    status=status,
+                    model=model,
+                    usage=(inp, cached, out),
+                    usage_source=usage_source,
+                    cost_usd=usd(cost),
+                    body=payload.get("text", "").encode("utf-8") if streaming else payload.get("bytes", b""),
+                    headers=headers,
+                    streaming=streaming,
+                    now=proxy.cache.now(),
+                )
+            )
 
         proxy._check_warning()
         breach = proxy.cap_breach()
@@ -1473,6 +1584,7 @@ class RecordingProxy:
         min_free_bytes: int = MIN_FREE_BYTES,
         disk_free: Callable[[], int | None] | None = None,
         upstream_timeout: float = 300.0,
+        cache: response_cache.ResponseCache | None = None,
     ) -> None:
         self.ledger = ledger
         self.policy = policy
@@ -1493,6 +1605,28 @@ class RecordingProxy:
         self.disk_free = disk_free or self._default_disk_free
         self.upstream_timeout = upstream_timeout
         self.ledger_full = threading.Event()
+        # Built from the policy, so a boundary configured by a policy file behaves the
+        # same wherever it is constructed. A caller may supply its own (a test with a
+        # fake clock, or a host application that keeps a cache across runs); anything
+        # supplied is used as-is and its own configuration is what the events report.
+        #
+        # `is not None`, not `or`: `ResponseCache` defines `__len__` (so `len(cache)` is the
+        # entry count, which the metrics and tests read), which made an *empty* cache falsy. A
+        # caller that supplied a fresh, enabled cache got a different, policy-built one instead —
+        # silently, and only while the cache was empty, so the failure appeared and disappeared
+        # with traffic. `docket selftest`'s cache probe is what caught it: unit tests passed a
+        # cache through the policy rather than the argument.
+        self.cache = (
+            cache
+            if cache is not None
+            else response_cache.ResponseCache(
+                enabled=policy.cache.enabled,
+                ttl_seconds=policy.cache.ttl_seconds,
+                max_entries=policy.cache.max_entries,
+                max_hits=policy.cache.max_hits,
+            )
+        )
+        self._cache_ceiling_noted = False
         self._warned = False
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -1574,6 +1708,17 @@ class RecordingProxy:
         }
         if self.injector is not None and self.injector.enabled:
             counters["docket_faults_injected_total"] = len(self.injector.injected)
+        cache_view = self.cache.snapshot()
+        if cache_view["enabled"]:
+            # Emitted only when the cache is on: their absence means "no cache", and a
+            # dashboard that reads zero hits from a cache that does not exist would be
+            # reading a number that was never measured.
+            counters["docket_cache_hits_total"] = cache_view["hits"]
+            counters["docket_cache_misses_total"] = cache_view["misses"]
+            counters["docket_cache_stores_total"] = cache_view["stores"]
+            counters["docket_cache_evictions_total"] = cache_view["evictions"]
+            counters["docket_cache_expirations_total"] = cache_view["expirations"]
+            counters["docket_cache_ceiling_refusals_total"] = cache_view["refusals_at_ceiling"]
         for name, value in counters.items():
             lines.append(f"# TYPE {name} counter")
             lines.append(f"{name} {int(value)}")
@@ -1584,6 +1729,10 @@ class RecordingProxy:
             "docket_uptime_seconds": round(self.health.uptime_seconds(), 3),
             "docket_cost_usd": str(usd(self.meter.cost)),
         }
+        if cache_view["enabled"]:
+            gauges["docket_cache_enabled"] = 1
+            gauges["docket_cache_entries"] = cache_view["entries"]
+            gauges["docket_cache_saved_usd"] = cache_view["saved_usd"]
         for name, value in gauges.items():
             lines.append(f"# TYPE {name} gauge")
             lines.append(f"{name} {value}")
@@ -1619,6 +1768,11 @@ class RecordingProxy:
         if self._server is not None:
             self._server.shutdown()
             self._server.server_close()
+        # Cached responses are copies of bytes the ledger already accounts for, held
+        # in memory for the length of the run and no longer. The counters are left
+        # alone: what /docket/metrics reported while the run was live is a fact about
+        # the run, and clearing it at the end would quietly rewrite history.
+        self.cache.clear()
 
     # -- routing ----------------------------------------------------------- #
     def resolve(self, path: str) -> tuple[str | None, str]:

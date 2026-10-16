@@ -1,4 +1,4 @@
-.PHONY: help test demo lint fmt audit mutation verify-js vectors wheel clean check site site-check deploy-check load soak
+.PHONY: help game-day selftest helm-fidelity test demo lint fmt audit mutation verify-js vectors wheel clean check site site-check deploy-check load soak cache-load
 
 help:
 	@echo "make test       run the full test suite (offline, no API keys)"
@@ -9,12 +9,16 @@ help:
 	@echo "make lint fmt   ruff check / ruff format"
 	@echo "make audit      bandit static analysis (suppressions documented in pyproject.toml)"
 	@echo "make mutation   mutate the source, run the tests, report every survivor (slow)"
-	@echo "make check      lint + audit + tests + verify-js"
+	@echo "make check      lint + audit + tests + verify-js + deploy-check"
+	@echo "make selftest   19 probes: the boundary, exercised in this process (6 s)"
+	@echo "make game-day   every failure phase, end to end, with a post-mortem (~20 s)"
 	@echo "make site       build the docs site (needs mkdocs-material)"
 	@echo "make site-check build the docs site to a temp dir, strict: catches broken links"
 	@echo "make deploy-check check deploy/ statically (no container runtime needed; none is present)"
+	@echo "make helm-fidelity compare the checker's chart render against real Helm (needs helm; exits 2 without it)"
 	@echo "make load       measure throughput and latency through a real boundary (a number about this host)"
 	@echo "make soak       measure memory and drift over 10 minutes (same caveat, longer)"
+	@echo "make cache-load the same load point with the response cache on: what a hit saves, and what it returns"
 
 test:
 	PYTHONPATH=src python3 -m pytest tests -q
@@ -57,6 +61,9 @@ mutation:
 # Static validation of the container/manifest/chart recipes. It deliberately passes --json so the
 # result is machine-readable, and it exits 2 rather than 0 when PyYAML is missing: a check that could
 # not run must never look like a check that passed.
+helm-fidelity:
+	python3 tools/helm_fidelity.py
+
 deploy-check:
 	PYTHONPATH=src python3 tools/deploy_check.py
 
@@ -69,6 +76,18 @@ load:
 soak:
 	python3 tools/loadtest.py --calls 200000 --concurrency 2 --seconds 600 --rate 20 \
 		--work-dir .docket-soak --report soak-report.json --markdown soak-report.md
+
+# The same load with the response cache on. The ceiling is high enough that nothing in this run
+# reaches the brake, so the number is "what the cache answers", not "what it stops answering".
+cache-load:
+	python3 tools/loadtest.py --calls 2000 --concurrency 8 --cache-hits 5000 \
+		--report cache-report.json --markdown cache-report.md
+
+game-day:
+	PYTHONPATH=src python3 -m docket game-day --out .docket/game-day
+
+selftest:
+	PYTHONPATH=src python3 -m docket selftest
 
 check: lint audit test verify-js deploy-check
 

@@ -50,6 +50,18 @@ jobs:
         # keeps this job at 0 skips, so a skip in CI means something changed.
         run: pip install pytest cryptography pyyaml
       - run: PYTHONPATH=src python -m pytest tests -q
+      - name: Self-test (the probes a cron would run against a deployment)
+        # 19 probes that start a real boundary, a real upstream and real child processes in this
+        # runner: forwarding, refusal, caps, throttling, the breaker, fault injection, the response
+        # cache, a failing disk, and offline verification. It runs in CI because a self-test that is
+        # only ever run by hand is a self-test nobody notices breaking. 6 s, offline.
+        run: PYTHONPATH=src python -m docket selftest
+      - name: Game day (every failure phase, end to end)
+        # Nine scripted incidents against the shipped code — including the cache brake, the rollback
+        # drill and a SIGKILLed supervisor — each declaring its expectations in advance and checked
+        # against the ledger, the receipt and the disk. ~20 s, offline, and the output names any
+        # phase that missed one.
+        run: PYTHONPATH=src python -m docket game-day --out "$(mktemp -d)/game-day"
 
   conformance:
     name: conformance (independent verifier, node)
@@ -88,6 +100,30 @@ jobs:
         # The load-bearing half: tests/test_deploy_check.py breaks every invariant on purpose, one
         # fixture per check, so a checker that cannot fail cannot pass this job either.
         run: PYTHONPATH=src python -m pytest tests/test_deploy_check.py -q
+
+  docs:
+    name: "docs (mkdocs build --strict: no broken links, no stranded pages)"
+    # `.github/workflows/docs.yml` *deploys* Pages, on a manual trigger, when a maintainer asks it
+    # to. This job is the other half: the site is built strictly on every push, so a broken relative
+    # link or a page outside the navigation is a red build on the pull request that caused it,
+    # instead of a surprise the next time somebody deploys.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the site builder
+        # `mkdocs-material` is not a development requirement of the package, so it is installed for
+        # this job only. `tools/build_docs_site.py` exits 2 when mkdocs is missing rather than
+        # quietly reporting success — "could not run" is not "passed".
+        run: pip install mkdocs-material
+      - name: Build the site, strictly
+        # `--strict` turns a broken relative link or a page outside the navigation into a failure.
+        # It is the cheapest way to keep twenty documents mutually consistent, and it runs against a
+        # *staged* copy of the tree (see tools/build_docs_site.py) so that links to files outside
+        # `docs/` stay valid on GitHub and on the site at the same time.
+        run: make site-check
 
   package:
     name: package (clean install, then run it)

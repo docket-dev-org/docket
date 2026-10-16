@@ -44,6 +44,9 @@ docket run -- <agent>
 | A restore writes only inside the tree it was pointed at, and only where the record says | `snapshot.py` | `test_snapshot_confinement.py` |
 | A file changed after the run is refused, not overwritten | `snapshot.py` | `test_snapshot_restore.py` |
 | A snapshot that cannot cover the tree is refused before the agent starts | `supervisor.py`, `snapshot.py` | `test_snapshot_restore.py` |
+| The boundary uses the cache it was *given* — an enabled-but-empty cache is not "no cache" | `proxy.py`, `cache.py` | `test_cache.py` (the regression test passes a cache as an argument, which is how the defect it pins was found) |
+| Only a whole, non-injected `2xx` response is ever stored, and a hit names the response it replays | `cache.py` | `test_cache.py`; the verifier's `cache-hit-origins` and `cache-savings` checks, in both implementations. The rule has a normative half: RFC 6585 §4 — and the same sentence for 428, 431 and 511 — says a 429 "MUST NOT be stored by a cache", and one of the tests that pins this row asserts exactly that a 429 is refused with a reason ([standards](standards.md)) |
+| A cache hit is not a model call: no cap, total or call count moves, and the saving is reported beside the spend | `proxy.py`, `receipt.py` | `test_cache.py`, `test_receipt_verify.py`, the game day's `cache-brake` phase |
 
 Each of those has a test because each of them is a sentence in the README that would otherwise
 be marketing.

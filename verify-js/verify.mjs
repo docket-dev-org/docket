@@ -515,6 +515,256 @@ function verifyReceipt(receipt, options = {}) {
     add("signature", "skip", "receipt is not signed");
   }
 
+  // ------------------------------------------------------------------------ //
+  // The response cache (§6.4)
+  //
+  // A saving is the easiest number in a receipt to overstate, because nothing about
+  // the spend contradicts it. So it is recomputed the same way a metered call's cost
+  // is: from the origin call's token counts and the embedded price table. How many
+  // times each origin was replayed is a *measurement* — the number of events the
+  // boundary wrote — so it is bound to the ledger by the inclusion proof on each
+  // group and compared against the ledger's own events, never derived.
+  // ------------------------------------------------------------------------ //
+  if (receipt.cache === undefined) {
+    add("cache-savings", "skip", "this run had no response cache: every call was forwarded");
+  } else if (receipt.cache === null || typeof receipt.cache !== "object" || Array.isArray(receipt.cache)) {
+    add("cache-savings", "fail", `the receipt's cache member is not an object: ${typeof receipt.cache}`);
+  } else {
+    const block = receipt.cache;
+    const groups = Array.isArray(block.by_origin) ? block.by_origin : null;
+    // The same price table the metered calls were checked against, loaded the same way,
+    // so a saving and a cost can never be recomputed under two different rules.
+    const cachePriceDocument = receipt.price_table?.document;
+    const cacheEntries = cachePriceDocument ? loadPrices(cachePriceDocument) : null;
+    const savingsProblems = [];
+    const originProblems = [];
+    let savedMicros = 0n;
+    let avoidedTokens = 0;
+    let hits = 0;
+    let proven = 0;
+    let withoutProof = 0;
+    let proofFailures = 0;
+    const rowsBySeq = new Map();
+    for (const row of rows) {
+      if (row && typeof row === "object" && Number.isInteger(row.seq)) rowsBySeq.set(row.seq, row);
+    }
+    if (!groups) {
+      savingsProblems.push(`the receipt's cache.by_origin is not a list: ${typeof block.by_origin}`);
+    }
+    for (const [index, group] of (groups ?? []).entries()) {
+      if (!group || typeof group !== "object") {
+        savingsProblems.push(`cache group ${index} is not an object: ${typeof group}`);
+        continue;
+      }
+      const count = group.hits;
+      if (!Number.isInteger(count) || count < 1) {
+        savingsProblems.push(`cache group ${index} does not say how many hits it counts: ${JSON.stringify(count)}`);
+        continue;
+      }
+      const usage = group.usage;
+      if (!usage || typeof usage !== "object") {
+        savingsProblems.push(`cache group ${index} carries no usage object`);
+        continue;
+      }
+      let perHit;
+      try {
+        if (!cacheEntries) {
+          throw new Error("the receipt does not embed the price table it used");
+        }
+        perHit = callCost(
+          cacheEntries,
+          String(group.model ?? ""),
+          Number(usage.input_tokens ?? 0),
+          Number(usage.cached_input_tokens ?? 0),
+          Number(usage.output_tokens ?? 0),
+        ).micros;
+      } catch (error) {
+        savingsProblems.push(`cache group ${index} cannot be priced: ${error.message}`);
+        continue;
+      }
+      const recomputed = formatMicros(perHit);
+      if (String(group.avoided_usd_per_hit ?? "") !== recomputed) {
+        savingsProblems.push(
+          `cache group ${index} claims ${JSON.stringify(group.avoided_usd_per_hit)} saved per hit; the price table says ${recomputed}`,
+        );
+      }
+      savedMicros += perHit * BigInt(count);
+      avoidedTokens += (Number(usage.input_tokens ?? 0) + Number(usage.output_tokens ?? 0)) * count;
+      hits += count;
+      // The origin must be a metered call this receipt already carries, stored under
+      // the same key: a hit that names a call the appendix does not have, or one that
+      // was never recorded as kept, is a hit with no response behind it.
+      const originSeq = group.origin_seq;
+      if (!Number.isInteger(originSeq)) {
+        originProblems.push(`cache group ${index} does not cite the call it replays: origin_seq ${JSON.stringify(originSeq)}`);
+      } else {
+        const row = rowsBySeq.get(originSeq);
+        if (!row) {
+          originProblems.push(
+            `cache group ${index} cites origin seq ${originSeq}, which is not a metered call in this receipt's appendix`,
+          );
+        } else {
+          if (row.cache_key !== group.key) {
+            originProblems.push(
+              `cache group ${index}: the call at seq ${originSeq} is not recorded as a cached response with this key`,
+            );
+          }
+          if (String(row.model ?? "") !== String(group.model ?? "")) {
+            originProblems.push(
+              `cache group ${index}: replayed model ${JSON.stringify(group.model)} but seq ${originSeq} returned ${JSON.stringify(row.model)}`,
+            );
+          }
+          for (const field of ["input_tokens", "cached_input_tokens", "output_tokens"]) {
+            if (Number(usage[field] ?? 0) !== Number(row[field] ?? 0)) {
+              originProblems.push(
+                `cache group ${index}: ${field} ${JSON.stringify(usage[field])} does not match the call at seq ${originSeq} (${JSON.stringify(row[field])})`,
+              );
+            }
+          }
+        }
+      }
+      // One proof per group, against the same root the usage appendix proves against.
+      if (!Array.isArray(group.merkle_path) || group.merkle_path.length === 0) {
+        withoutProof += 1;
+      } else {
+        try {
+          if (verifyInclusion(String(group.event_hash), group.merkle_path, String(ledgerMeta.merkle_root ?? ""))) {
+            proven += 1;
+          } else {
+            proofFailures += 1;
+          }
+        } catch (error) {
+          proofFailures += 1;
+          savingsProblems.push(`cache group ${index} carries a malformed inclusion proof: ${error.message}`);
+        }
+      }
+    }
+    if (groups) {
+      if (block.hits !== hits) {
+        savingsProblems.push(`cache.hits is ${JSON.stringify(block.hits)}, but the groups below it add up to ${hits}`);
+      }
+      let declaredSaved = null;
+      try {
+        declaredSaved = micros(String(block.saved_usd));
+      } catch (error) {
+        savingsProblems.push(`the receipt's cache.saved_usd is not a decimal amount: ${JSON.stringify(block.saved_usd)}`);
+      }
+      if (declaredSaved !== null && declaredSaved !== savedMicros) {
+        savingsProblems.push(
+          `cache.saved_usd is ${JSON.stringify(block.saved_usd)}, but the groups recompute to ${formatMicros(savedMicros)}`,
+        );
+      }
+      if (Number(block.avoided_tokens ?? -1) !== avoidedTokens) {
+        savingsProblems.push(
+          `cache.avoided_tokens is ${JSON.stringify(block.avoided_tokens)}, but the groups add up to ${avoidedTokens}`,
+        );
+      }
+    }
+    if (savingsProblems.length > 0) {
+      add("cache-savings", "fail", savingsProblems.slice(0, 3).join("; "));
+    } else {
+      add("cache-savings", "pass", `${hits} hit(s) recomputed at the origin's price: ${formatMicros(savedMicros)} not spent`);
+    }
+    if (originProblems.length > 0) {
+      add("cache-hit-origins", "fail", originProblems.slice(0, 3).join("; "));
+    } else if (hits > 0) {
+      add("cache-hit-origins", "pass", "every hit resolves to the stored response it replays");
+    }
+    if (groups && groups.length > 0) {
+      if (groups.length === withoutProof) {
+        add("cache-hit-proofs", "skip", "receipt carries a cache summary without inclusion proofs (large session)");
+      } else if (proofFailures > 0) {
+        add(
+          "cache-hit-proofs",
+          "fail",
+          `${proofFailures} cache group(s) do not prove against the receipt's Merkle root ${String(ledgerMeta.merkle_root ?? "").slice(0, 16)}…`,
+        );
+      } else {
+        add("cache-hit-proofs", "pass", `${proven} cache group(s) proven against the receipt's claimed Merkle root`);
+      }
+    }
+    // With the ledger in hand, the events themselves are the last word on the count.
+    if (events) {
+      const hitEvents = events.filter((event) => event && event.type === "model.cache_hit");
+      if (hitEvents.length !== hits) {
+        add(
+          "cache-savings",
+          "fail",
+          `the receipt claims ${hits} cache hit(s); the ledger records ${hitEvents.length}`,
+        );
+      }
+      const tally = new Map();
+      for (const event of hitEvents) {
+        const data = event.data ?? {};
+        const origin = data.origin ?? {};
+        const usage = data.usage ?? {};
+        const identity = [
+          origin.seq,
+          origin.hash,
+          data.key,
+          data.model,
+          usage.input_tokens,
+          usage.cached_input_tokens,
+          usage.output_tokens,
+          String(data.avoided_cost_usd ?? ""),
+        ].join("\u0000");
+        tally.set(identity, (tally.get(identity) ?? 0) + 1);
+        const seq = origin.seq;
+        if (!Number.isInteger(seq) || seq < 0 || seq >= events.length) {
+          add("cache-hit-origins", "fail", `a hit cites origin seq ${JSON.stringify(seq)}, outside the ledger`);
+          continue;
+        }
+        const originEvent = events[seq];
+        if (originEvent?.type !== "model.response") {
+          add("cache-hit-origins", "fail", `a hit replays seq ${seq}, which is a ${originEvent?.type} event, not a response`);
+          continue;
+        }
+        const meta = originEvent.data?.cache ?? {};
+        if (meta.stored !== true) {
+          add("cache-hit-origins", "fail", `a hit replays seq ${seq}, which was not recorded as a stored response`);
+        } else if (meta.key !== data.key) {
+          add(
+            "cache-hit-origins",
+            "fail",
+            `a hit carries a key that does not match the key seq ${seq} was stored under`,
+          );
+        }
+      }
+      for (const [index, group] of (groups ?? []).entries()) {
+        if (!group || typeof group !== "object") continue;
+        const usage = group.usage ?? {};
+        const identity = [
+          group.origin_seq,
+          group.origin_hash,
+          group.key,
+          group.model,
+          usage.input_tokens,
+          usage.cached_input_tokens,
+          usage.output_tokens,
+          String(group.avoided_usd_per_hit ?? ""),
+        ].join("\u0000");
+        const counted = tally.get(identity) ?? 0;
+        if (counted !== group.hits) {
+          add(
+            "cache-hit-origins",
+            "fail",
+            `cache group ${index} claims ${group.hits} hit(s) replaying seq ${group.origin_seq}; the ledger records ${counted}`,
+          );
+        }
+      }
+      const notePresent = events.some(
+        (event) => event && event.type === "note" && event.data && event.data.event === "cache.hits_ceiling_reached",
+      );
+      if (Boolean(block.hits_ceiling_reached) !== notePresent) {
+        add(
+          "cache-savings",
+          "fail",
+          "the receipt and the ledger disagree about whether the cache reached its hit ceiling",
+        );
+      }
+    }
+  }
+
   add(
     "limits-disclosure",
     receipt.limits_disclosure && Object.keys(receipt.limits_disclosure).length > 0 ? "pass" : "fail",

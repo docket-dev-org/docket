@@ -25,6 +25,11 @@ MODEL_REQUEST = "model.request"
 MODEL_RESPONSE = "model.response"
 MODEL_DENIED = "model.denied"
 MODEL_ERROR = "model.error"
+# A call the boundary answered from its own response cache: the provider was not
+# contacted, so there is no request/response pair to record, and this event stands
+# in its place. It never contributes to spend, call counts or token totals; the
+# money it saved is reported beside them (see `docs/caching.md`).
+MODEL_CACHE_HIT = "model.cache_hit"
 
 # Tools and side effects
 TOOL_CALL = "tool.call"
@@ -51,6 +56,7 @@ KNOWN_TYPES = frozenset(
         MODEL_RESPONSE,
         MODEL_DENIED,
         MODEL_ERROR,
+        MODEL_CACHE_HIT,
         TOOL_CALL,
         TOOL_RESULT,
         FS_SNAPSHOT,
@@ -75,6 +81,7 @@ DESCRIPTIONS = {
     MODEL_RESPONSE: "model call returned",
     MODEL_DENIED: "model call blocked by policy",
     MODEL_ERROR: "model call failed",
+    MODEL_CACHE_HIT: "model call answered from cache",
     TOOL_CALL: "tool invoked",
     TOOL_RESULT: "tool returned",
     FS_SNAPSHOT: "filesystem snapshot",

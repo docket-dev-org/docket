@@ -56,7 +56,12 @@ completeness.
 as `x-docket.rate-limited` with the limiter's own state, and counted in `docket_rate_limited_total`.
 The reference agent's `DOCKET_AGENT_MODE=backoff` is the client half of that contract: full jitter
 under a cap, doubling per refusal, honouring `Retry-After`, with the wait and the hint it was given
-written into the ledger.
+written into the ledger. The jitter taxonomy it implements — and the measurement that made full
+jitter the default in the AWS SDKs — is Marc Brooker's [*Exponential Backoff And Jitter*][backoff]
+(AWS Architecture Blog, March 2015); the boundary itself does not retry, so this mode exists to
+*reproduce* a retry storm for a game day rather than to hide one.
+
+[backoff]: https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
 
 **Caps** — `max_usd`, `max_tokens`, `max_model_calls`, `max_wall_seconds`. Crossing one is a
 *policy outcome*, not an accident: the boundary refuses further model calls (`on_breach = "deny"`) or
@@ -108,13 +113,50 @@ negative sleep is a busy loop.
 and only then is the receipt written — a receipt is a claim that the run ended, so it is written
 after it did. The container `STOPSIGNAL` is `SIGTERM` for the same reason.
 
+## Failure modes, ranked by what they would cost (an FMEA)
+
+A list of mechanisms is not an analysis, and "resilient" is not a property you can assert. This is
+the analysis: the ways a supervised run actually fails, what the failure costs, how often it happens
+to a well-behaved deployment, how it is *noticed*, and the artefact in this repository that notices
+it. Every row names a detector, and the detector column is checkable — a test reads this table and
+asserts that every path it names exists in the tree.
+
+**How the ratings work, and what they are not.** Severity, occurrence and detection are each rated
+`1`–`5`. Severity is what the operator loses (5 = money, or evidence that cannot be reconstructed).
+Occurrence is how often it happens in ordinary operation. Detection is the chance it is caught
+*automatically* — a `5` would mean nobody learns until a person reads the ledger, and nothing here is
+rated 5, because every failure below leaves a record somewhere. The risk score is the product.
+**These ratings are judgements, not measurements**: they come from reading this tree, the incident
+corpus and the game-day records, and a reasonable reviewer would move some of them by one. The
+*catcher* column is the part that is evidence, and the only part the test asserts. Rows are ordered
+by risk score, highest first — the order in which a failure would actually hurt.
+
+| failure mode | what it costs | S | O | D | risk | what catches it here |
+| --- | --- | --- | --- | --- | --- | --- |
+| the agent loops and keeps spending | money, and a receipt that has to say how much | 5 | 4 | 1 | 20 | the cap is enforced *at the boundary* — the call is refused with `error.type = docket_policy_denied` and never forwarded — with `cap.warning` at `warn_at` (0.8 of the cap) before the ceiling and `cap.exceeded` at it; `tests/test_supervisor.py` and `tests/test_proxy.py` assert both events in a real run, and `docket demo` replays the loop offline in CI |
+| the price table goes stale and the cap fires late | a bill the cap was supposed to stop | 4 | 2 | 2 | 16 | every receipt carries the table's date, provenance and the per-call unit prices it used (`docket prices`, `src/docket/pricing.py`), so a late cap is reconstructible afterwards; `docket diff` shows a receipt that moved when nothing else did. Noticed at review, not mid-run |
+| the receipt verifies but is not true | the artefact the whole product rests on | 5 | 1 | 3 | 15 | the format is a written specification (`spec/docket-receipt-1.md`) with committed vectors, checked by two independent implementations against the same bytes — `src/docket/verify.py` and `verify-js/verify.mjs` — plus 96 tests in `tests/test_receipt_verify.py`. Caught by running `docket verify`, not by a guard during the run |
+| the provider fails some calls and serves others | spend you cannot attribute | 3 | 4 | 1 | 12 | successes and failures are different event types (`model.response` never covers a failed call), the breaker opens on a failure *rate*, and the game-day `upstream-failure` phase in `src/docket/chaos.py`, audited by `tests/test_chaos.py`, asserts the two are never merged |
+| the run is killed with SIGKILL (a torn tail) | a half-written last line | 3 | 2 | 2 | 12 | `docket doctor` classifies the tail and reports its byte offset instead of guessing (`src/docket/diagnostics.py`); `--quarantine-torn-tail` moves the bytes to a sidecar and never deletes; the game-day `supervisor-killed` phase kills a real supervisor mid-run. Caught when `doctor` is run |
+| the agent reaches a host nobody approved | unrecorded spend, or data leaving | 3 | 2 | 2 | 12 | `[egress]` in the policy, a `net.denied` event with the refusing code, the CONNECT path checked the same way as a direct request, and `tests/test_url_guards.py` walking the package's syntax tree so a call site added later cannot skip the guard |
+| a rollback misses a file the run changed | drift that survives the undo | 3 | 2 | 2 | 12 | the snapshot is the list of paths the run touched, `docket restore` is a dry run by default (`tests/test_snapshot_restore.py`), and a restore writes a self-describing record (`docket/restore/v1`) beside the evidence instead of editing the run's own records |
+| a signed-off ledger is edited after the fact | any claim the ledger supports | 5 | 1 | 2 | 10 | every event carries the previous event's hash, the receipt commits to the chain head, `tests/test_receipt_verify.py` edits one field and asserts a specific failure, and `docket doctor` re-derives the chain of an old ledger. Caught when someone verifies |
+| a header carries a secret into the ledger | a credential in an audit trail | 5 | 1 | 2 | 10 | headers are redacted at the boundary, URLs are sanitised before they reach an event, `tests/test_security.py` plants a token and asserts it is absent from the bytes on disk, and `_exclude_own_evidence` keeps the evidence directory out of the snapshot |
+| the provider goes slow (tail latency) | a run that overruns its wall-clock budget | 3 | 3 | 1 | 9 | a per-call `upstream_timeout` on the boundary's own connection, `--max-wall-clock` measured on the monotonic clock, per-call `duration_ms`, a p50/p95/p99 table in the load report (`docs/measurements/2026-10-15-2core/load-report.json`), and the game-day `upstream-latency` phase |
+| the disk fills while the run is writing | evidence that stops without saying so | 4 | 2 | 1 | 8 | the evidence guard (`fail_fast_evidence`) turns a failing write into a stopped run, the receipt states `ledger_complete: false` with `unwritten_events`, `first_failing_seq` and `write_failures`, readiness reports the volume below `min_free_bytes`, `tests/test_ledger_faults.py` reproduces ENOSPC on a real filesystem, and the game-day `ledger-pressure` phase drives a ledger into its ceiling |
+| the boundary's own memory grows with the run | an OOM kill that takes the evidence with it | 4 | 1 | 2 | 8 | the run's event list is bounded by `max_events` and `max_ledger_bytes`, the cache by its TTL, `max_entries` and a `max_hits` brake, and the soak measured growth at **1.04–1.14 KiB per event across a 6× range of run lengths** (`docs/measurements/2026-10-15-2core/soak-report.json`). The honest part: ten million events would still be ~11 GB, which is why the ceilings exist |
+| the clock steps (an NTP jump, a paused VM) | a cap that never fires, or a negative sleep | 3 | 2 | 1 | 6 | caps and durations are measured on the monotonic clock, wall-clock timestamps are for readers only and ordering never depends on them, a step backwards is clamped, and `tests/test_invariants.py` runs a clock that lies |
+| the cache answers a request it should never have | an agent acting on another request's answer | 5 | 1 | 1 | 5 | a hit requires an exact `request_sha256`, only a whole non-injected 2xx is ever stored, a TTL bounds the window, `policy/hits` in the receipt lets a reader check the saving, and `tests/test_cache.py` asserts each refusal to store |
+| a rollback touches a file the run did not change | data loss the run did not cause | 5 | 1 | 1 | 5 | confinement is checked before any write — `/proc`, a symlink out of the tree, a path outside the snapshot — and `tests/test_snapshot_confinement.py` (25 tests) tries to escape the tree on purpose |
+| two supervisors append to one ledger | a chain with two writers is not a chain | 4 | 1 | 1 | 4 | opening a ledger takes an exclusive lock and a second writer is refused by name (`src/docket/ledger.py`, ADR 0005), with `tests/test_ledger_concurrency.py` holding the lock from a real second process |
+
 ## Proving it, rather than asserting it
 
 | mechanism | how it is exercised |
 | --- | --- |
-| breaker, limiter, faults, evidence guard | `docket selftest` (16 checks), `tests/test_resilience.py` (24), `tests/test_proxy_concurrency.py` |
+| breaker, limiter, faults, evidence guard | `docket selftest` (19 checks), `tests/test_resilience.py` (60), `tests/test_proxy_concurrency.py` |
 | caps, timeouts, kill path | `tests/test_supervisor.py`, `tests/test_invariants.py` (16 invariants, including a real wall-clock cap and a clock that lies) |
-| the whole thing under fault injection | `docket chaos` (fault grammar, seeded and recorded) and `docket game-day` (8 phases) |
+| the whole thing under fault injection | `docket chaos` (fault grammar, seeded and recorded) and `docket game-day` (9 phases) |
 | lost evidence | `tests/test_ledger_faults.py` (ENOSPC, EIO, closed handle), `tests/test_ledger_contracts.py` |
 | killing a run mid-flight | game-day `supervisor-killed` phase; `tests/test_invariants.py` |
 | recovery | `docket doctor`, `--quarantine-torn-tail`, `--snapshot` / `--rollback-on-breach` / `docket restore` |

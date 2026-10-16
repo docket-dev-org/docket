@@ -150,6 +150,7 @@ def run_supervised(
     max_minutes: int,
     max_events: int,
     boundary_port: int,
+    cache_hits: int | None,
     log: list[str],
 ) -> dict[str, Any]:
     """Run ``docket run`` with the load driver as the supervised child.
@@ -177,6 +178,11 @@ def run_supervised(
         str(max_minutes),
         "--max-events",
         str(max_events),
+        # The cache is off unless the operator asks for it, and when it is on the run is
+        # a different measurement: the driver still makes N round trips, but only the
+        # misses reach the provider, so the two sides of the ledger agree on a different
+        # arithmetic (see `judge`).
+        *(["--cache", "--cache-max-hits", str(cache_hits)] if cache_hits is not None else []),
         "--label",
         "loadtest",
         "--",
@@ -269,6 +275,7 @@ def read_evidence(docket_dir: Path, log: list[str]) -> dict[str, Any]:
         if line.strip().startswith("{")
     ]
     responses = [row for row in rows if row.get("type") == "model.response"]
+    cache_hits = [row for row in rows if row.get("type") == "model.cache_hit"]
     verify = subprocess.run(
         [sys.executable, "-m", "docket", "verify", str(receipt_path), "--json"],
         cwd=ROOT,
@@ -288,10 +295,16 @@ def read_evidence(docket_dir: Path, log: list[str]) -> dict[str, Any]:
             "session": receipt.get("session", {}).get("session_id"),
             "events": receipt.get("ledger", {}).get("events"),
             "latency": receipt.get("latency"),
+            # The cache block travels with the projection: `judge` compares the hits it
+            # claims against the hits the ledger holds, and a projection that dropped it
+            # would turn that comparison into "the receipt claims None" — which is how
+            # this member came to be added here at all.
+            "cache": receipt.get("cache"),
         },
         "ledger": {
             "lines": len(rows),
             "model_responses": len(responses),
+            "cache_hits": len(cache_hits),
             "responses_with_latency": sum(
                 1
                 for row in responses
@@ -315,12 +328,24 @@ def judge(run: dict[str, Any], evidence: dict[str, Any]) -> list[str]:
     """
     problems: list[str] = []
     driver, ledger, verify = run["driver"], evidence["ledger"], evidence["verify"]
+    hits = ledger.get("cache_hits", 0)
     if driver["calls_error"]:
         problems.append(f"the client reported {driver['calls_error']} errored call(s); first: {driver['first_error']}")
-    if driver["calls_ok"] != ledger["model_responses"]:
+    # A cache changes what the two sides are expected to agree *on*, not whether they
+    # agree. Without one, every answered call is a metered response. With one, a call
+    # the cache answered is a `model.cache_hit` and no response at all, so the sum is
+    # what has to match — and the receipt's own saving figure is checked against the
+    # hits the ledger counts rather than believed.
+    if driver["calls_ok"] != ledger["model_responses"] + hits:
         problems.append(
             f"the client counted {driver['calls_ok']} answered calls and the ledger records "
-            f"{ledger['model_responses']} model responses — the two sides disagree"
+            f"{ledger['model_responses']} model responses plus {hits} cache hit(s) — the two sides disagree"
+        )
+    stated_cache = evidence["receipt"].get("cache") or {}
+    if hits and stated_cache.get("hits") != hits:
+        problems.append(
+            f"the ledger records {hits} cache hit(s) and the receipt claims "
+            f"{stated_cache.get('hits')!r} — the receipt does not describe this ledger"
         )
     if ledger["responses_with_latency"] != ledger["model_responses"]:
         problems.append(
@@ -328,10 +353,14 @@ def judge(run: dict[str, Any], evidence: dict[str, Any]) -> list[str]:
             "latency_ms, so the receipt's latency summary does not cover every call"
         )
     stated = evidence["receipt"].get("latency") or {}
-    if stated.get("measured_calls") != driver["calls_ok"]:
+    # Latency is measured around *metered* calls, so the count it must cover is the
+    # responses the ledger records — with or without a cache. The client still measures
+    # every round trip it makes (including hits, which are faster by construction), and
+    # that difference is exactly what a reader should not mistake for a provider speedup.
+    if stated.get("measured_calls") != ledger["model_responses"]:
         problems.append(
-            f"the receipt's latency summary covers {stated.get('measured_calls')} calls and the client "
-            f"made {driver['calls_ok']}"
+            f"the receipt's latency summary covers {stated.get('measured_calls')} call(s) and the ledger "
+            f"records {ledger['model_responses']} metered response(s)"
         )
     if not verify["ok"]:
         problems.append("the receipt from this run does not verify")
@@ -366,6 +395,7 @@ def build_report(run: dict[str, Any], evidence: dict[str, Any], problems: list[s
         },
         "recorder": {
             "supervisor_exit_code": run["exit_code"],
+            "cache": evidence["receipt"].get("cache"),
             # The paths are part of the report on purpose: these numbers describe files, and a
             # reader who cannot open them has to take this document's word for everything.
             "receipt_path": evidence["receipt_path"],
@@ -415,6 +445,15 @@ def markdown(report: dict[str, Any]) -> str:
         f"| client latency p50 / p95 / p99 | {latency['p50_ms']} / {latency['p95_ms']} / {latency['p99_ms']} ms "
         f"(max {latency['max_ms']} ms) | nearest-rank over {latency['measured_calls']} samples |",
         "| supervisor RSS | " + _rss_cell(rss) + " | `/proc/<pid>/status`, once a second, plus `VmHWM` |",
+        *(
+            [
+                f"| answered from cache | {cache['hits']} call(s), {cache['saved_usd']} not spent "
+                f"({cache['avoided_tokens']} tokens avoided) | the receipt's `cache` member, recomputed "
+                f"from the origin calls it replays |"
+            ]
+            if isinstance(cache := report["recorder"].get("cache"), dict)
+            else []
+        ),
         f"| receipt verifies afterwards | {'yes' if verify['ok'] else 'NO'} "
         f"({verify['passed']} pass / {verify['failed']} fail / {verify['skipped']} skip) | `docket verify --json` |",
         "",
@@ -442,10 +481,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--markdown", type=Path, help="write the markdown table here")
     parser.add_argument("--work-dir", type=Path, help="run here instead of a temporary directory")
     parser.add_argument("--json", action="store_true", help="print the report and nothing else")
+    parser.add_argument(
+        "--cache-hits",
+        type=int,
+        metavar="N",
+        help="run with the response cache on, capped at N answered calls (N > 0). Every call the "
+        "driver makes still crosses the boundary; only the misses reach the provider, so the "
+        "report's throughput is a statement about the cache (see docs/caching.md)",
+    )
     args = parser.parse_args(argv)
 
     if args.calls < 1 or args.concurrency < 1:
         print("loadtest: --calls and --concurrency must be at least 1", file=sys.stderr)
+        return 2
+    if args.cache_hits is not None and args.cache_hits < 1:
+        print(
+            "loadtest: --cache-hits must be at least 1 (0 would configure a cache that never answers: "
+            "leave the flag off instead)",
+            file=sys.stderr,
+        )
         return 2
     work = Path(args.work_dir) if args.work_dir else Path(tempfile.mkdtemp(prefix="docket-loadtest-"))
     work.mkdir(parents=True, exist_ok=True)
@@ -476,6 +530,7 @@ def main(argv: list[str] | None = None) -> int:
             max_minutes=minutes,
             max_events=args.calls * 2 + 1000,
             boundary_port=args.boundary_port,
+            cache_hits=args.cache_hits,
             log=log,
         )
         evidence = read_evidence(Path(run["docket_dir"]), log)

@@ -1,0 +1,877 @@
+{
+  "command": "--calls 2000 --concurrency 8 --cache-hits 5000 --work-dir /home/user/.cache/tmp/cache-load --report /home/user/.cache/tmp/cache-load/report.json --markdown /home/user/.cache/tmp/cache-load/report.md",
+  "host": {
+    "cpu_count": 2,
+    "note": "one machine, one supervisor process; not a benchmark of the provider or of any other host",
+    "platform": "Linux-6.1.158+-x86_64-with-glibc2.41",
+    "python": "3.13.16"
+  },
+  "load": {
+    "achieved_calls_per_second": "181.53",
+    "attempts_issued": 2000,
+    "calls_error": 0,
+    "calls_ok": 2000,
+    "calls_refused": 0,
+    "calls_requested": 2000,
+    "client_latency": {
+      "max_ms": 52,
+      "measured_calls": 2000,
+      "method": "nearest-rank",
+      "p50_ms": 44,
+      "p95_ms": 48,
+      "p99_ms": 48,
+      "total_ms": 87920
+    },
+    "concurrency": 8,
+    "refused_codes": {},
+    "seconds": "11.018",
+    "target_rate_per_second": "0.00"
+  },
+  "problems": [],
+  "recorder": {
+    "cache": {
+      "avoided_tokens": 2390400,
+      "by_origin": [
+        {
+          "avoided_usd_per_hit": "0.006000",
+          "avoided_usd_total": "0.012000",
+          "event_hash": "5ca5d1d4f093f17fe892389011385ade319d0a3506b54d2d4e3f6695fbcca5a4",
+          "first_seq": 21,
+          "hits": 2,
+          "key": "9470d38b686ad4a1bcd3d5080eb8c2c67d6fd67560e2f2a02e6cd93d00dddd49",
+          "last_seq": 22,
+          "merkle_path": [
+            {
+              "hash": "7ab8d6d756514f08bd263997730dc8fedd51cd6946e8c358f2617919782a8ab4",
+              "side": "left"
+            },
+            {
+              "hash": "eb463949cc42a235cdc7f9d47c5eb4f8449a8a58f977facff8c43162834908ec",
+              "side": "right"
+            },
+            {
+              "hash": "a1cd465dc70c5c5820a473e9da456165565ec420e48dcebbb1da106a8b4656e0",
+              "side": "left"
+            },
+            {
+              "hash": "4a07962b974b486e8c955cf19667d34c7e4ad9797387e341405a76eabe91a405",
+              "side": "right"
+            },
+            {
+              "hash": "e132dabddcb4f7ac6804b120373a9ce5f8fd25c6ea1a5e3878376d98c93bdff1",
+              "side": "left"
+            },
+            {
+              "hash": "ab4506f813874c25939d0db93dff593dc4b23410d23bac52f039695086e496b8",
+              "side": "right"
+            },
+            {
+              "hash": "e6c7beed99ca950c0f5ca3b431e84ff4dff2f45eb53f7d11871b475273b62571",
+              "side": "right"
+            },
+            {
+              "hash": "e8375b822bd4e6e9c5be0f8e7f3ae4f951a8ebcd6964852e5ad297d46e417511",
+              "side": "right"
+            },
+            {
+              "hash": "ee70bff248d16d2c7bebb96bb4ba0b97d317a968fdff499f7ec5d1af1d42109b",
+              "side": "right"
+            },
+            {
+              "hash": "b4dcddb480c6238ff513672edb7ca17c97d70d99c359682ddebd35cc1f748934",
+              "side": "right"
+            },
+            {
+              "hash": "560cc11b73d75c673428bb54270bd009fdf2b13b57303e9795e1c26225eb2c0b",
+              "side": "right"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "origin_hash": "b490a0eaf42facc80e0b7e0049af645bb0449af46ac3ad06cbbd053d1516e0f8",
+          "origin_seq": 14,
+          "usage": {
+            "cached_input_tokens": 0,
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "usage_source": "reported"
+        },
+        {
+          "avoided_usd_per_hit": "0.006000",
+          "avoided_usd_total": "0.006000",
+          "event_hash": "611996120582fdc9d9d7adbbea92f305cbee0bbd740cd345a0f5c33fa0d0bd61",
+          "first_seq": 24,
+          "hits": 1,
+          "key": "9470d38b686ad4a1bcd3d5080eb8c2c67d6fd67560e2f2a02e6cd93d00dddd49",
+          "last_seq": 24,
+          "merkle_path": [
+            {
+              "hash": "29eb79c1d0d1453ad7e154a53f815457f807f283775dda9f06cbc0322626d315",
+              "side": "right"
+            },
+            {
+              "hash": "60cf6aecdf395eeba9df99ccd8f3d510a657202ab13d8779fbe9694f18e01d99",
+              "side": "right"
+            },
+            {
+              "hash": "58c08926d0a0c3d468351e170201ac42342f0666ccceb7fcc5ce9c112ee13c14",
+              "side": "right"
+            },
+            {
+              "hash": "dc58afeed68ce50a580935e9b408375c1410b6901bc1ffa724691b4f4f629697",
+              "side": "left"
+            },
+            {
+              "hash": "e132dabddcb4f7ac6804b120373a9ce5f8fd25c6ea1a5e3878376d98c93bdff1",
+              "side": "left"
+            },
+            {
+              "hash": "ab4506f813874c25939d0db93dff593dc4b23410d23bac52f039695086e496b8",
+              "side": "right"
+            },
+            {
+              "hash": "e6c7beed99ca950c0f5ca3b431e84ff4dff2f45eb53f7d11871b475273b62571",
+              "side": "right"
+            },
+            {
+              "hash": "e8375b822bd4e6e9c5be0f8e7f3ae4f951a8ebcd6964852e5ad297d46e417511",
+              "side": "right"
+            },
+            {
+              "hash": "ee70bff248d16d2c7bebb96bb4ba0b97d317a968fdff499f7ec5d1af1d42109b",
+              "side": "right"
+            },
+            {
+              "hash": "b4dcddb480c6238ff513672edb7ca17c97d70d99c359682ddebd35cc1f748934",
+              "side": "right"
+            },
+            {
+              "hash": "560cc11b73d75c673428bb54270bd009fdf2b13b57303e9795e1c26225eb2c0b",
+              "side": "right"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "origin_hash": "364eed16e1fcf812df5bdc9b38617697136bb6bf22f84fd1ea52a930f415b635",
+          "origin_seq": 17,
+          "usage": {
+            "cached_input_tokens": 0,
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "usage_source": "reported"
+        },
+        {
+          "avoided_usd_per_hit": "0.006000",
+          "avoided_usd_total": "0.012000",
+          "event_hash": "9cb970f82de208965e1219e1f582e50a1f16d136b4441d68b25d4f22ae29fd46",
+          "first_seq": 25,
+          "hits": 2,
+          "key": "9470d38b686ad4a1bcd3d5080eb8c2c67d6fd67560e2f2a02e6cd93d00dddd49",
+          "last_seq": 26,
+          "merkle_path": [
+            {
+              "hash": "1bfec32bf0d50b5b0e71ba764d8c374323f2f87897c493473bc9f4b2d62c1da9",
+              "side": "left"
+            },
+            {
+              "hash": "60cf6aecdf395eeba9df99ccd8f3d510a657202ab13d8779fbe9694f18e01d99",
+              "side": "right"
+            },
+            {
+              "hash": "58c08926d0a0c3d468351e170201ac42342f0666ccceb7fcc5ce9c112ee13c14",
+              "side": "right"
+            },
+            {
+              "hash": "dc58afeed68ce50a580935e9b408375c1410b6901bc1ffa724691b4f4f629697",
+              "side": "left"
+            },
+            {
+              "hash": "e132dabddcb4f7ac6804b120373a9ce5f8fd25c6ea1a5e3878376d98c93bdff1",
+              "side": "left"
+            },
+            {
+              "hash": "ab4506f813874c25939d0db93dff593dc4b23410d23bac52f039695086e496b8",
+              "side": "right"
+            },
+            {
+              "hash": "e6c7beed99ca950c0f5ca3b431e84ff4dff2f45eb53f7d11871b475273b62571",
+              "side": "right"
+            },
+            {
+              "hash": "e8375b822bd4e6e9c5be0f8e7f3ae4f951a8ebcd6964852e5ad297d46e417511",
+              "side": "right"
+            },
+            {
+              "hash": "ee70bff248d16d2c7bebb96bb4ba0b97d317a968fdff499f7ec5d1af1d42109b",
+              "side": "right"
+            },
+            {
+              "hash": "b4dcddb480c6238ff513672edb7ca17c97d70d99c359682ddebd35cc1f748934",
+              "side": "right"
+            },
+            {
+              "hash": "560cc11b73d75c673428bb54270bd009fdf2b13b57303e9795e1c26225eb2c0b",
+              "side": "right"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "origin_hash": "4ef18322c29cfe9d30b70324eba53a2fb7288b5ddcd0c66693eac33a8cdaa365",
+          "origin_seq": 18,
+          "usage": {
+            "cached_input_tokens": 0,
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "usage_source": "reported"
+        },
+        {
+          "avoided_usd_per_hit": "0.006000",
+          "avoided_usd_total": "0.006000",
+          "event_hash": "14b140f9a0816038a05f44a0587c730ce1b26eb40e62377ff5f857bb9b733695",
+          "first_seq": 27,
+          "hits": 1,
+          "key": "9470d38b686ad4a1bcd3d5080eb8c2c67d6fd67560e2f2a02e6cd93d00dddd49",
+          "last_seq": 27,
+          "merkle_path": [
+            {
+              "hash": "f74559e41f8dc3b3deaad92bf8b045b61462d49a2350dafb4088d77bd9570baa",
+              "side": "left"
+            },
+            {
+              "hash": "f643bb723c0c13e9a2c70f1a5d4ac04a071363ff6a962ed31d6340b0fe080ab0",
+              "side": "left"
+            },
+            {
+              "hash": "58c08926d0a0c3d468351e170201ac42342f0666ccceb7fcc5ce9c112ee13c14",
+              "side": "right"
+            },
+            {
+              "hash": "dc58afeed68ce50a580935e9b408375c1410b6901bc1ffa724691b4f4f629697",
+              "side": "left"
+            },
+            {
+              "hash": "e132dabddcb4f7ac6804b120373a9ce5f8fd25c6ea1a5e3878376d98c93bdff1",
+              "side": "left"
+            },
+            {
+              "hash": "ab4506f813874c25939d0db93dff593dc4b23410d23bac52f039695086e496b8",
+              "side": "right"
+            },
+            {
+              "hash": "e6c7beed99ca950c0f5ca3b431e84ff4dff2f45eb53f7d11871b475273b62571",
+              "side": "right"
+            },
+            {
+              "hash": "e8375b822bd4e6e9c5be0f8e7f3ae4f951a8ebcd6964852e5ad297d46e417511",
+              "side": "right"
+            },
+            {
+              "hash": "ee70bff248d16d2c7bebb96bb4ba0b97d317a968fdff499f7ec5d1af1d42109b",
+              "side": "right"
+            },
+            {
+              "hash": "b4dcddb480c6238ff513672edb7ca17c97d70d99c359682ddebd35cc1f748934",
+              "side": "right"
+            },
+            {
+              "hash": "560cc11b73d75c673428bb54270bd009fdf2b13b57303e9795e1c26225eb2c0b",
+              "side": "right"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "origin_hash": "721c8c91d6a1af9e19f2f4cc27cd7fb44a82e00bab98832c011b6ec3aab5de68",
+          "origin_seq": 19,
+          "usage": {
+            "cached_input_tokens": 0,
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "usage_source": "reported"
+        },
+        {
+          "avoided_usd_per_hit": "0.006000",
+          "avoided_usd_total": "0.006000",
+          "event_hash": "f6818b4adc1211529d6bc831bfcf68afc3fd88a9cbc06cffe3b753b94ed5eaff",
+          "first_seq": 28,
+          "hits": 1,
+          "key": "9470d38b686ad4a1bcd3d5080eb8c2c67d6fd67560e2f2a02e6cd93d00dddd49",
+          "last_seq": 28,
+          "merkle_path": [
+            {
+              "hash": "c62763d1f56a401dc8a09aac1d2dc035b29146dbb3cd4c8ce923e262949a18fc",
+              "side": "right"
+            },
+            {
+              "hash": "5ff58711d73e6e3142a422e2eb2b97e4993579fb3697f93582e9b513cbc3bd72",
+              "side": "right"
+            },
+            {
+              "hash": "464176c1579a3ee802a24f6389fee21a9e3a0a3caaf35c666ba46d55141fde20",
+              "side": "left"
+            },
+            {
+              "hash": "dc58afeed68ce50a580935e9b408375c1410b6901bc1ffa724691b4f4f629697",
+              "side": "left"
+            },
+            {
+              "hash": "e132dabddcb4f7ac6804b120373a9ce5f8fd25c6ea1a5e3878376d98c93bdff1",
+              "side": "left"
+            },
+            {
+              "hash": "ab4506f813874c25939d0db93dff593dc4b23410d23bac52f039695086e496b8",
+              "side": "right"
+            },
+            {
+              "hash": "e6c7beed99ca950c0f5ca3b431e84ff4dff2f45eb53f7d11871b475273b62571",
+              "side": "right"
+            },
+            {
+              "hash": "e8375b822bd4e6e9c5be0f8e7f3ae4f951a8ebcd6964852e5ad297d46e417511",
+              "side": "right"
+            },
+            {
+              "hash": "ee70bff248d16d2c7bebb96bb4ba0b97d317a968fdff499f7ec5d1af1d42109b",
+              "side": "right"
+            },
+            {
+              "hash": "b4dcddb480c6238ff513672edb7ca17c97d70d99c359682ddebd35cc1f748934",
+              "side": "right"
+            },
+            {
+              "hash": "560cc11b73d75c673428bb54270bd009fdf2b13b57303e9795e1c26225eb2c0b",
+              "side": "right"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "origin_hash": "5cf63d0cb81a1799df32554b6dbabe309d063b3cbc129a2c982d384c3990668e",
+          "origin_seq": 20,
+          "usage": {
+            "cached_input_tokens": 0,
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "usage_source": "reported"
+        },
+        {
+          "avoided_usd_per_hit": "0.006000",
+          "avoided_usd_total": "11.91",
+          "event_hash": "badae50634052211327d48b7de070b84acf5ffe9c94bf65d0f6c2e656d9e0701",
+          "first_seq": 29,
+          "hits": 1985,
+          "key": "9470d38b686ad4a1bcd3d5080eb8c2c67d6fd67560e2f2a02e6cd93d00dddd49",
+          "last_seq": 2013,
+          "merkle_path": [
+            {
+              "hash": "934f75b618fcfbac63057aa4dfdf38c687201f901b4269b73092b6a3fc62f77d",
+              "side": "left"
+            },
+            {
+              "hash": "5ff58711d73e6e3142a422e2eb2b97e4993579fb3697f93582e9b513cbc3bd72",
+              "side": "right"
+            },
+            {
+              "hash": "464176c1579a3ee802a24f6389fee21a9e3a0a3caaf35c666ba46d55141fde20",
+              "side": "left"
+            },
+            {
+              "hash": "dc58afeed68ce50a580935e9b408375c1410b6901bc1ffa724691b4f4f629697",
+              "side": "left"
+            },
+            {
+              "hash": "e132dabddcb4f7ac6804b120373a9ce5f8fd25c6ea1a5e3878376d98c93bdff1",
+              "side": "left"
+            },
+            {
+              "hash": "ab4506f813874c25939d0db93dff593dc4b23410d23bac52f039695086e496b8",
+              "side": "right"
+            },
+            {
+              "hash": "e6c7beed99ca950c0f5ca3b431e84ff4dff2f45eb53f7d11871b475273b62571",
+              "side": "right"
+            },
+            {
+              "hash": "e8375b822bd4e6e9c5be0f8e7f3ae4f951a8ebcd6964852e5ad297d46e417511",
+              "side": "right"
+            },
+            {
+              "hash": "ee70bff248d16d2c7bebb96bb4ba0b97d317a968fdff499f7ec5d1af1d42109b",
+              "side": "right"
+            },
+            {
+              "hash": "b4dcddb480c6238ff513672edb7ca17c97d70d99c359682ddebd35cc1f748934",
+              "side": "right"
+            },
+            {
+              "hash": "560cc11b73d75c673428bb54270bd009fdf2b13b57303e9795e1c26225eb2c0b",
+              "side": "right"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "origin_hash": "53403240b46733a7b552d38222855d0dc55defe22a4803cd7403ab21fe38b24d",
+          "origin_seq": 23,
+          "usage": {
+            "cached_input_tokens": 0,
+            "input_tokens": 1000,
+            "output_tokens": 200
+          },
+          "usage_source": "reported"
+        }
+      ],
+      "enabled": true,
+      "hits": 1992,
+      "hits_ceiling_reached": false,
+      "note": "Every hit is a model.cache_hit event in the ledger; the saved amount is recomputed by docket verify from appendix.usage and the embedded price table, and each group below pins one of its hits to ledger.merkle_root with an inclusion proof. The saving is reported beside the spend, never inside it: totals.cost_usd remains money that was actually spent.",
+      "policy": {
+        "enabled": true,
+        "max_entries": 256,
+        "max_hits": 5000,
+        "ttl_seconds": 300
+      },
+      "saved_usd": "11.952000"
+    },
+    "driver_rss_kib": {
+      "end": 25884,
+      "max": 25884,
+      "samples": 12,
+      "start": 25092
+    },
+    "ledger": {
+      "cache_hits": 1992,
+      "lines": 2018,
+      "model_responses": 8,
+      "responses_with_latency": 8
+    },
+    "ledger_path": "/home/user/.cache/tmp/cache-load/.docket/runs/6d774d8b1cf6.jsonl",
+    "receipt": {
+      "cache": {
+        "avoided_tokens": 2390400,
+        "by_origin": [
+          {
+            "avoided_usd_per_hit": "0.006000",
+            "avoided_usd_total": "0.012000",
+            "event_hash": "5ca5d1d4f093f17fe892389011385ade319d0a3506b54d2d4e3f6695fbcca5a4",
+            "first_seq": 21,
+            "hits": 2,
+            "key": "9470d38b686ad4a1bcd3d5080eb8c2c67d6fd67560e2f2a02e6cd93d00dddd49",
+            "last_seq": 22,
+            "merkle_path": [
+              {
+                "hash": "7ab8d6d756514f08bd263997730dc8fedd51cd6946e8c358f2617919782a8ab4",
+                "side": "left"
+              },
+              {
+                "hash": "eb463949cc42a235cdc7f9d47c5eb4f8449a8a58f977facff8c43162834908ec",
+                "side": "right"
+              },
+              {
+                "hash": "a1cd465dc70c5c5820a473e9da456165565ec420e48dcebbb1da106a8b4656e0",
+                "side": "left"
+              },
+              {
+                "hash": "4a07962b974b486e8c955cf19667d34c7e4ad9797387e341405a76eabe91a405",
+                "side": "right"
+              },
+              {
+                "hash": "e132dabddcb4f7ac6804b120373a9ce5f8fd25c6ea1a5e3878376d98c93bdff1",
+                "side": "left"
+              },
+              {
+                "hash": "ab4506f813874c25939d0db93dff593dc4b23410d23bac52f039695086e496b8",
+                "side": "right"
+              },
+              {
+                "hash": "e6c7beed99ca950c0f5ca3b431e84ff4dff2f45eb53f7d11871b475273b62571",
+                "side": "right"
+              },
+              {
+                "hash": "e8375b822bd4e6e9c5be0f8e7f3ae4f951a8ebcd6964852e5ad297d46e417511",
+                "side": "right"
+              },
+              {
+                "hash": "ee70bff248d16d2c7bebb96bb4ba0b97d317a968fdff499f7ec5d1af1d42109b",
+                "side": "right"
+              },
+              {
+                "hash": "b4dcddb480c6238ff513672edb7ca17c97d70d99c359682ddebd35cc1f748934",
+                "side": "right"
+              },
+              {
+                "hash": "560cc11b73d75c673428bb54270bd009fdf2b13b57303e9795e1c26225eb2c0b",
+                "side": "right"
+              }
+            ],
+            "model": "claude-sonnet-5",
+            "origin_hash": "b490a0eaf42facc80e0b7e0049af645bb0449af46ac3ad06cbbd053d1516e0f8",
+            "origin_seq": 14,
+            "usage": {
+              "cached_input_tokens": 0,
+              "input_tokens": 1000,
+              "output_tokens": 200
+            },
+            "usage_source": "reported"
+          },
+          {
+            "avoided_usd_per_hit": "0.006000",
+            "avoided_usd_total": "0.006000",
+            "event_hash": "611996120582fdc9d9d7adbbea92f305cbee0bbd740cd345a0f5c33fa0d0bd61",
+            "first_seq": 24,
+            "hits": 1,
+            "key": "9470d38b686ad4a1bcd3d5080eb8c2c67d6fd67560e2f2a02e6cd93d00dddd49",
+            "last_seq": 24,
+            "merkle_path": [
+              {
+                "hash": "29eb79c1d0d1453ad7e154a53f815457f807f283775dda9f06cbc0322626d315",
+                "side": "right"
+              },
+              {
+                "hash": "60cf6aecdf395eeba9df99ccd8f3d510a657202ab13d8779fbe9694f18e01d99",
+                "side": "right"
+              },
+              {
+                "hash": "58c08926d0a0c3d468351e170201ac42342f0666ccceb7fcc5ce9c112ee13c14",
+                "side": "right"
+              },
+              {
+                "hash": "dc58afeed68ce50a580935e9b408375c1410b6901bc1ffa724691b4f4f629697",
+                "side": "left"
+              },
+              {
+                "hash": "e132dabddcb4f7ac6804b120373a9ce5f8fd25c6ea1a5e3878376d98c93bdff1",
+                "side": "left"
+              },
+              {
+                "hash": "ab4506f813874c25939d0db93dff593dc4b23410d23bac52f039695086e496b8",
+                "side": "right"
+              },
+              {
+                "hash": "e6c7beed99ca950c0f5ca3b431e84ff4dff2f45eb53f7d11871b475273b62571",
+                "side": "right"
+              },
+              {
+                "hash": "e8375b822bd4e6e9c5be0f8e7f3ae4f951a8ebcd6964852e5ad297d46e417511",
+                "side": "right"
+              },
+              {
+                "hash": "ee70bff248d16d2c7bebb96bb4ba0b97d317a968fdff499f7ec5d1af1d42109b",
+                "side": "right"
+              },
+              {
+                "hash": "b4dcddb480c6238ff513672edb7ca17c97d70d99c359682ddebd35cc1f748934",
+                "side": "right"
+              },
+              {
+                "hash": "560cc11b73d75c673428bb54270bd009fdf2b13b57303e9795e1c26225eb2c0b",
+                "side": "right"
+              }
+            ],
+            "model": "claude-sonnet-5",
+            "origin_hash": "364eed16e1fcf812df5bdc9b38617697136bb6bf22f84fd1ea52a930f415b635",
+            "origin_seq": 17,
+            "usage": {
+              "cached_input_tokens": 0,
+              "input_tokens": 1000,
+              "output_tokens": 200
+            },
+            "usage_source": "reported"
+          },
+          {
+            "avoided_usd_per_hit": "0.006000",
+            "avoided_usd_total": "0.012000",
+            "event_hash": "9cb970f82de208965e1219e1f582e50a1f16d136b4441d68b25d4f22ae29fd46",
+            "first_seq": 25,
+            "hits": 2,
+            "key": "9470d38b686ad4a1bcd3d5080eb8c2c67d6fd67560e2f2a02e6cd93d00dddd49",
+            "last_seq": 26,
+            "merkle_path": [
+              {
+                "hash": "1bfec32bf0d50b5b0e71ba764d8c374323f2f87897c493473bc9f4b2d62c1da9",
+                "side": "left"
+              },
+              {
+                "hash": "60cf6aecdf395eeba9df99ccd8f3d510a657202ab13d8779fbe9694f18e01d99",
+                "side": "right"
+              },
+              {
+                "hash": "58c08926d0a0c3d468351e170201ac42342f0666ccceb7fcc5ce9c112ee13c14",
+                "side": "right"
+              },
+              {
+                "hash": "dc58afeed68ce50a580935e9b408375c1410b6901bc1ffa724691b4f4f629697",
+                "side": "left"
+              },
+              {
+                "hash": "e132dabddcb4f7ac6804b120373a9ce5f8fd25c6ea1a5e3878376d98c93bdff1",
+                "side": "left"
+              },
+              {
+                "hash": "ab4506f813874c25939d0db93dff593dc4b23410d23bac52f039695086e496b8",
+                "side": "right"
+              },
+              {
+                "hash": "e6c7beed99ca950c0f5ca3b431e84ff4dff2f45eb53f7d11871b475273b62571",
+                "side": "right"
+              },
+              {
+                "hash": "e8375b822bd4e6e9c5be0f8e7f3ae4f951a8ebcd6964852e5ad297d46e417511",
+                "side": "right"
+              },
+              {
+                "hash": "ee70bff248d16d2c7bebb96bb4ba0b97d317a968fdff499f7ec5d1af1d42109b",
+                "side": "right"
+              },
+              {
+                "hash": "b4dcddb480c6238ff513672edb7ca17c97d70d99c359682ddebd35cc1f748934",
+                "side": "right"
+              },
+              {
+                "hash": "560cc11b73d75c673428bb54270bd009fdf2b13b57303e9795e1c26225eb2c0b",
+                "side": "right"
+              }
+            ],
+            "model": "claude-sonnet-5",
+            "origin_hash": "4ef18322c29cfe9d30b70324eba53a2fb7288b5ddcd0c66693eac33a8cdaa365",
+            "origin_seq": 18,
+            "usage": {
+              "cached_input_tokens": 0,
+              "input_tokens": 1000,
+              "output_tokens": 200
+            },
+            "usage_source": "reported"
+          },
+          {
+            "avoided_usd_per_hit": "0.006000",
+            "avoided_usd_total": "0.006000",
+            "event_hash": "14b140f9a0816038a05f44a0587c730ce1b26eb40e62377ff5f857bb9b733695",
+            "first_seq": 27,
+            "hits": 1,
+            "key": "9470d38b686ad4a1bcd3d5080eb8c2c67d6fd67560e2f2a02e6cd93d00dddd49",
+            "last_seq": 27,
+            "merkle_path": [
+              {
+                "hash": "f74559e41f8dc3b3deaad92bf8b045b61462d49a2350dafb4088d77bd9570baa",
+                "side": "left"
+              },
+              {
+                "hash": "f643bb723c0c13e9a2c70f1a5d4ac04a071363ff6a962ed31d6340b0fe080ab0",
+                "side": "left"
+              },
+              {
+                "hash": "58c08926d0a0c3d468351e170201ac42342f0666ccceb7fcc5ce9c112ee13c14",
+                "side": "right"
+              },
+              {
+                "hash": "dc58afeed68ce50a580935e9b408375c1410b6901bc1ffa724691b4f4f629697",
+                "side": "left"
+              },
+              {
+                "hash": "e132dabddcb4f7ac6804b120373a9ce5f8fd25c6ea1a5e3878376d98c93bdff1",
+                "side": "left"
+              },
+              {
+                "hash": "ab4506f813874c25939d0db93dff593dc4b23410d23bac52f039695086e496b8",
+                "side": "right"
+              },
+              {
+                "hash": "e6c7beed99ca950c0f5ca3b431e84ff4dff2f45eb53f7d11871b475273b62571",
+                "side": "right"
+              },
+              {
+                "hash": "e8375b822bd4e6e9c5be0f8e7f3ae4f951a8ebcd6964852e5ad297d46e417511",
+                "side": "right"
+              },
+              {
+                "hash": "ee70bff248d16d2c7bebb96bb4ba0b97d317a968fdff499f7ec5d1af1d42109b",
+                "side": "right"
+              },
+              {
+                "hash": "b4dcddb480c6238ff513672edb7ca17c97d70d99c359682ddebd35cc1f748934",
+                "side": "right"
+              },
+              {
+                "hash": "560cc11b73d75c673428bb54270bd009fdf2b13b57303e9795e1c26225eb2c0b",
+                "side": "right"
+              }
+            ],
+            "model": "claude-sonnet-5",
+            "origin_hash": "721c8c91d6a1af9e19f2f4cc27cd7fb44a82e00bab98832c011b6ec3aab5de68",
+            "origin_seq": 19,
+            "usage": {
+              "cached_input_tokens": 0,
+              "input_tokens": 1000,
+              "output_tokens": 200
+            },
+            "usage_source": "reported"
+          },
+          {
+            "avoided_usd_per_hit": "0.006000",
+            "avoided_usd_total": "0.006000",
+            "event_hash": "f6818b4adc1211529d6bc831bfcf68afc3fd88a9cbc06cffe3b753b94ed5eaff",
+            "first_seq": 28,
+            "hits": 1,
+            "key": "9470d38b686ad4a1bcd3d5080eb8c2c67d6fd67560e2f2a02e6cd93d00dddd49",
+            "last_seq": 28,
+            "merkle_path": [
+              {
+                "hash": "c62763d1f56a401dc8a09aac1d2dc035b29146dbb3cd4c8ce923e262949a18fc",
+                "side": "right"
+              },
+              {
+                "hash": "5ff58711d73e6e3142a422e2eb2b97e4993579fb3697f93582e9b513cbc3bd72",
+                "side": "right"
+              },
+              {
+                "hash": "464176c1579a3ee802a24f6389fee21a9e3a0a3caaf35c666ba46d55141fde20",
+                "side": "left"
+              },
+              {
+                "hash": "dc58afeed68ce50a580935e9b408375c1410b6901bc1ffa724691b4f4f629697",
+                "side": "left"
+              },
+              {
+                "hash": "e132dabddcb4f7ac6804b120373a9ce5f8fd25c6ea1a5e3878376d98c93bdff1",
+                "side": "left"
+              },
+              {
+                "hash": "ab4506f813874c25939d0db93dff593dc4b23410d23bac52f039695086e496b8",
+                "side": "right"
+              },
+              {
+                "hash": "e6c7beed99ca950c0f5ca3b431e84ff4dff2f45eb53f7d11871b475273b62571",
+                "side": "right"
+              },
+              {
+                "hash": "e8375b822bd4e6e9c5be0f8e7f3ae4f951a8ebcd6964852e5ad297d46e417511",
+                "side": "right"
+              },
+              {
+                "hash": "ee70bff248d16d2c7bebb96bb4ba0b97d317a968fdff499f7ec5d1af1d42109b",
+                "side": "right"
+              },
+              {
+                "hash": "b4dcddb480c6238ff513672edb7ca17c97d70d99c359682ddebd35cc1f748934",
+                "side": "right"
+              },
+              {
+                "hash": "560cc11b73d75c673428bb54270bd009fdf2b13b57303e9795e1c26225eb2c0b",
+                "side": "right"
+              }
+            ],
+            "model": "claude-sonnet-5",
+            "origin_hash": "5cf63d0cb81a1799df32554b6dbabe309d063b3cbc129a2c982d384c3990668e",
+            "origin_seq": 20,
+            "usage": {
+              "cached_input_tokens": 0,
+              "input_tokens": 1000,
+              "output_tokens": 200
+            },
+            "usage_source": "reported"
+          },
+          {
+            "avoided_usd_per_hit": "0.006000",
+            "avoided_usd_total": "11.91",
+            "event_hash": "badae50634052211327d48b7de070b84acf5ffe9c94bf65d0f6c2e656d9e0701",
+            "first_seq": 29,
+            "hits": 1985,
+            "key": "9470d38b686ad4a1bcd3d5080eb8c2c67d6fd67560e2f2a02e6cd93d00dddd49",
+            "last_seq": 2013,
+            "merkle_path": [
+              {
+                "hash": "934f75b618fcfbac63057aa4dfdf38c687201f901b4269b73092b6a3fc62f77d",
+                "side": "left"
+              },
+              {
+                "hash": "5ff58711d73e6e3142a422e2eb2b97e4993579fb3697f93582e9b513cbc3bd72",
+                "side": "right"
+              },
+              {
+                "hash": "464176c1579a3ee802a24f6389fee21a9e3a0a3caaf35c666ba46d55141fde20",
+                "side": "left"
+              },
+              {
+                "hash": "dc58afeed68ce50a580935e9b408375c1410b6901bc1ffa724691b4f4f629697",
+                "side": "left"
+              },
+              {
+                "hash": "e132dabddcb4f7ac6804b120373a9ce5f8fd25c6ea1a5e3878376d98c93bdff1",
+                "side": "left"
+              },
+              {
+                "hash": "ab4506f813874c25939d0db93dff593dc4b23410d23bac52f039695086e496b8",
+                "side": "right"
+              },
+              {
+                "hash": "e6c7beed99ca950c0f5ca3b431e84ff4dff2f45eb53f7d11871b475273b62571",
+                "side": "right"
+              },
+              {
+                "hash": "e8375b822bd4e6e9c5be0f8e7f3ae4f951a8ebcd6964852e5ad297d46e417511",
+                "side": "right"
+              },
+              {
+                "hash": "ee70bff248d16d2c7bebb96bb4ba0b97d317a968fdff499f7ec5d1af1d42109b",
+                "side": "right"
+              },
+              {
+                "hash": "b4dcddb480c6238ff513672edb7ca17c97d70d99c359682ddebd35cc1f748934",
+                "side": "right"
+              },
+              {
+                "hash": "560cc11b73d75c673428bb54270bd009fdf2b13b57303e9795e1c26225eb2c0b",
+                "side": "right"
+              }
+            ],
+            "model": "claude-sonnet-5",
+            "origin_hash": "53403240b46733a7b552d38222855d0dc55defe22a4803cd7403ab21fe38b24d",
+            "origin_seq": 23,
+            "usage": {
+              "cached_input_tokens": 0,
+              "input_tokens": 1000,
+              "output_tokens": 200
+            },
+            "usage_source": "reported"
+          }
+        ],
+        "enabled": true,
+        "hits": 1992,
+        "hits_ceiling_reached": false,
+        "note": "Every hit is a model.cache_hit event in the ledger; the saved amount is recomputed by docket verify from appendix.usage and the embedded price table, and each group below pins one of its hits to ledger.merkle_root with an inclusion proof. The saving is reported beside the spend, never inside it: totals.cost_usd remains money that was actually spent.",
+        "policy": {
+          "enabled": true,
+          "max_entries": 256,
+          "max_hits": 5000,
+          "ttl_seconds": 300
+        },
+        "saved_usd": "11.952000"
+      },
+      "events": 2018,
+      "latency": {
+        "max_ms": 6,
+        "measured_calls": 8,
+        "method": "nearest-rank",
+        "p50_ms": 5,
+        "p95_ms": 6,
+        "p99_ms": 6,
+        "total_ms": 40,
+        "total_rows": 8
+      },
+      "session": null
+    },
+    "receipt_path": "/home/user/.cache/tmp/cache-load/.docket/receipts/DKT-20261015-369C5C.receipt.json",
+    "supervisor_exit_code": 0,
+    "supervisor_rss_kib": {
+      "discarded_while_starting": 1,
+      "end": 29624,
+      "max_sampled": 29624,
+      "peak_kib": 29624,
+      "samples": 11,
+      "start": 27284
+    }
+  },
+  "usable_as_evidence": true,
+  "verification": {
+    "failed": 0,
+    "ok": true,
+    "passed": 11,
+    "skipped": 3
+  }
+}

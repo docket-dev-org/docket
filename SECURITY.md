@@ -78,6 +78,17 @@ Ordinary bugs (wrong output, a crash, an unhelpful message) are normal issues, n
   in for an agent and may legitimately be pointed at a remote provider. The test covers both,
   including the hostnames that are designed to look local and are not: `localhost.evil.example`,
   `localhost@evil.example`, `127.0.0.1.evil.example`, `2130706433`, `0x7f000001`.
+- Dependencies are scanned on a schedule (`.github/workflows/security.yml`), not only on a pull
+  request: `pip-audit` audits the whole development and CI toolchain against the advisory databases,
+  and a failure there means the *toolchain* has a known vulnerability, which should not appear as an
+  unrelated red build on somebody's change. As of 2026-10-15 it reports no known vulnerabilities.
+- The claim above about dependencies is *checked, not repeated*: `tests/test_supply_chain.py` reads
+  `dependencies = []` out of `pyproject.toml`, pins the three extras by name, and then walks the
+  syntax tree of every shipped module (`src/`, `tools/`, `spec/`, `examples/`) to assert that the
+  only imports outside the standard library are `cryptography` and `yaml` — two imports, in two files,
+  both optional, both behind a guard so that a clean install can still import `docket` and record a
+  capped run. An import that a user's environment does not have is the failure a dependency scanner
+  cannot see, and it is the one this test exists to catch.
 - Static analysis runs in CI: `bandit -q -c pyproject.toml -r src tools`. Suppressions are
   class-by-class with a written reason in `[tool.bandit]`, never blanket; the URL rule (`B310`)
   is not suppressed at the call sites — it is answered by the guards above.

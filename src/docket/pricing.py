@@ -198,6 +198,18 @@ class CostMeter:
     estimated_calls: int = 0
     assumed_models: set[str] = field(default_factory=set)
 
+    def quote(self, model: str, input_tokens: int, cached_input_tokens: int, output_tokens: int) -> Decimal:
+        """Price a call *without* recording it.
+
+        Used for the one thing that must be priced but never counted: a call the
+        response cache answered, whose cost is money that was not spent. The
+        arithmetic is the meter's own — the same ``PriceTable.cost`` call
+        ``record`` makes — so a quoted saving and a recorded cost can never drift
+        apart, and verification recomputes both with one rule.
+        """
+        cost, _assumed = self.price_table.cost(model, input_tokens, cached_input_tokens, output_tokens)
+        return cost
+
     def record(
         self,
         model: str,

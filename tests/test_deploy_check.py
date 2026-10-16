@@ -274,6 +274,94 @@ def test_an_unmounted_evidence_volume_is_caught(checker, tree: Path):
     assert any("/work/.docket" in problem for problem in problems), problems
 
 
+def test_numbers_render_the_way_helm_renders_them(checker):
+    """The renderer's number formatting, against outputs Helm itself produced.
+
+    Helm loads `values.yaml` through YAML → JSON → `map[string]any`, so a template receives a
+    `float64` for every number — and Go prints a `float64` with the shortest round-tripping digits,
+    in scientific notation once the exponent leaves `-4 <= exp < 6`. The mapping is not guesswork
+    and not an interpretation: the table below was produced by rendering these exact values with
+    `helm template` (Helm v3.16.3, 2026-10-15), and the list includes both sides of the threshold
+    (`999999` → plain, `1000000` → `1e+06`) and the negative, fractional and fractional-small
+    cases. A checker that renders something else is a checker describing a document no cluster
+    would ever see.
+    """
+    helm_output = {
+        5: "5",
+        200: "200",
+        900: "900",
+        9100: "9100",
+        8787: "8787",
+        5000: "5000",
+        999999: "999999",
+        1000000: "1e+06",
+        1000001: "1.000001e+06",
+        10000000: "1e+07",
+        16777216: "1.6777216e+07",
+        67108864: "6.7108864e+07",
+        1073741824: "1.073741824e+09",
+        1000000000: "1e+09",
+        1234567890123: "1.234567890123e+12",
+        10**20: "1e+20",
+        0: "0",
+        0.5: "0.5",
+        0.8: "0.8",
+        2.5: "2.5",
+        123.456: "123.456",
+        0.0001: "0.0001",
+        0.00001: "1e-05",
+        0.3333333333333333: "0.3333333333333333",
+        -8787: "-8787",
+        -0.5: "-0.5",
+    }
+    for number, expected in helm_output.items():
+        assert (
+            checker._go_float(float(number)) == expected
+        ), f"Helm renders {number!r} as {expected!r}; this renderer says {checker._go_float(float(number))!r}"
+
+
+def test_a_template_that_does_not_say_what_type_it_means_renders_a_float(checker):
+    """`| int64` is what stops a large integer arriving as `6.7108864e+07`.
+
+    The filter is part of the declared subset for the same reason `quote` is: a chart must be able
+    to say what it means. Without it here, the checker would refuse the chart it ships — and worse,
+    the fix for a real defect (a policy value that arrived in a cluster as a TOML float) would have
+    been unreachable.
+    """
+    assert checker.render("{{ .Values.n | int64 }}", {"n": 67108864}, "t") == "67108864"
+    assert checker.render("{{ .Values.n }}", {"n": 67108864}, "t") == "6.7108864e+07"
+    assert checker.render("{{ .Values.n | int64 }}", {"n": 5}, "t") == "5"
+    assert checker.render("{{ .Values.flag }}", {"flag": False}, "t") == "false"
+    with pytest.raises(checker.DeployCheckError) as caught:
+        checker.render("{{ .Values.flag | int64 }}", {"flag": True}, "t")
+    assert "boolean" in str(caught.value)
+
+
+def test_a_policy_number_that_arrives_as_a_float_is_caught_by_name(checker, tree: Path):
+    """The defect this check was written for, reproduced.
+
+    `max_ledger_bytes` is documented as an integer. Helm renders 67108864 as `6.7108864e+07`, and
+    TOML reads that as a float — which Docket's loader accepts (a whole float is a whole number),
+    so nothing else in the tree noticed. Dropping the `| int64` from the shipped template puts the
+    check back in front of the exact text a cluster would have received.
+    """
+    _edit(
+        tree / "deploy" / "helm" / "docket" / "templates" / "configmap.yaml",
+        "{{ .Values.policy.maxLedgerBytes | int64 }}",
+        "{{ .Values.policy.maxLedgerBytes }}",
+    )
+    problems = _fail(checker, tree, "configmap.policy-parses")
+    assert problems, "an integer key rendered as a float must fail the check"
+    assert any("6.7108864e+07" in problem for problem in problems), problems
+    assert any("max_ledger_bytes" in problem for problem in problems), problems
+    assert any("int64" in problem for problem in problems), problems
+
+
+def test_the_shipped_chart_says_what_type_every_integer_is(checker):
+    """The real chart passes, so the test above is about a fixture and not about the tree."""
+    assert _fail(checker, ROOT, "configmap.policy-parses") == []
+
+
 def test_a_policy_docket_would_refuse_is_caught(checker, tree: Path):
     """The ConfigMap's policy is parsed by Docket's own loader, so a manifest cannot ship a policy
     the tool would reject at startup — for example a cap that is not a number."""

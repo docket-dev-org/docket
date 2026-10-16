@@ -11,6 +11,7 @@
 | files changed | 0 (+0 ~0 -0) |
 | deny-write violations | 0 |
 | ledger | 12 events · root `1539f98b9a9187be…` |
+| latency | p50 101ms, p95 103ms, p99 103ms, max 103ms over 4 measured call(s), nearest-rank |
 
 ## Model mix
 

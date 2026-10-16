@@ -47,6 +47,7 @@ from typing import Any
 
 from . import __version__
 from . import events as ev
+from .cache import ResponseCache
 from .ledger import Ledger
 from .policy import Caps, Policy
 from .pricing import CostMeter, PriceTable
@@ -535,7 +536,64 @@ def self_test(*, keep_workspace: bool = False) -> tuple[list[Probe], Path]:
         )
         proxy6.stop()
 
-        # -- 8. ledger write failure ----------------------------------------- #
+        # -- 8. the response cache ------------------------------------------- #
+        # The cache is off unless a policy turns it on, and its whole promise is that a
+        # repeated request costs nothing *and* leaves a trail. Both halves are asserted here
+        # against a real upstream on a real socket: the provider is asked once, the second
+        # call is answered with the same bytes, and the money is unchanged because nothing
+        # was spent twice.
+        ledger7 = Ledger.open(workspace / "runs" / "cache.jsonl", max_bytes=None)
+        upstream_cache = FakeUpstream(steps=[Step(model="claude-sonnet-5", input_tokens=900, output_tokens=30)])
+        ch, cp = upstream_cache.start()
+        cache = ResponseCache(enabled=True, ttl_seconds=60, max_entries=16, max_hits=10)
+        proxy7 = RecordingProxy(
+            ledger=ledger7,
+            policy=policy,
+            meter=CostMeter(price_table=table),
+            session_id="cache",
+            upstreams={"openai": f"http://{ch}:{cp}"},
+            cache=cache,
+            upstream_timeout=10,
+        )
+        h7, p7 = proxy7.start()
+        base7 = f"http://{h7}:{p7}"
+        first_status, first_body = _call(base7, "/openai/v1/chat/completions")
+        spend_before = proxy7.meter.to_dict()["cost_usd"]
+        second_status, second_body = _call(base7, "/openai/v1/chat/completions")
+        spend_after = proxy7.meter.to_dict()["cost_usd"]
+        hit_events = [e for e in ledger7 if e.type == ev.MODEL_CACHE_HIT]
+        origin = hit_events[0].data.get("origin", {}) if hit_events else {}
+        add(
+            "answers a repeated request from the cache and says so",
+            first_status == 200
+            and second_status == 200
+            and first_body == second_body
+            and len(hit_events) == 1
+            and len(upstream_cache.requests) == 1,
+            f"two identical calls, {len(upstream_cache.requests)} reaching the provider, "
+            f"{len(hit_events)} model.cache_hit event(s) citing seq {origin.get('seq')}",
+        )
+        add(
+            "a hit costs nothing and is not counted as a call",
+            spend_before == spend_after and proxy7.meter.calls == 1,
+            f"spend {spend_before} before and {spend_after} after the hit, "
+            f"{proxy7.meter.calls} metered call(s) for two client requests",
+        )
+        third_status, _ = _call(
+            base7,
+            "/openai/v1/chat/completions",
+            {"model": "claude-sonnet-5", "messages": [{"role": "user", "content": "different"}]},
+        )
+        add(
+            "a different request is a miss, never a wrong answer",
+            third_status == 200 and len(upstream_cache.requests) == 2 and cache.snapshot()["misses"] >= 1,
+            f"a third, different call reached the provider ({len(upstream_cache.requests)} total); "
+            f"the cache reports {cache.snapshot()['misses']} miss(es)",
+        )
+        proxy7.stop()
+        upstream_cache.stop()
+
+        # -- 9. ledger write failure ----------------------------------------- #
         # Two distinct failure classes, tested against the real filesystem rather than a
         # patched object: a handle that was merely closed (recoverable) and a device that
         # refuses every write (not recoverable).
@@ -586,7 +644,7 @@ def self_test(*, keep_workspace: bool = False) -> tuple[list[Probe], Path]:
                 f"close() returned normally with {facts['on_disk_bytes']} bytes on disk",
             )
 
-        # -- 9. receipt construction and offline verification ---------------- #
+        # -- 10. receipt construction and offline verification --------------- #
         ledger8 = Ledger.open(workspace / "runs" / "receipt.jsonl", max_bytes=None)
         upstream2 = FakeUpstream(steps=[Step(model="claude-sonnet-5", input_tokens=1000, output_tokens=50)])
         uh, up = upstream2.start()

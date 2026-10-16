@@ -5,7 +5,7 @@ file. That makes deployment unusually simple — and unusually easy to get wrong
 matters, which is *scope*: a receipt says what the boundary saw, and a deployment that quietly moves
 the agent outside the boundary produces evidence of a run that did not happen.
 
-This page covers the recipes in [`deploy/`](../deploy), what they are checked against, and where the
+This page covers the recipes in [`deploy/`](../deploy/README.md), what they are checked against, and where the
 honesty stops. The short version: **the images and manifests have been read by a checker and by
 tests; none of them has been run here**, because this repository is built and tested in an
 environment with no container runtime and no cluster (`which docker podman buildah` finds nothing;
@@ -17,7 +17,7 @@ there is no `kubectl`).
 | --- | --- | --- |
 | **one process, one host** | `docket run -- <agent>` on your machine or in CI | the default. Nothing to deploy. |
 | **one container** | the agent and Docket in the same container ([`deploy/Dockerfile`](../deploy/Dockerfile)) | you already build images and want the run's workspace, snapshots and evidence to be the image's business |
-| **one pod, two containers** | your agent under Docket, plus *something for it to call* ([`deploy/kubernetes/`](../deploy/kubernetes), [`deploy/helm/docket/`](../deploy/helm/docket)) | you are running agents on Kubernetes and want caps and a receipt per run |
+| **one pod, two containers** | your agent under Docket, plus *something for it to call* ([`deploy/kubernetes/deployment.yaml`](../deploy/kubernetes/deployment.yaml), [`deploy/helm/docket/`](../deploy/helm/docket/Chart.yaml)) | you are running agents on Kubernetes and want caps and a receipt per run |
 
 The rule that makes the third shape work is that the agent and the boundary must share a filesystem
 view (Docket snapshots the tree the agent edits, and writes evidence beside it) and must reach each
@@ -62,7 +62,7 @@ artefacts and asserts the invariants that hold regardless of which cluster they 
 | `containers.have-resources` | requests and limits on every container |
 | `probes.use-a-declared-port` | every probed port is a port the container declares |
 | `deployment.one-writer` | `Recreate` strategy and an evidence mount at `/work/.docket` |
-| `configmap.policy-parses` | the embedded policy is read by **Docket's own policy loader** |
+| `configmap.policy-parses` | the embedded policy is read by **Docket's own policy loader**, and every key the policy documents as an integer arrives as one — a value rendered by a template as a float (`6.7108864e+07`, which TOML reads as a float) fails the check by name, with the `\| int64` fix in the message |
 | `networkpolicy.default-deny` | empty ingress, declared policyTypes, DNS and 443 egress |
 | `compose.waits-and-is-read-only` | the verifier waits for the run, mounts evidence read-only, and no ports are published |
 | `kustomization.paths-exist`, `references.resolve` | every referenced path exists |
@@ -70,8 +70,21 @@ artefacts and asserts the invariants that hold regardless of which cluster they 
 
 The checker is itself tested, which is the part that makes it more than decoration:
 `tests/test_deploy_check.py` breaks each invariant on purpose — a privileged pod, a missing probe, an
-unpinned image, an undeclared value, a `range` construct the renderer does not implement — and
-asserts that the checker fails with a message naming the problem.
+unpinned image, an undeclared value, a `range` construct the renderer does not implement, a policy
+number that arrives as a float — and asserts that the checker fails with a message naming the
+problem.
+
+**The renderer is Helm-faithful, and that was verified against Helm.** Helm loads `values.yaml`
+through YAML → JSON → `map[string]any`, so a template receives a `float64` for every number, printed
+with Go's shortest representation (`67108864` → `6.7108864e+07`). `tools/deploy_check.py` reproduces
+that conversion and that formatting — pinned against a table produced by running `helm template`
+(Helm v3.16.3) — because a renderer that is *almost* Helm produces confident text about a document no
+cluster would see. Rendering this chart with both (`helm template docket deploy/helm/docket` and
+`tools/deploy_check.py --print-rendered` — or `make helm-fidelity`, which is the same comparison as
+a command with a named exit code) gives the same five documents, identical field for field; that
+is how the integer defect below was found. `helm install` has still never run — there is no
+cluster here — and the chart is still checked by this renderer, because this is the one that refuses
+what it does not implement by name.
 
 It needs a YAML reader, and it is built so that not having one is never a pass: `pip install pyyaml`
 (or `pip install -e '.[deploy]'`) if the command reports it is missing. The exit codes separate the
@@ -90,9 +103,12 @@ argument of this project:
   level, a policy engine, a mutating webhook, a missing StorageClass, a NetworkPolicy plugin that is
   not installed) is unknown to this repository. A cluster without a NetworkPolicy implementation
   ignores the file silently.
-* **No Helm client.** `helm lint` and `helm template` have not been run. To keep that honest rather
-  than merely unstated, the chart uses a *declared subset* of the template language (values
-  substitution, single conditionals, `range` over declared lists — see the annotation in
+* **No cluster, and no `helm install`.** `helm lint` and `helm template` *have* been run — v3.16.3,
+  2026-10-15, with the two renders compared document by document (above). Installing or upgrading the
+  chart, watching a scheduler place the pod, and the parts of a Helm release that only exist in a
+  cluster (hooks, ordering, `--wait`) have not, and cannot here. To keep the rest honest rather than
+  merely unstated, the chart uses a *declared subset* of the template language (values substitution,
+  single conditionals, `range` over declared lists — see the annotation in
   `deploy/helm/docket/Chart.yaml`) so that the checker can render it deterministically and refuse
   anything outside that subset **by name** instead of skipping it. If you use a Helm construct the
   checker does not know, it fails; that is deliberate.

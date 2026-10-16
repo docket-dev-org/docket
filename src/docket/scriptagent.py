@@ -32,6 +32,9 @@ Configuration (all optional except the base URLs the supervisor sets):
 ``DOCKET_AGENT_LONG``       seconds to keep the process alive after the last call
                             (used to test what happens when a slow agent is killed)
 ``DOCKET_AGENT_PROMPT``     the prompt text to send
+``DOCKET_AGENT_MODE=loop``   send the *same* request body on every call (a stuck agent, and the
+                            only traffic a response cache can answer); the other modes append a
+                            step counter so that each request differs
 ``DOCKET_AGENT_WRITE``      a path to write inside the watched workspace (tests fsdiff
                             evidence and deny_write policy)
 """
@@ -129,6 +132,12 @@ def main(argv: list[str] | None = None) -> int:
     linger = float(os.environ.get("DOCKET_AGENT_LONG", "0"))
     prompt = os.environ.get("DOCKET_AGENT_PROMPT", DEFAULT_PROMPT)
     write_path = os.environ.get("DOCKET_AGENT_WRITE")
+    # `mode = loop` sends the *same* request body every time, which is the one behaviour the
+    # step counter in the default prompt would otherwise prevent. It exists because a
+    # repeated identical request is a pathology worth being able to produce on purpose: it
+    # is what a stuck agent does, what a retry storm decays into, and the only traffic the
+    # response cache (`docs/caching.md`) can ever answer.
+    identical = mode == "loop"
 
     if write_path:
         target = os.path.abspath(write_path)
@@ -144,7 +153,8 @@ def main(argv: list[str] | None = None) -> int:
     statuses: list[int] = []
     refusals: list[str] = []
     for index in range(calls):
-        status, code, retry_after = _one_call(base, model, f"{prompt} (step {index + 1}/{calls})", timeout=30)
+        body_prompt = prompt if identical else f"{prompt} (step {index + 1}/{calls})"
+        status, code, retry_after = _one_call(base, model, body_prompt, timeout=30)
         statuses.append(status)
         if status == 0:
             # The boundary is unreachable — that is a result, not a crash: record it and

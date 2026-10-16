@@ -23,9 +23,10 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from docket.cache import ResponseCache  # noqa: E402
 from docket.canon import canonical_json, merkle_proof, merkle_root, sha256_hex  # noqa: E402
 from docket.ledger import GENESIS, Ledger  # noqa: E402
-from docket.policy import Caps, Policy  # noqa: E402
+from docket.policy import Cache, Caps, Policy  # noqa: E402
 from docket.pricing import CostMeter, PriceTable  # noqa: E402
 from docket.receipt import build_receipt, receipt_core  # noqa: E402
 
@@ -164,6 +165,126 @@ def main() -> None:
         },
     )
     print(f"receipt total: {receipt['totals']['cost_usd']} over {receipt['totals']['calls']} calls")
+
+    # 4. A cached session -------------------------------------------------- #
+    # The response cache is part of the format (§6.4), so it needs a vector for the same
+    # reason every other member does: an implementation that recomputes a saving has to
+    # agree with this one on the arithmetic, and one that ignores the member entirely is
+    # caught by the digest rather than by a reader noticing.
+    cached_ledger = Ledger.in_memory(clock=_clock())
+    cached_ledger.append(
+        "session.start",
+        {
+            "session_id": "vectorcache",
+            "docket_number": "DKT-20260102-VECHC1",
+            "argv": ["agent", "--task", "cache-vector"],
+            "cwd": "/srv/vectors",
+            "host": {"platform": "vector", "python": "3.13.0", "machine": "x86_64"},
+        },
+    )
+    cached_policy = Policy(
+        name="vector-cache",
+        caps=Caps(max_usd=Decimal("5.00")),
+        cache=Cache(enabled=True, ttl_seconds=60, max_entries=8, max_hits=3),
+    )
+    cached_ledger.append(
+        "policy.applied",
+        {"name": cached_policy.name, "digest": cached_policy.digest(), "document": cached_policy.to_dict()},
+    )
+    cached_meter = CostMeter(price_table=price_table)
+    request_key = sha256_hex("cached-request")
+    cached_ledger.append(
+        "model.request",
+        {
+            "provider": "vector",
+            "model": "claude-sonnet-5",
+            "fingerprint": "fpcache",
+            "request_sha256": request_key,
+            "streaming": False,
+            "body_bytes": 256,
+        },
+    )
+    cached_cost = cached_meter.record("claude-sonnet-5", 1_000, 0, 200, "reported")
+    origin = cached_ledger.append(
+        "model.response",
+        {
+            "provider": "vector",
+            "model": "claude-sonnet-5",
+            "status": 200,
+            "latency_ms": 90,
+            "usage": {"input_tokens": 1_000, "cached_input_tokens": 0, "output_tokens": 200},
+            "usage_source": "reported",
+            "cost_usd": str(cached_cost),
+            "cumulative_cost_usd": str(cached_meter.cost),
+            "streaming": False,
+            "response_bytes": 512,
+            "cache": {"key": request_key, "stored": True},
+        },
+    )
+    for _ in range(2):
+        cached_ledger.append(
+            "model.cache_hit",
+            {
+                "provider": "vector",
+                "model": "claude-sonnet-5",
+                "key": request_key,
+                "origin": {"seq": origin.seq, "hash": origin.hash},
+                "status": 200,
+                "streaming": False,
+                "usage": {"input_tokens": 1_000, "cached_input_tokens": 0, "output_tokens": 200},
+                "usage_source": "reported",
+                "avoided_cost_usd": str(cached_cost),
+                "response_sha256": sha256_hex("cached-body"),
+                "response_bytes": 512,
+                "age_seconds": "1.500",
+            },
+        )
+    cached_ledger.append(
+        "note",
+        {
+            "event": "cache.hits_ceiling_reached",
+            "max_hits": 3,
+            "message": "the response cache reached its configured ceiling in this vector",
+        },
+    )
+    cached_ledger.append(
+        "session.end", {"exit_code": 0, "duration_seconds": "1.250", "breached": None, "interrupted": False}
+    )
+
+    cached_events = list(cached_ledger)
+    cached_receipt = build_receipt(
+        events=cached_events,
+        ledger=cached_ledger,
+        meter=cached_meter,
+        policy=cached_policy,
+        session_id="vectorcache",
+        docket_number="DKT-20260102-VECHC1",
+        exit_code=0,
+        duration_seconds=1.25,
+        price_table=price_table,
+        created_at=FIXED_TIME,
+        cache=ResponseCache(enabled=True, ttl_seconds=60, max_entries=8, max_hits=3, clock=lambda: 0.0),
+    )
+    write("cache.json", cached_receipt)
+    write(
+        "cache-digest.json",
+        {
+            "schema": "docket/vectors/cache-digest/v1",
+            "note": "sha256 of the canonical JSON of the cached receipt with seal and signature removed",
+            "receipt_core_sha256": sha256_hex(canonical_json(receipt_core(cached_receipt))),
+            "expected": {
+                "hits": cached_receipt["cache"]["hits"],
+                "saved_usd": cached_receipt["cache"]["saved_usd"],
+                "avoided_tokens": cached_receipt["cache"]["avoided_tokens"],
+                "spend_usd": cached_receipt["totals"]["cost_usd"],
+                "metered_calls": cached_receipt["totals"]["calls"],
+            },
+        },
+    )
+    print(
+        f"cached vector: {cached_receipt['cache']['hits']} hits, "
+        f"{cached_receipt['cache']['saved_usd']} not spent, spend stays {cached_receipt['totals']['cost_usd']}"
+    )
 
 
 if __name__ == "__main__":

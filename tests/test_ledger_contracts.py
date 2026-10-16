@@ -21,6 +21,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -422,6 +423,29 @@ def test_a_chain_error_locates_an_event_whose_payload_cannot_be_canonicalised(tm
     assert diagnostics["healthy"] is False
 
 
+def test_chain_error_reports_a_broken_link_between_two_intact_events(clock):
+    """Kills `return (ev.seq, "broken link: ...") -> return None` in `chain_error`.
+
+    `None` is this function's answer for "the chain is intact", so a mutant that returns `None` for a
+    broken link reports a ledger whose events do not follow one another as whole. The other three
+    branches are covered — a sequence gap, an uncanonicalisable payload, a content hash — and this one
+    is the fourth: sequence and hash both agree, and only the *link* is wrong, which is what a file
+    edited by hand (or stitched together from two runs) looks like.
+    """
+    ledger = Ledger.in_memory(clock=clock)
+    ledger.append("note", {"message": "first"})
+    second = ledger.append("note", {"message": "second"})
+    assert ledger.chain_error() is None
+
+    second.prev = "f" * 64  # the link is wrong; the seq and the payload are untouched
+    assert second.seq == 1 and second.data == {"message": "second"}
+
+    problem = ledger.chain_error()
+    assert problem is not None, "a broken link is damage, not a clean chain"
+    assert problem[0] == second.seq == 1
+    assert problem[1].startswith("broken link: prev=ffffffffffff"), problem[1]
+
+
 def test_chain_error_reports_an_event_that_cannot_be_canonicalised(clock):
     """`Ledger.chain_error()` is asked about a *live* ledger — by `docket run` before it writes a
     receipt, and by the boundary's health endpoint. An event whose payload the canonical form
@@ -552,6 +576,46 @@ def test_a_dead_process_is_not_alive_and_this_one_is(tmp_path):
     child.wait()
     assert _pid_alive(child.pid) is False, "a reaped child is not a live holder"
     assert _pid_alive(2**31 - 1) is False, "a pid no kernel hands out is not a live holder"
+
+
+def test_the_liveness_probe_asks_about_a_process_without_signalling_it(tmp_path):
+    """Kills `os.kill(pid, 0) -> os.kill(pid, 1)` in `_pid_alive` — a probe that becomes a signal.
+
+    Signal 0 is the POSIX idiom for "does this pid exist"; signal 1 is `SIGHUP`, whose default action
+    is to terminate. The mutant answers the question correctly and leaves the process it asked about
+    dead, which is the same defect class as the Windows probe recounted in `docs/testing.md` (where
+    `os.kill` *is* `TerminateProcess`): a liveness check with a blast radius.
+
+    The existing test could not see it, and the reason is worth keeping: the whole mutation sweep
+    runs under `nohup`, which ignores `SIGHUP` and passes that disposition to every child, so in the
+    harness's environment the signal is a no-op. A test that relied on the default disposition would
+    be a test of the harness's process flags. So the child installs its own handler and creates a
+    marker file *inside* it: the file exists if and only if a `SIGHUP` was delivered, in an
+    environment that would otherwise swallow it.
+    """
+    marker = tmp_path / "signalled.txt"
+    child = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import signal, sys, time\n"
+            f"path = {str(marker)!r}\n"
+            "signal.signal(signal.SIGHUP, lambda *_: (open(path, 'w').write('sighup'), sys.exit(3)))\n"
+            "print('ready', flush=True)\n"
+            "time.sleep(30)\n",
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert child.stdout is not None and child.stdout.readline().strip() == "ready"
+        assert _pid_alive(child.pid) is True, "a running child is a live holder"
+        time.sleep(0.3)
+        assert not marker.exists(), "the probe delivered a signal to the process it asked about"
+        assert child.poll() is None, "the probe terminated the process it asked about"
+    finally:
+        child.kill()
+        child.wait(timeout=5)
 
 
 def test_a_stale_lock_file_does_not_block_a_new_writer(tmp_path, clock):

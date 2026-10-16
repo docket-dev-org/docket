@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from decimal import Decimal
 from pathlib import Path
 
@@ -270,6 +271,24 @@ def _run_with_rollback(workspace: Path, tmp_path: Path, *, inside: bool = False,
     return result, docket_dir
 
 
+class _FrozenClock:
+    """`docket.cli`'s view of the clock, pinned to one instant.
+
+    Set as the module attribute rather than patching `time.gmtime` itself: the pin is local to the
+    code under test, and pytest (and every other module) still reads the real clock. `strftime`
+    is not replaced, only `gmtime` — the whole point is to pin the instant, not the formatting.
+    """
+
+    def __init__(self, moment: float) -> None:
+        self._moment = moment
+
+    def gmtime(self, *args: object, **kwargs: object):
+        return time.gmtime(self._moment)
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(time, name)
+
+
 def test_a_breached_run_really_puts_the_tree_back(workspace: Path, tmp_path: Path):
     """The claim, end to end: agent edits, cap breach, tree restored, and the record says so."""
     result, docket_dir = _run_with_rollback(workspace, tmp_path, rollback_on_breach=True)
@@ -424,17 +443,48 @@ def test_restoring_twice_succeeds_and_blames_nobody(workspace: Path, tmp_path: P
     records = sorted((docket_dir / "restores").glob("*.json"))
     assert len(records) == 2, "each restore is recorded separately, and nothing is overwritten"
 
-    # Sorted by name, `…-2.json` comes *before* `….json` (hyphen sorts before dot), so the
-    # documents are identified by their own names rather than by position in a listing.
-    def _by_name(suffix: str) -> dict:
-        path = next(item for item in records if item.stem.endswith(suffix))
-        return json.loads(path.read_text(encoding="utf-8"))
+    # The two documents are identified by what they *say*, not by a filename suffix. The names carry
+    # a whole-second stamp, so two restores that straddle a second get different names and no `-2` at
+    # all — which is how this test failed under the dependency matrix, on a machine that was merely
+    # slower than the one it was written on. (A collision is a separate test, with the clock pinned.)
+    documents = [json.loads(item.read_text(encoding="utf-8")) for item in records]
+    worked = [doc for doc in documents if doc["counts"].get("restored") or doc["counts"].get("recreated")]
+    already = [doc for doc in documents if set(doc["counts"]) <= {"already", "absent"}]
+    assert len(worked) == 1 and len(already) == 1, [doc["counts"] for doc in documents]
+    assert worked[0] is not already[0]
+    assert not [item for item in already[0]["applied"] if item["status"] in {"refused", "failed"}]
 
-    first = next(json.loads(item.read_text(encoding="utf-8")) for item in records if not item.stem.endswith("-2"))
-    second = _by_name("-2")
-    assert first["counts"].get("restored") or first["counts"].get("recreated"), first["counts"]
-    assert set(second["counts"]) <= {"already", "absent"}, second["counts"]
-    assert not [item for item in second["applied"] if item["status"] in {"refused", "failed"}]
+
+def test_a_second_restore_inside_the_same_second_is_kept_and_not_overwritten(
+    workspace: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Two restores in the same second: the second document lands beside the first, never over it.
+
+    The naming rule is the stamp, then `-2`, `-3`… on collision, and with the real clock the
+    collision only happens when both commands fall inside one second — a race a loaded machine wins
+    and a fast one loses, which is why the guarantee used to be half-tested. `docket.cli`'s view of
+    the clock is pinned here instead: same second by construction, two documents, neither overwritten.
+    """
+    from docket.cli import main
+
+    monkeypatch.setattr("docket.cli.time", _FrozenClock(time.time()))
+    result, docket_dir = _run_with_rollback(workspace, tmp_path, rollback_on_breach=False)
+    assert main(["restore", str(result.receipt_path), "--apply"]) == 0
+    assert main(["restore", str(result.receipt_path), "--apply"]) == 0
+
+    names = sorted(item.name for item in (docket_dir / "restores").glob("*.json"))
+    assert len(names) == 2, names
+    assert names[0] != names[1], names
+    # The suffix is asserted directly rather than by position: sorted by name the suffixed document
+    # comes first, because `-` sorts before `.`. Both documents carry the same stamp and docket
+    # number, which is what makes the collision — and the suffix — a fact rather than a coincidence.
+    assert any(name.endswith("-2.json") for name in names), f"the second restore did not keep the first: {names}"
+    assert len({name.removesuffix(".json").removesuffix("-2") for name in names}) == 1, names
+
+    documents = [json.loads((docket_dir / "restores" / name).read_text(encoding="utf-8")) for name in names]
+    worked = [doc for doc in documents if doc["counts"].get("restored") or doc["counts"].get("recreated")]
+    already = [doc for doc in documents if set(doc["counts"]) <= {"already", "absent"}]
+    assert len(worked) == 1 and len(already) == 1, [doc["counts"] for doc in documents]
 
 
 def test_apply_restore_reports_already_when_the_bytes_are_the_snapshots(tmp_path: Path):

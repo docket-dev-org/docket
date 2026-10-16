@@ -95,8 +95,41 @@ def test_receipt_vector_binds_to_the_ledger_vector():
     assert receipt["ledger"]["events"] == len(ledger["events"])
 
 
+def test_the_cached_receipt_vector_verifies_and_recomputes_the_saving():
+    """The cache is part of the format (§6.4), so it has a vector like every other member.
+
+    Two implementations recompute the saving from the origin call and the embedded price
+    table; this vector is what they have to agree on. The spend is asserted beside it, so
+    the vector itself states the property the whole feature rests on: a saving is reported
+    next to the money that was spent, never folded into it.
+    """
+    receipt = _load("cache.json")
+    digest = _load("cache-digest.json")
+    result = verify_receipt(receipt)
+    assert result.ok, result.failures
+    expected = digest["expected"]
+    assert receipt["cache"]["hits"] == expected["hits"] == 2
+    assert receipt["cache"]["saved_usd"] == expected["saved_usd"] == "0.012000"
+    assert receipt["cache"]["avoided_tokens"] == expected["avoided_tokens"] == 2_400
+    assert receipt["totals"]["cost_usd"] == expected["spend_usd"] == "0.006000"
+    assert receipt["totals"]["calls"] == expected["metered_calls"] == 1
+    checks = {check.name: check.status for check in result.checks}
+    assert checks["cache-savings"] == "pass"
+    assert checks["cache-hit-origins"] == "pass"
+    assert checks["cache-hit-proofs"] == "pass"
+    assert sha256_hex(canonical_json(receipt_core(receipt))) == digest["receipt_core_sha256"]
+
+
+def test_a_hand_edited_cache_saving_fails_the_vector():
+    receipt = _load("cache.json")
+    receipt["cache"]["saved_usd"] = "9.99"
+    result = verify_receipt(receipt)
+    assert not result.ok
+    assert any("cache.saved_usd is 9.99" in failure for failure in result.failures)
+
+
 def test_vectors_are_the_only_source_of_truth_for_the_format():
-    for name in ("canonical.json", "merkle.json", "ledger.json", "receipt.json"):
+    for name in ("canonical.json", "merkle.json", "ledger.json", "receipt.json", "cache.json"):
         assert (VECTORS / name).exists(), f"{name} must be committed"
 
 
@@ -117,18 +150,32 @@ def test_committed_vectors_match_the_generator(tmp_path, monkeypatch):
     staged.mkdir()
     for path in VECTORS.glob("*.json"):
         (staged / path.name).write_bytes(path.read_bytes())
-    script = tmp_path / "generate.py"
+    # The generator writes into *its own* directory, so the copy has to live inside the
+    # staged directory. It used to be written one level up, which made this test compare
+    # the committed files with themselves: it passed for as long as it existed, while the
+    # vectors drifted (the latency member and the cache disclosure line both landed in the
+    # implementation and never reached `receipt.json`). A test that cannot fail is worse
+    # than no test, so the canary below asserts the generator actually wrote here.
+    script = staged / "generate.py"
     script.write_text((VECTORS / "generate.py").read_text(encoding="utf-8"), encoding="utf-8")
+    canary = staged / "receipt-digest.json"
+    canary.write_text('{"canary": "the generator did not overwrite this file"}\n', encoding="utf-8")
 
     env = dict(os.environ, PYTHONPATH=str(root / "src"), PYTHONHASHSEED="0")
     completed = subprocess.run(
-        [sys.executable, str(script)], cwd=str(tmp_path), env=env, capture_output=True, text=True, timeout=300
+        [sys.executable, str(script)], cwd=str(staged), env=env, capture_output=True, text=True, timeout=300
     )
     assert completed.returncode == 0, completed.stderr
+    assert "canary" not in canary.read_text(encoding="utf-8"), (
+        "the generator did not write into the staged directory, so this comparison would be vacuous: "
+        f"stdout was {completed.stdout[-400:]!r}"
+    )
 
-    stale = [
-        name
-        for name in sorted(p.name for p in VECTORS.glob("*.json") if p.name != "generate.py")
-        if (staged / name).read_bytes() != (VECTORS / name).read_bytes()
-    ]
+    committed = {p.name for p in VECTORS.glob("*.json")}
+    produced = {p.name for p in staged.glob("*.json")}
+    assert produced == committed, (
+        "the generator and the committed vectors disagree about which files exist: "
+        f"missing {sorted(committed - produced)}, unexpected {sorted(produced - committed)}"
+    )
+    stale = [name for name in sorted(committed) if (staged / name).read_bytes() != (VECTORS / name).read_bytes()]
     assert not stale, f"spec/vectors is stale relative to the implementation: {stale}. Regenerate deliberately."

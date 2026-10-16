@@ -126,13 +126,40 @@ of the first failure.
 
 `session.start`, `session.end`, `policy.applied`, `policy.violation`, `cap.warning`,
 `cap.exceeded`, `model.request`, `model.response`, `model.denied`, `model.error`,
-`tool.call`, `tool.result`, `fs.snapshot`, `fs.change`, `proc.spawn`, `proc.exit`,
-`net.allowed`, `net.denied`, `note`.
+`model.cache_hit`, `tool.call`, `tool.result`, `fs.snapshot`, `fs.change`, `proc.spawn`,
+`proc.exit`, `net.allowed`, `net.denied`, `note`.
 
 Unknown types MUST be preserved and MUST NOT cause verification to fail; extensions SHOULD
 namespace them (`x-vendor.something`). Events carry a `reported_by` member when they were
 asserted by the agent under supervision (`"agent"`) rather than observed at the boundary;
 this distinction is normative for interpretation and MUST NOT be dropped.
+
+### 4.4.1 Response-cache hits
+
+A recorder MAY answer a repeated request from a response cache instead of contacting the
+provider (the reference implementation does so only when the operator's policy enables it).
+The provider then sees nothing, so there is no `model.request`/`model.response` pair to write:
+the hit is recorded as its own event in place of both.
+
+```
+{ "type": "model.cache_hit",
+  "data": { "key": <the request_sha256 of the request event that was served>,
+            "origin": { "seq": <seq of the model.response being replayed>,
+                        "hash": <hash of that event> },
+            "model": ..., "usage": {...}, "usage_source": ...,
+            "avoided_cost_usd": "0.006000", ... } }
+```
+
+A `model.response` event whose response was kept carries
+`"cache": {"key": <request_sha256>, "stored": true}`; when the response was **not** kept the
+member is present with `"stored": false` and a `"reason"` saying why (an error, a truncated
+stream, or a response rewritten by fault injection). That member is what a verifier uses to
+check a hit: the hit names an origin, and the origin must be a `model.response` recorded as
+stored under the same key.
+
+A hit MUST NOT contribute to `totals`, to `model_calls.count` or to any cap: it is a call that
+did not happen, and folding it into the spend would make the evidence describe a run that never
+took place. What it *saved* is reported separately (§6.4) and recomputed by verification.
 
 ### 4.5 File digest
 
@@ -248,6 +275,42 @@ Findings are derived arithmetic, not testimony. Each one MUST carry `confidence`
 have happened), and MUST cite the event sequence numbers it rests on. `usd_impact` is an
 attributed figure, not a guaranteed saving.
 
+### 6.4 Response cache (optional)
+
+Present only when the run had a response cache enabled. Absent means the run had none, which is
+a different statement from a cache that was configured and answered nothing.
+
+```
+{ "enabled": true,
+  "policy": { "enabled": true, "ttl_seconds": 300, "max_entries": 256, "max_hits": 1000 },
+  "hits": <int>, "saved_usd": "0.012000", "avoided_tokens": <int>,
+  "hits_ceiling_reached": <bool>,
+  "by_origin": [ { "key": ..., "origin_seq": <int>, "origin_hash": ...,
+                   "model": ..., "usage": {...},
+                   "avoided_usd_per_hit": "0.006000",
+                   "avoided_usd_total": "0.012000",
+                   "hits": <int>, "first_seq": <int>, "last_seq": <int>,
+                   "event_hash": <hash of the first hit in this group>,
+                   "merkle_path": [ ... ] } ] }
+```
+
+* `hits` is the number of `model.cache_hit` events. It is a boundary measurement, not
+  arithmetic: a verifier checks it against the ledger's events when the ledger is supplied, and
+  against the sum of `by_origin[].hits` always.
+* `saved_usd` and `avoided_tokens` MUST equal the sum over `by_origin` of the per-hit amount
+  times that group's `hits`, and the per-hit amount MUST be recomputable from the origin's token
+  counts and the embedded price table — the same arithmetic §8.5 applies to a metered call.
+* `by_origin` groups hits that replay the same origin with the same key, model, usage and
+  per-hit amount. Hits that disagree MUST NOT be merged into one group: a sum that reconciles to
+  a number no hit ever claimed is worse than two rows.
+* `merkle_path`, when present, proves the group's first hit against `ledger.merkle_root`, the
+  same way an appendix row proves a metered call. Like the appendix, proofs for a large session
+  may be omitted together, and a verifier MUST then say it could not check them rather than
+  assume them.
+* `hits_ceiling_reached` MUST be true exactly when the ledger carries the corresponding `note`
+  event. A cache that answers a loop spends nothing, so a ceiling on what it may answer is
+  policy, and whether it was reached changes how the run's economics are to be read.
+
 ## 7. Signing and sealing
 
 - **Seal** — `HMAC-SHA256(key, canonical(§6 without seal and signature))`. Proves integrity
@@ -279,7 +342,12 @@ checked:
 7. `ledger.file_sha256` matches the supplied file;
 8. `seal` verifies with the supplied key; `signature` verifies with the embedded or
    supplied public key;
-9. `limits_disclosure` is present.
+9. `limits_disclosure` is present;
+10. `cache`, when present: `saved_usd` and `avoided_tokens` equal the sum over `by_origin` of
+    the per-hit amount recomputed from each origin's usage and the embedded price table; every
+    group's origin is a usage row recorded as stored under the same key with the same usage;
+    every group's inclusion proof verifies against the Merkle root; `hits` equals the sum of the
+    groups and the number of `model.cache_hit` events in the supplied ledger.
 
 Failure of any item makes the receipt **not verified**. Items that cannot be checked are
 reported as such; a verifier that reports success without checking is non-conforming.
@@ -291,7 +359,10 @@ since the roots were computed (within SHA-256); that the stated token counts imp
 stated cost under the embedded price table (assuming the price table is the one the reader
 believes — compare `price_table.digest` against a known value where it matters); that the
 filesystem changes listed are the differences between two snapshots taken at the stated
-moments; that, if signed, the holder of the signing key attested to this record.
+moments; that, if signed, the holder of the signing key attested to this record; and, where a
+cache is reported, that each hit replays a call the same receipt also records, at that call's
+own price — money that was *not* spent, kept separate from the totals, which continue to
+describe money that was.
 
 **Does not establish.** That nothing else happened: traffic that bypassed the boundary, work
 by processes outside the supervised tree, prompts or completions withheld by default, and

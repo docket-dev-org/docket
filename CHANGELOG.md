@@ -10,6 +10,239 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **A support page that says what support is not** (`SUPPORT.md`, in the documentation's nav and
+  linked from the README's Contributing section). The repository had a security policy, a contribution
+  guide and a sponsorship pack, and nothing that answered "something is wrong — where do I go": the
+  issue templates existed but no page named them, no page said what a report has to contain, and no
+  page said the thing most projects leave implicit, that there is no service-level agreement. It routes
+  bugs, feature requests, questions, security reports and sponsorship questions to the right place,
+  tells a reporter to run `docket doctor --json` and `docket selftest` *before* opening an issue (both
+  print what they observed rather than a verdict), lists what this project cannot help with — a
+  provider's billing, a Kubernetes cluster nobody here has, a date nobody promised — and states in the
+  same words as `SPONSORS.md` that **a sponsorship does not buy support**.
+
+- **The five examples are executed by the suite instead of being described by it**
+  (`tests/test_examples.py`, 9 tests). `examples/` was advertised in the README, in these docs and in
+  the growth plan as five runnable examples, and nothing ran them: a renamed flag, a moved module or
+  a policy key the loader stopped accepting would have left five documents that lie and a suite that
+  stayed green. The quickstart and the SDK example now run as programs — offline, in a temporary
+  directory — and the receipt each one prints is fed to the verification command each one prints; the
+  quickstart's own instruction ("edit one byte of the ledger and run it again") is executed, with one
+  digit of one token count changed and the verification required to *fail*; both policy files go
+  through a real supervised run; and every README is checked for links, for the repository paths its
+  commands name and for the Python files it ships. Writing it found the quickstart's own capture
+  stale in two ways — it said 17 events where the tree produces 18, and it omitted the
+  `cache-savings` verdict line entirely — so the block is now a real capture of the current tree, and
+  the note beside it says which parts move between machines.
+- **Every survivor of the harness's own sweep is closed, and three of them were defects in the
+  *tests'* reach rather than in the code** (`tests/test_mutate.py`, 33 tests; `tools/mutate.py`).
+  The harness was re-run over itself, its twelve survivors were read one by one, and each is now
+  killed by a test that says what the mutant would have done: raising the span guard's lower bound
+  from byte zero to byte one (a site at the first byte of a file was silently *dropped* — and only a
+  file that begins with a mutable node can tell the two bounds apart, so no existing fixture could);
+  flipping `parents=True` or `exist_ok=True` on the two report paths (the CLI test wrote into a
+  two-level directory once but never into the directory it had already made); treating the four
+  `rmtree(..., ignore_errors=True)` calls as strict (the sweep's cleanup runs in `finally:`, where a
+  failure would replace the report — or the refusal — with a `PermissionError` from the temporary
+  directory, so a fixture tree now contains a directory with no write bit and four tests assert that
+  each of the four exits still reaches the reader); and the five guards inside `_is_docstring`, which
+  the sweep cannot reach at all because its only caller has already established what they check — a
+  direct question is now asked, with `is True`/`is False` rather than truthiness, because `and` turned
+  into `or` there says "yes" to a bare number and filters a whole file's worth of sites out.
+- **The ledger's liveness probe has a test that observes signal *delivery*, not disposition — because
+  the sweep's own environment hides the difference** (`tests/test_ledger_contracts.py`).
+  `os.kill(pid, 0)` mutated to `os.kill(pid, 1)` answers the same question and sends `SIGHUP` while
+  asking it: a liveness check with a blast radius, the same defect class as the Windows probe that
+  would have terminated the process holding the lock. The existing test could not see it, and the
+  reason is worth keeping: every sweep runs under `nohup`, which ignores `SIGHUP` and passes that
+  disposition to its children, so the signal is a no-op in the environment the score is measured in.
+  The new test has the child install its own handler and create a marker file *inside* it, so a
+  delivered `SIGHUP` is observable where it would otherwise be swallowed. The same file gained a test
+  for `chain_error`'s broken-link branch, the one of its four that a file-based reader was covering
+  instead.
+- **A mutation score was reporting 51 gaps in the verifier that were 51 missing test files**
+  (`tools/mutate.py`, `DEFAULT_TESTS`). The byte-offset fix took `verify.py`'s candidate count from 95
+  to 177; the round that followed scored 126 of them and listed the rest as survivors. Reading them
+  was the point: nearly every one sits in the block that recomputes a *stated* cache saving
+  (`cache-savings`, `cache-hit-origins`, `cache-hit-proofs`), and that block is exercised from
+  `tests/test_cache.py` — a file the verifier's subset did not name. The subset was part of the
+  measurement, the score was reading as the tests' fault, and the fix is one line in the mapping plus
+  the explanation beside it. The round after it is recorded next, because the two are the same lesson
+  read twice.
+- **The harness had no tests, and the first one found a bug that had been hiding a sixth of
+  `verify.py`'s mutants** (`tests/test_mutate.py`, 16 tests; `tools/mutate.py`). The tool
+  that produces every mutation score in this repository had no tests: the numbers in
+  `docs/testing.md` rested on a tool nothing checked, which is the same shape of gap as a conformance
+  vector nothing ran. The new file asserts the properties the harness claims — the splice is a
+  byte-for-byte no-op, every mutant changes exactly one line and still compiles, each operator kind is
+  found and labelled the way a reader expects, the sample is a function of the seed, the six verdicts
+  `_run_tests` can return are distinguished by real pytest runs, timeouts stay out of the score, and
+  the sweep refuses to score anything if the unmutated copy is already red. The em-dash fixture in it
+  produced **no mutant at all**, and the reason was a real defect: `ast` reports columns in UTF-8
+  *bytes* while the splice indexes *characters*, so every site on a line with a non-ASCII character
+  before it was spliced into the middle of a character, failed to compile, and was dropped by a silent
+  `continue`. Measured on the corpus: `verify.py` offered **95 candidates instead of 177**,
+  `ledger.py` 171 instead of 172, and the other seven mutated files were unaffected because their
+  sites sit on ASCII lines. `splice_only` could not have caught it — splicing the original text back
+  is a no-op at any offset — and nothing counted drops, so the effect was invisible from inside the
+  tool. Both offsets now go through `_char_offset`, the regression is pinned by a fixture line with an
+  em dash in it, and every score quoted in the documentation was re-measured afterwards.
+- **`tools/mutate.py --only-line N`: re-check one survivor with the harness's own machinery, in
+  seconds.** Reading a survivor list is only useful if the next step is cheap: reproducing a verdict
+  by hand is how a reader measures a stale `__pycache__`, or measures a site the harness never
+  mutated. `--only-line` runs *every* mutant on the named line (repeatable, sampling nothing) in the
+  harness's own sandbox with its own interpreter and environment, records the selection in the JSON
+  and markdown reports so a filtered run is never read as a whole-file score, and refuses a line that
+  holds no mutant rather than reporting `0 candidates`. The ten resilience sites closed in this round
+  were verified this way, and the same flag re-checks the three cache sites.
+- **A site that produces no mutant is now counted rather than dropped in silence.** The four ways a
+  site can yield nothing — the span does not lie inside the file, the operator cannot be applied, the
+  replacement does not compile, the replacement is the original text — each produce a record that the
+  sweep prints and carries into the report as `dropped`, and the markdown header states the count. Two
+  of the four branches are driven by tests rather than waiting for the corpus to produce them. This is
+  the second half of the em-dash fix: the bug was not that a site was dropped, it was that a dropped
+  site left no trace anywhere a reader could see it.
+- **Two more documentation guards, for the two ways a number can go stale without failing a
+  build.** `tests/test_doc_links.py` now reconciles (1) every count written *beside a test filename*
+  anywhere in the living documents — `` `tests/test_x.py` (12) ``, `(12 tests)`, and "12 tests in
+  `` `tests/x.py` ``" — against `pytest --collect-only`, and (2) the four sentences that quote the size
+  of the whole suite (README, CONTRIBUTING, `docs/testing.md`, `docs/sre-coverage.md`). Both had
+  already rotted: `docs/resilience.md` and `docs/sre-coverage.md` said `test_resilience.py` had 49
+  tests (it had 54), `docs/sre-coverage.md` said `test_helm_fidelity.py` had 5 (17), `docs/caching.md`
+  said `test_cache.py` had 41 (55), `docs/production-coverage.md` said `test_chaos.py` had 32 (33) —
+  each written when its number was true. The suite total had no reader at all. `CHANGELOG.md` and
+  `docs/measurements/**` are exempt by name, and the reason is in the guard: they are records of
+  *then*, and re-basing them would falsify evidence rather than fix a claim.
+- **Twenty-five tests closing every survivor of the 2026-10-15 mutation rounds** — three in
+  `tests/test_cache.py` and six in `tests/test_resilience.py` for the survivors that were gaps, plus
+  the harness's own sixteen above. The cache's three were the group identity in `_groups` (`key`,
+  `model`, `avoided_cost_usd`): with the operator mutated, two hits that replayed different requests
+  are merged into one row whose stated amount is the *first* hit's — so `saved_usd` reports $0.02 for
+  $0.03 of saving and the row count no longer matches the ledger. The resilience six close the
+  counter defaults, the `total_successes += 1` increment, the cooldown boundary (`elapsed < cooldown`
+  versus `<=`), the sixty-second window boundary, the injector's default seed, the
+  `getattr(self, name, 0)` fallback in `HealthState.counter`, and the free-space boundary in
+  `readiness` — five of the six are exact boundaries the previous tests stepped past by one tick,
+  which is the difference between testing a boundary and testing a rounding. The three
+  `probes_in_flight` mutants that remain are classified as equivalent rather than tested, with the
+  reason recorded in `docs/testing.md`: `allow` resets the field one statement before its only reader
+  on every path into `half-open`, so no test can observe the difference, and the reset itself is
+  killed.
+- **A standards page: the norm or paper behind each mechanism, and where this one departs**
+  ([`docs/standards.md`](docs/standards.md)). Every mechanism a reader can name — the hash chain, the
+  canonical form, inclusion proofs, `429`/`Retry-After`, token buckets, the breaker, backoff jitter,
+  cache storing rules, percentiles, tail latency, CAP, compensation, locking, clock ordering, chaos
+  principles, probes, versioning — now carries its source, the strength of that source, and one line
+  saying whether Docket follows it exactly, implements a smaller subset, or deliberately departs. The
+  departures are the useful part and are collected in one list: an HTTP-date `Retry-After` is ignored
+  because comparing a remote clock to a local one turns a wait into a hot loop; the cache implements a
+  much smaller subset of RFC 9111 than the RFC allows; floats are refused where RFC 8785 would
+  canonicalise them; nothing is hedged, so tail latency is measured rather than mitigated; no fencing
+  token is issued because there is no distributed resource to fence; and no chaos experiment ever runs
+  against production traffic. It also states plainly how each source was read — full text, section,
+  abstract or practitioner canon — because "cited" and "read" are different claims.
+- **A resilience-practice coverage map** (`docs/sre-coverage.md`), the third of the three maps
+  beside the production-coverage concepts and the testing taxonomy: twenty-two SRE practices — stress
+  testing, fuzzing, chaos engineering, chaos monkey, game days, red teaming, dynamic analysis,
+  vulnerability scanning, synthetic monitoring, proactive monitoring, observability, FMEA, circuit
+  breaking, rate limiting, automated rollback, disaster recovery, software rejuvenation, degradation
+  testing, blast-radius mitigation, IaC testing, post-mortems, infrastructure hardening — each with
+  what this repository actually does, what the evidence is, and where it stops. It was written because
+  two of the practices were being *asserted in prose* rather than done (there was writing about failure
+  and no failure analysis; "post-mortem" named documents that were not post-mortems), and a coverage
+  document is the easiest place for that to happen again: a test enumerates the twenty-two rows, so a
+  practice cannot lose its row or acquire a status outside the legend without failing the build.
+- **A failure-modes-and-effects analysis, in the document that already described the failure
+  surface** ([`docs/resilience.md`](docs/resilience.md), "Failure modes, ranked by what they would
+  cost"). Sixteen ways a supervised run fails, each rated severity / occurrence / detection and
+  ordered by risk, each naming the artefact that catches it — the money loop stopped at the boundary,
+  a stale price table, a receipt that verifies but is not true, a torn tail, a leaked secret, a
+  rollback that misses a file, two writers on one ledger. The page states plainly that the ratings are
+  judgements and why; the *detector* column is evidence, and a test asserts that every path it names
+  exists, that each risk score is the product of its own three ratings, and that the rows are still
+  ordered highest-risk-first. The column is the point: a failure mode with a detector named in prose is
+  a mechanism someone built, and a failure mode without one is now visible as exactly that.
+- **`docket selftest` and `docket game-day` run in CI on every push, not only when someone remembers
+  them.** The self-test's nineteen probes and the game day's nine phases are the two things that
+  exercise the product end to end offline (about twenty-six seconds together), and a self-test that
+  nobody runs is a self-test nobody notices breaking — the same argument as `tests/README`, applied to
+  the surface an operator is most likely to point at a deployment. `make selftest` and `make game-day`
+  run them locally with no arguments.
+- **`tools/helm_fidelity.py`: the chart render is now compared against a real Helm client, and the
+  comparison is a command rather than a memory.** `tools/deploy_check.py` renders `deploy/helm/docket`
+  through a declared subset of the template language so that it runs anywhere — no Helm, no cluster,
+  no network — and that design costs one claim: the render has to be the render a cluster would get.
+  The new tool runs `helm template`, keys both renders by `kind` and `metadata.name`, compares them
+  field for field and names the path of the first difference inside a document. Re-run on 2026-10-15
+  against Helm `v3.16.3`: **5/5 documents identical field for field**. It is deliberately not part of
+  `make check` — CI has no Helm client — so it exits **2** with that reason, the same convention as
+  the checker without PyYAML, and `tests/test_helm_fidelity.py` asserts that exit code, the pairing
+  rule, the difference reporting and (where Helm exists) the comparison itself.
+
+  Its first working run found a defect in the *tool*: it split the document stream on the characters
+  `"\n---"`, which eats the newline ending the previous document's last line — and for the policy's
+  `|` block scalar that newline is part of the value, so the tool reported a one-character difference
+  Helm does not have. The separator is matched as a line now, and the test pins it. That is the second
+  time in this release that the instrument, not the artefact, was what failed first.
+- **Supply-chain checks that read the manifest instead of repeating it**
+  (`tests/test_supply_chain.py`, `.github/workflows/security.yml`). `dependencies = []` is the project's
+  strongest packaging claim and it is worth what the file it lives in is worth, so a test reads it,
+  pins the three extras by name, and then walks the syntax tree of every shipped module to assert that
+  the only imports outside the standard library are `cryptography` and `yaml` — two imports, in two
+  files, both optional, both behind a guard, with a test that fails if either stops being guarded or
+  stops being used. That is the failure a dependency scanner cannot see (the author's environment has
+  the package for other reasons; the user's raises `ModuleNotFoundError`). `pip-audit` covers the other
+  half on a *schedule* rather than on every pull request, because a CVE disclosed in a test dependency
+  has nothing to do with tonight's commit and a job that reddens unrelated changes gets ignored; as of
+  2026-10-15 it reports no known vulnerabilities across the development and CI toolchain.
+
+- **A response cache at the boundary, with every hit in the ledger** (`docket run --cache`,
+  `[cache]` in the policy, `src/docket/cache.py`). A repeated request — same upstream path, same
+  canonical body — is answered from the response the boundary already received, and the provider
+  sees nothing. The feature is built around one rule: **a hit is never silent.** Each one is a
+  `model.cache_hit` event naming the response it replays (`origin.seq`, `origin.hash`), and the
+  money it saved is recomputed by `docket verify` from that origin's token counts and the embedded
+  price table, so a saving is arithmetic a stranger can redo rather than a number the producer
+  chose. Three checks were added to both verifiers (`cache-savings`, `cache-hit-origins`,
+  `cache-hit-proofs`), the receipt carries a `cache` member only when a cache was in play, and the
+  format specification documents the event and the member (a compatible addition under `v1`).
+  What is stored is only what the provider actually sent: an error, a stream cut short in flight,
+  or a response rewritten by fault injection is never cached, and the reason travels on the
+  response event. What a hit is *not* is a model call: it moves no cap, no total and no call count,
+  so the run's spend keeps describing money that was actually paid, and the saving is reported
+  beside it. Three ways an entry goes away, all counted and all tested: TTL expiry, LRU eviction,
+  and refusing to store. The hazard is named and bounded rather than hidden — **a cache can answer
+  a loop that spends nothing, and no dollar cap can end a loop that spends nothing**, so
+  `cache.max_hits` is a ceiling on the cache's own answers; when it is reached the boundary stops
+  answering, the run starts paying again, and the moment is written to the ledger as a note.
+  `docket demo --cache` shows exactly that, and the load harness gained a cached point alongside
+  the uncached one (`docs/measurements/2026-10-15-2core/cache-report.json`): 2,000 identical calls
+  across 8 threads, 8 of them reaching the provider, $11.952000 not spent, the receipt still
+  verifying. No request coalescing, exact-match keys only, in-memory for one run — each named as a
+  limit in `docs/caching.md` rather than left for a user to discover.
+- **A cache conformance vector** (`spec/vectors/cache.json`, `cache-digest.json`): a small cached
+  session both implementations must reproduce, including the saving, the spend it does *not*
+  change, and the case where a hand-edited saving must fail verification.
+
+- **A ninth game-day phase for the cache's own failure mode, and an agent that repeats itself on
+  request** (`docket game-day --phases cache-brake`, `DOCKET_AGENT_MODE=loop`). Every other phase
+  asks what happens when something breaks; this one asks what happens when nothing does — the loop
+  stops costing money, so nothing a dollar cap watches will ever stop it. The reference agent's
+  usual modes append a step counter to each prompt, which makes every request unique and a cache
+  pointless, so `loop` sends the same body every call: the traffic a cache is *for*. The phase runs
+  eight calls against a `max_hits` of 2 and checks the ledger and the disk rather than the
+  intention — two `model.cache_hit` events, the ceiling recorded as a note and named in the
+  receipt, the calls after it arriving at the provider again, the saving recomputed by `docket
+  verify`, and the spend still describing money actually spent. `audit_run` gained the two facts
+  the check needs (`cache_hits`, `cache_ceiling_note`) so the audit stays a re-derivation from the
+  file, and a phase that could not see them would fail rather than pass vacuously.
+- **The test table in `docs/testing.md` can no longer go stale quietly.** Its counts are collected
+  (`pytest --collect-only`) and now *checked*: `tests/test_doc_links.py` re-collects the suite and
+  fails on any row that disagrees, or on a test file the table has forgotten. The paragraph above
+  the table used to say the CI run verified this; nothing did, and the first run of the new test
+  caught the table missing a file that had just been added to it. This is the same failure mode as
+  the stale conformance vector — a number in a document that no test reads — so it gets the same
+  treatment.
 - **A load point and a soak, as real supervised runs** (`python -m docket.loaddriver`,
   `tools/loadtest.py`, `make load`, `make soak`). The driver is a supervised child like any other
   agent: it goes through `DOCKET_PROXY_URL`, so every call it makes is metered, capped, recorded
@@ -135,7 +368,7 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   caps, evidence guard, ceilings, readiness, clocks, interruption), each mechanism with how it is
   proved, and the three things deliberately refused. `docket init` has pointed at this file since
   0.1.0; it now exists.
-- **`docs/production-coverage.md`** — a map of ~110 production-engineering concepts, each cell
+- **`docs/production-coverage.md`** — a map of 77 production-engineering concepts, each cell
   naming the code and tests behind it, or the document that argues the boundary, or the reason it is
   out of scope, in a controlled vocabulary (*built*, *measured*, *modelled*, *reasoned*, *out of
   scope*). It states the three kinds of absence separately instead of blurring them.
@@ -153,7 +386,213 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   summary, the report's sorted-key byte-stability, the driver's `--help` text, and the RSS
   sentinel (`UNMEASURABLE`, now a named constant rather than a literal `-1` compared twice).
 
+- **Two cache tests that close the boundary cases the mutation sweep kept asking for.** A mutant of
+  the origin guard (`seq < 0` → `seq <= 0`) survived because no test ever stored a hit that copies the
+  **first event in a ledger**: the ledger numbers its events from zero, so event 0 is the first
+  provider call of every run — and the response a cache is most likely to be asked for twice. The
+  test builds a real ledger, takes event 0, stores a hit that names it, and reads the group back
+  through the summary the receipt is built from. The second test is a one-second TTL: a guard written
+  `ttl_seconds > 1` treats a one-second TTL as "no TTL at all", and the other expiry test's thirty
+  seconds cannot tell the two readings apart, so the entry would be served stale until eviction.
+- **A second mutation round on `resilience.py`, and the two paydown claims it falsified.** A wider
+  re-measurement of the same module reported 25 survivors where the first round had classified
+  fourteen, and two of those survivors were covered — or so their docstrings said — by tests that
+  named them. The re-run showed what had actually happened: one mutant is *equivalent* (both
+  `probes_in_flight = 0` writes in the breaker are overwritten by the reset inside `allow`, so the
+  test that claimed to kill them kills the one that matters), and one was never reached (the
+  half-open `return True`, which needs a probe that *fails*, a path no test walked). Both docstrings
+  now say which mutant they kill and why. Five tests close the rest: a failed probe reporting that
+  it re-opened the circuit, the limiter's refusal counter, the fault injector's per-kind
+  probability guards (a `probability: 0` fault must not be injected, and a `drop` must never be
+  returned as a response rewrite), every fault kind describing itself rather than another kind, and
+  a clean `EvidenceGaps` that is neither degraded nor failing fast. The survivor list is a line
+  number index into the source: a claim that one test kills "both" mutants is a claim about
+  positions, and it goes stale the moment the file moves.
+- **The Helm-fidelity tool's own contract is tested, not just its happy path.** The tool existed to
+  be run by a person with Helm installed; its mutation sweep killed 13 of 47 candidates, which is
+  the shape of a tool whose *reporter* is untested. The suite now drives `main()` through a
+  stand-in client: renders that agree exit 0 and name the version and the file they skipped,
+  a field that differs exits 1 with the object and the field path, a Helm that fails (or cannot be
+  executed at all) exits 2 with the client's own message, a stream that names one object twice is
+  refused by kind and name, and a client that cannot answer `version` is labelled unknown rather
+  than crashing the comparison. That took the score from 27.7% to over 85% without touching what
+  the tool does.
+- **The standards map has a guard of its own.** `docs/testing.md`'s counts were pinned and the
+  standards page was not, so `tests/test_doc_links.py` now asserts that every source cell names
+  something a reader can look up — a year, a domain or a document identifier — that every strength
+  comes from the small vocabulary the page defines, and that the size the companion maps quote is the
+  size the page has. It caught one row on its first run: a book, named with neither a link nor a year.
+
 ### Fixed
+
+- **Four tests in `tests/test_cache.py` killed one mutant on their line and stopped one token
+  short of the other** — and what said so was the sweep, not a reading. The verifier's full corpus is
+  177 candidates; after the paydown round it stood at 172 of 177 (97.2%) with five survivors, and each survivor was
+  re-checked with `--only-line`, the harness's own machinery, before anything was written. Four of the
+  five were near misses of four different kinds: an assertion that ended before the type suffix
+  (`verify.py:554`, where `malformed[0]` appears twice on one line so the *value* and the *type* are
+  two mutants), a fixture that measured one call, where p50 and p99 are the same number
+  (`verify.py:568`), a problem list two entries long where the stop condition's two spellings part
+  company only at exactly three (`verify.py:761`), and a refuted group whose second sentence — the
+  tally loop's, a separate pass that does not skip the group the guard refused — was never asked for
+  (`verify.py:867`). All four
+  repairs are assertions about the same receipts and none of them touched `src/docket/verify.py`; the
+  re-sweep reads 176 of 177 (99.4%), with the argued-equivalent `verify.py:186` as its only survivor. The cache's
+  re-measured 128 of 128 (100.0%) is in
+  the same table, because `tests/test_cache.py` is in that subset too.
+- **Two maps named "33 kinds" where the kind table has 44, and the harness's own documentation named a
+  symbol that does not exist.** `TARGET_TESTS` was never a name in `tools/mutate.py`; the map is
+  `DEFAULT_TESTS`, and both the tool's docstring and `docs/testing.md` said the other one. The count
+  in `docs/production-coverage.md` and `docs/sre-coverage.md` had rotted the same way — a number
+  written when it was true, beside a table that grew. Both are the class of claim that a reader
+  cannot check and a test cannot see, which is why the seven brief terms that were answered only in an
+  unsearchable spelling (`E2E`, `localization`, `black-box`/`white-box`/`grey-box`, `A/B`,
+  `postmortem`) now appear in the maps in both spellings.
+- **The optional-dependency matrix described a suite 152 tests smaller than the one in the
+  tree.** The four cells in `docs/testing.md` quoted 840/845/868/878 passed — a first row whose own
+  two numbers sum to 873 tests where `pytest` now collects 1025 — from a round measured before
+  the contract, cache, i18n and fuzz suites existed. They are re-measured — a fresh venv per cell,
+  `pip install pytest` plus the extras its row names, `-ra` so every skip carries its reason — and the
+  third column now names what each skip would have checked. The previous matrix also recorded
+  `0 skipped` in every cell beside summary lines reading 47, 42, 6 and 1: the skip counts had been
+  summed with `paste | bc`, and `bc` is not installed everywhere. The sum is `awk` now, the counts are
+  checked against each run's own summary line before they are quoted, and the defect is recorded in
+  `docs/testing.md` rather than quietly fixed.
+- **The documentation's own consistency check read the built site as if it were the documentation.**
+  `tools/build_docs_site.py` stages a copy of the whole tree into `.mkdocs-site/`, and
+  `tests/test_doc_links.py` scanned every markdown file it could find — so after `make site`, the same
+  page was read twice, and the copy's own illustrative example of a counted reference failed the guard
+  as a test file that does not exist. A copy is not a second opinion. Both build directories are
+  excluded from the two scanners, and a twelfth test in that file pins the exclusion by asking the
+  predicate about paths — including one that merely contains the word `site` — rather than by building
+  a site in the test.
+- **This file had a bullet spliced into another one.** The verifier-subset bullet ended mid-sentence
+  and a second bullet's text continued from it, so a reader got one paragraph that was two claims and
+  a sentence that stopped without a verb. It is repaired above; the two `docs/testing.md` bullets that
+  said the same thing about stale paydown notes ("can go stale" and "two of them were wrong") are one
+  bullet now, with the third shape the 2026-10-16 sweep added: the test did kill a mutant on its line,
+  and stopped one token short of the next.
+- **A mutation score was taken under an interpreter that had lost an optional dependency, and
+  5 mutants were recorded as survivors because the tests that would have caught them
+  skipped.** The first re-measurement of `src/docket/verify.py` on 2026-10-16 read 171 of 177 (96.6%) with 6
+  survivors; 5 of them are the mutants of the signature block (`verify.py:931`, `verify.py:933`, `verify.py:934`, `verify.py:937`), which is
+  exactly the region `tests/test_signing_and_attach.py` and `tests/test_vectors.py` are in that
+  subset to cover. They were not missed by the subset and they are not equivalent: `cryptography` —
+  the optional extra that seals and signs — was absent from the interpreter the harness runs tests
+  with, so every signature test *skipped*, and a skipped test cannot fail. With the extra installed
+  the same tree reads 176 of 177 (99.4%) against an unchanged `src/docket/verify.py`. The harness now carries the
+  control run's own counts (`passed`, `failed`, `skipped`) in its JSON and markdown reports, marks
+  that control `clean` only when nothing skipped, and prints a warning beside the score when it did
+  not. Writing the four tests that pin it in both polarities found a second way the same number could
+  have gone missing: the harness passed `-q` to a `pyproject.toml` whose `addopts` already carry one,
+  and at `-qq` pytest 9 prints no counts line at all — so the control's counts would have been read
+  from a line that never printed. The flags are asserted by a real pytest run inside the suite now
+  (`tests/test_mutate.py`, 40 tests) rather than by reading them.
+- **The dependency matrix caught a test that depended on how fast the machine was.** In the
+  `pytest` + PyYAML cell — the configuration `docs/production-coverage.md` describes for running
+  without the signing extra — `tests/test_snapshot_restore.py` failed: 1017 passed,
+  6 skipped, 1 failed, exit 1, where the other three cells
+  were green (977 / 982 / 1,023 passed and 47 / 42 / 1 skipped, all exit 0). The test restores the same run twice and
+  looked the two record documents up *by filename*, expecting the second to carry the `-2` collision
+  suffix; the two commands stamped their records `20261016T081327Z` and `20261016T081328Z` — one second apart, so there
+  was no collision, no suffix, and a `StopIteration` on a machine merely slower than the one the test
+  was written on. The test now identifies its records by what they say — one did the work, the other
+  found it already done, neither overwrote the other — and the collision is a test of its own with
+  `docket/cli.py`'s clock pinned to one instant, so the suffix is exercised by construction instead of
+  by luck.
+- **The guard that checks test counts beside a filename was checking one mention per file, not
+  every mention.** `tests/test_doc_links.py` collected its references into a dict keyed by the test
+  file and used `setdefault`, so only the alphabetically first sentence about each file was ever
+  compared with `pytest --collect-only`: `docs/sre-coverage.md`'s count of `test_chaos.py` was wrong
+  and unread behind two correct mentions of the same file elsewhere. It now walks every occurrence —
+  which failed immediately, named the stale sentence, and now passes. The same shape of defect as the
+  one the guard was written for, one level up: a claim with no reader looks exactly like a claim that
+  was checked.
+- **Every game-day phase after `rate-limit` was quietly running under the previous phases' limits.**
+  `_phase_policy` built each phase's policy by *sharing* the base policy's `Resilience` object, so the
+  two mutators that write to it edited the base itself: `rate-limit`'s two-calls-per-second bucket and
+  `ledger-pressure`'s eight-event ceiling were still in force for `ledger-pressure`, `rollback`,
+  `cache-brake` and `supervisor-killed`. `cache-brake` is where it surfaced — it was stopped by a
+  ledger ceiling it never declared, after a single provider call, with zero hits, and two of its own
+  checks failed, so `docket game-day` (and therefore CI, where it runs on every push) exited 1 with
+  8 of 9 phases met. `rollback` "passed" the same way, with a cap breach that was not the one it
+  declares. The policy is now a `deepcopy`, and `tests/test_chaos.py` asserts the general property —
+  building every phase against a base another phase has already been built against must give exactly
+  the policy a fresh base gives, and the base must come back untouched — rather than the two values
+  that happened to leak. All nine phases pass with the fix in place, and `cache-brake`'s first run as
+  its own experiment is the first time it has reached its own hypothesis: 8 calls, 2 hits, the
+  ceiling note in the ledger, and `saved_usd` recomputed by the verifier.
+- **The mutation harness mutated the wrong characters on any line containing non-ASCII text, and
+  dropped the result without a word.** `_span` added `ast`'s UTF-8 *byte* offsets to *character*
+  offsets computed from the source's lines, so on a line with an em dash before the token the splice
+  landed inside a character; the mutant text did not compile, and a bare `continue` discarded it.
+  Every site on every such line was invisible to every score this repository has published:
+  `verify.py` offered 95 candidate mutants where it has 177 (46% of its sites), `ledger.py` 171 where
+  it has 172. The fix converts both offsets through `_char_offset`, the drop paths now emit records
+  that the sweep prints and writes into the report, and `tests/test_mutate.py` pins the regression
+  with a fixture whose mutable token sits after an em dash. `tools/helm_fidelity.py`'s second round
+  (27.7% → 85.1% of 47 mutants) and the new tests above landed in the same pass.
+- **A note that said two secondary summaries disagreed about whether an HTTP 429 may be cached now
+  cites the norm that settles it.** RFC 6585 §4 was read in full for this: it ends with "Responses
+  with the 429 status code MUST NOT be stored by a cache" — and says the same of 428, 431 and 511.
+  Docket's behaviour was already compliant (its cache stores 2xx only, and a test pins that a 429 is
+  refused with a reason); what changed is that the rule now has a normative reason in
+  `docs/standards.md` and in the architecture invariant that states it, instead of resting on a
+  judgement call.
+
+- **The site navigation listed two ADRs twice.** `mkdocs.yml` carried `0002` and `0003` again after
+  `0005`, which is the kind of defect a strict build does not catch — the pages resolve, so nothing
+  fails; the menu simply has the same entry twice. Removed, and `docs/sre-coverage.md` added to the
+  section it belongs in (the link checker asserts that every document is in the navigation, so a new
+  document cannot be added without one).
+
+- **A response cache supplied to the boundary was silently ignored while it was empty.** `RecordingProxy`
+  chose its cache with `cache or ResponseCache(...)`, and `ResponseCache` defines `__len__` — so an
+  empty cache was falsy and a caller who passed their own (enabled, configured) object got a
+  different, policy-built one instead. Nothing failed: the boundary simply did no caching, and it
+  started caching later if the cache they passed happened to be non-empty, which is a defect that
+  appears and disappears with traffic. The unit tests passed a cache through the *policy*, so none of
+  them could have caught it; `docket selftest`'s new cache probe passes one as an argument, the way a
+  host application would, and caught it on its first run. Fixed in both places — the boundary compares
+  `is not None`, and `ResponseCache.__bool__` says plainly that an empty cache is still a cache —
+  with a regression test that supplies a fresh cache and asserts the second identical call is a hit.
+
+- **The Helm chart rendered a policy value Docket read as a float, and the checker that was supposed
+  to catch that rendered it as an integer.** Helm hands every template a `float64` for each number
+  in `values.yaml` (YAML → JSON → `map[string]any`), and Go prints a `float64` in scientific
+  notation from 1e6 up, so the ConfigMap mounted into a pod said
+  `max_ledger_bytes = 6.7108864e+07` rather than `67108864`. TOML reads that as a float; Docket's
+  loader accepts a whole float, so the run would have worked — with a policy whose type is not the
+  one the key documents, and with a config in the cluster that differs from the one the repository
+  reviews. It went unnoticed because `tools/deploy_check.py` rendered values the way Python writes
+  them instead of the way Helm writes them, which made the checker's verdicts evidence about a
+  document no cluster would ever see. Three changes: the chart writes its integers through
+  `| int64`; the checker converts values to the types Helm's templates receive and formats numbers
+  with Go's shortest representation (`_go_float`, pinned against a table produced by running `helm
+  template`, Helm v3.16.3); and `configmap.policy-parses` now refuses an integer key that arrives as
+  a float, naming the line and the fix. `helm lint` and `helm template` were also run against that
+  release for the first time — the chart lints clean and its five documents are now identical,
+  field for field, to the static renderer's (`deploy/README.md`). `helm install` still has not run:
+  there is no cluster here.
+
+- **A documented default that silence silently removed.** `resilience.max_ledger_bytes` is
+  documented as 256 MiB, and every deployment manifest sets it explicitly — but a hand-written
+  policy file that *omitted* the key got no byte ceiling at all (`None`), a weaker policy than the
+  documentation promised, applied to anyone who used the key's absence as the default it reads as.
+  Both shipped example policies were in that position. Absent now means the default, like every
+  other key in the section; `0` is how an operator asks for no ceiling on purpose, and the
+  behaviour change is stated here rather than slipped into a patch release.
+- **A test that could not fail was hiding a stale vector.** `test_committed_vectors_match_the_generator`
+  copied the committed vectors into a staging directory but wrote the generator *outside* it, so the
+  generator overwrote the real files and the comparison was between each file and itself. It passed
+  for as long as it existed, and `spec/vectors/receipt.json` had in fact drifted from the
+  implementation: the `latency` member and the policy's cache disclosure line were both missing from
+  it. The comparison now runs with the generator inside the staging directory, a canary file is
+  overwritten first to prove it wrote there, the set of files produced is compared with the set
+  committed, and the vector has been regenerated (two golden renders follow it — the diff is one
+  added line in each). The Node suite had a second instance of the same failure mode: it asserted
+  that `receipt.json` carries no latency, which was true only because of the drift, so it now builds
+  a receipt without latency rather than reading one.
 - **The deployment checker exited `1` when it could not run, which is the code it uses for "found a
   problem".** Its docstring, `docs/cli.md` and the operator's own reading all say `2` — "could not
   run" and "found a defect" are the two answers a check has to keep apart. `raise SystemExit("text")`

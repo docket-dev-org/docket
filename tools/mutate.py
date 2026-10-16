@@ -32,7 +32,8 @@ Reading a score, in the order the mistakes actually happen. A survivor is a *que
 finding, and there are three wrong answers before the right one:
 
 1. **The subset was too small.** A survivor in a branch the subset never runs is an artefact of
-   the run. Widen ``TARGET_TESTS`` and change nothing else: if the score moves, it was the subset.
+   the run. Widen ``DEFAULT_TESTS`` for that file and change nothing else: if the score moves,
+   it was the subset.
 2. **The branch cannot be reached.** A mutant of defensive code that nothing can execute survives
    by construction. The answer is to delete the dead branch, not to write a test that pretends to
    cover it — see ``docs/testing.md``.
@@ -42,8 +43,8 @@ finding, and there are three wrong answers before the right one:
 
 Only what remains is a gap: a real behaviour change the suite did not notice. The ledger's first
 sweep scored 50.0% over a 70-mutant sample and most of its 35 survivors turned out to be gaps of
-exactly that kind; the second, after the tests those survivors asked for, scored 83.6% with every
-one of its 28 remaining survivors classified.
+exactly that kind; the second, after the tests those survivors asked for, scored 83.7% (144 of 172
+candidates) with every one of its 28 remaining survivors classified.
 
 Usage::
 
@@ -61,6 +62,7 @@ import argparse
 import ast
 import json
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -75,11 +77,27 @@ ROOT = Path(__file__).resolve().parents[1]
 #: finish, and these are the files that make claims about the module in question. A module with
 #: no entry here uses ``--tests``.
 DEFAULT_TESTS: dict[str, list[str]] = {
+    # The cache is checked from three sides: the module's own rules, the boundary that uses
+    # it, and the verifier that recomputes what it claims to have saved. A mutant that only
+    # the receipt-level checks would catch must not survive because the subset was too narrow.
+    "src/docket/cache.py": [
+        "tests/test_cache.py",
+        "tests/test_proxy.py",
+        "tests/test_receipt_verify.py",
+        "tests/test_vectors.py",
+    ],
     "src/docket/canon.py": ["tests/test_canon.py", "tests/test_vectors.py"],
     # `test_signing_and_attach.py` is in this list because the sealing and signing checks live in
     # the same module: without it, every mutant in the Ed25519 branch survives and the score
     # understates the suite (a survivor can be an artefact of the subset, not a gap).
+    # `test_cache.py` is in it for exactly the same reason, and it was missing for a while: the
+    # checks that recompute a *stated* cache saving — `cache-savings`, `cache-hit-origins`,
+    # `cache-hit-proofs` — live in this module and are exercised from `tests/test_cache.py`, so
+    # without that file 51 of the 177 mutants below survived a whole round and the report read as
+    # 51 gaps in the verifier. It is first in the list because those tests are the ones that fail
+    # first under the mutants, and `-x` stops at the first failure.
     "src/docket/verify.py": [
+        "tests/test_cache.py",
         "tests/test_receipt_verify.py",
         "tests/test_vectors.py",
         "tests/test_signing_and_attach.py",
@@ -114,6 +132,15 @@ DEFAULT_TESTS: dict[str, list[str]] = {
     "src/docket/resilience.py": ["tests/test_resilience.py", "tests/test_proxy.py", "tests/test_chaos.py"],
     "src/docket/policy.py": ["tests/test_policy.py", "tests/test_cli_input.py"],
     "src/docket/pricing.py": ["tests/test_pricing.py"],
+    # The harnesses are mutated too, and with a subset that is not the whole suite: `test_mutate.py`
+    # loads `tools/mutate.py` from the sandbox, so a mutant of the mutation harness is run by the
+    # tests that describe it. `make check` runs both tools, and a tool whose own numbers are quoted
+    # in `docs/testing.md` is as much a part of the evidence as the modules it mutates.
+    "tools/mutate.py": ["tests/test_mutate.py"],
+    "tools/helm_fidelity.py": ["tests/test_helm_fidelity.py"],
+    "tools/deploy_check.py": ["tests/test_deploy_check.py"],
+    "tools/loadtest.py": ["tests/test_loadtest.py"],
+    "tools/fuzz.py": ["tests/test_fuzz_regressions.py"],
 }
 
 #: The modules a plain run mutates: the ones whose promises are cryptographic.
@@ -237,13 +264,32 @@ def sites(source: str, *, include_strings: bool = False) -> list[tuple[str, ast.
     return found
 
 
+def _char_offset(line: str, byte_offset: int) -> int:
+    """Turn one of ``ast``'s byte offsets into a character index into ``line``.
+
+    ``col_offset`` and ``end_col_offset`` are UTF-8 **byte** offsets — the `ast` documentation says
+    so, and it is easy to read past: for a line whose text before the token contains an em dash the
+    byte offset is larger than the character index, so a splice built from it lands *inside* a
+    character. The mutant text then looks plausible, does not compile, and was dropped silently —
+    and `splice_only` could not catch it, because splicing the original text back is a no-op at any
+    offset. Every mutant on every such line was lost, invisibly, while the scores in
+    `docs/testing.md` were being quoted from this harness. Found by this tool's own tests: a
+    one-line fixture with an em dash in it produced no mutant at all.
+
+    An offset that falls inside a character cannot come from a real node; it is ignored rather than
+    raised on, so a caller gets a short span instead of a crash.
+    """
+    return len(line.encode("utf-8")[:byte_offset].decode("utf-8", errors="ignore"))
+
+
 def _span(source: str, node: ast.AST) -> tuple[int, int]:
     """The node's character span in ``source`` (absolute offsets, not line/column)."""
+    lines = source.splitlines(keepends=True)
     starts = [0]
-    for line in source.splitlines(keepends=True):
+    for line in lines:
         starts.append(starts[-1] + len(line))
-    start = starts[node.lineno - 1] + node.col_offset
-    end = starts[node.end_lineno - 1] + node.end_col_offset
+    start = starts[node.lineno - 1] + _char_offset(lines[node.lineno - 1], node.col_offset)
+    end = starts[node.end_lineno - 1] + _char_offset(lines[node.end_lineno - 1], node.end_col_offset)
     return start, end
 
 
@@ -303,12 +349,15 @@ def mutants_for_source(
     *,
     limit: int | None = None,
     include_strings: bool = False,
+    drops: list[dict[str, object]] | None = None,
 ) -> list[Mutant]:
     """Every valid single-site mutant of ``source``, in site order, up to ``limit``.
 
     A site whose replacement does not produce text that compiles is dropped rather than reported:
     the property being measured is "does the suite notice a behaviour change", and a file that
-    cannot be parsed is not one.
+    cannot be parsed is not one. ``drops``, when given, receives one record per dropped site — a
+    silent drop is how a harness bug hid a whole class of mutants (see :func:`_char_offset`), so the
+    count travels into the report instead of living only in this function's control flow.
     """
     out: list[Mutant] = []
     for kind, node in sites(source, include_strings=include_strings):
@@ -316,17 +365,21 @@ def mutants_for_source(
             break
         start, end = _span(source, node)
         if not (0 <= start < end <= len(source)):  # pragma: no cover - defensive
+            _note_drop(drops, file, node, kind, "the span does not lie inside the file")
             continue
         try:
             replacement, before, after = _mutate(kind, node, source)
         except ValueError:  # pragma: no cover - defensive
+            _note_drop(drops, file, node, kind, "the operator could not be applied")
             continue
         mutated = source[:start] + replacement + source[end:]
         try:
             compile(mutated, file, "exec")
         except (SyntaxError, ValueError):
+            _note_drop(drops, file, node, kind, "the replacement does not compile")
             continue
         if mutated == source:  # pragma: no cover - a no-op is not a mutant
+            _note_drop(drops, file, node, kind, "the replacement is the original text")
             continue
         out.append(
             Mutant(
@@ -339,6 +392,12 @@ def mutants_for_source(
             )
         )
     return out
+
+
+def _note_drop(drops: list[dict[str, object]] | None, file: str, node: ast.AST, kind: str, reason: str) -> None:
+    """Record a site that produced no mutant. Nothing calls this on the happy path."""
+    if drops is not None:
+        drops.append({"file": file, "line": node.lineno, "operator": kind, "reason": reason})
 
 
 def splice_only(source: str) -> str:
@@ -363,8 +422,12 @@ def _run_tests(sandbox: Path, tests: list[str], timeout: float) -> tuple[str, st
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     try:
+        # No `-q` here: `pyproject.toml` carries one in `addopts`, and a second one makes this a
+        # `-qq` run — at which level pytest 9 prints no counts line at all. The control run's counts
+        # (and every survivor's "the suite said" line) are read off that line, so passing `-q` here
+        # is what would make them unreadable. `-x` is deliberate: the first failure is the kill.
         completed = subprocess.run(
-            [sys.executable, "-m", "pytest", *tests, "-x", "-q", "-p", "no:randomly", "-p", "no:cacheprovider"],
+            [sys.executable, "-m", "pytest", *tests, "-x", "-p", "no:randomly", "-p", "no:cacheprovider"],
             cwd=str(sandbox),
             env=env,
             capture_output=True,
@@ -385,6 +448,20 @@ def _run_tests(sandbox: Path, tests: list[str], timeout: float) -> tuple[str, st
     return "killed", summary
 
 
+def pytest_counts(summary: str) -> dict[str, int]:
+    """Parse pytest's own summary line into ``{outcome: count}``, e.g. ``{"passed": 306}``.
+
+    Used on the control run: what the subset *did* before any mutation is part of the measurement,
+    and "it passed" is not the same fact as "it ran". A test that skips cannot fail, so a subset
+    that skips inside the region being mutated cannot kill mutants there.
+    """
+    counts: dict[str, int] = {}
+    for number, word in re.findall(r"(\d+)\s+([a-z]+)", summary):
+        if word in {"passed", "failed", "skipped", "error", "errors", "xfailed", "xpassed", "deselected"}:
+            counts["error" if word == "errors" else word] = int(number)
+    return counts
+
+
 def run_mutation_sweep(
     *,
     files: list[str],
@@ -395,10 +472,18 @@ def run_mutation_sweep(
     timeout: float,
     include_strings: bool,
     budget_seconds: float,
+    only_lines: list[int] | None = None,
     keep: bool = False,
     log=None,
 ) -> dict:
-    """Mutate, run, classify. Returns the report document."""
+    """Mutate, run, classify. Returns the report document.
+
+    ``only_lines`` restricts the run to the mutants on those source lines and runs *all* of them,
+    sampling nothing: it exists so that a reader can re-check one survivor with the harness's own
+    machinery — its copy, its interpreter, its environment — in seconds rather than re-running a
+    ten-minute sweep. The report says which lines were selected, so a filtered run is never read as
+    a whole-file score.
+    """
     say = log or (lambda _message: None)
     started = time.monotonic()
     sandbox_root = Path(tempfile.mkdtemp(prefix="docket-mutate-"))
@@ -414,6 +499,7 @@ def run_mutation_sweep(
             raise AssertionError(f"the mutation harness altered {name} without mutating it; refusing to report a score")
     control_tests = sorted({test for name in files for test in tests_for.get(name, fallback_tests)})
     say(f"  control: running {len(control_tests)} test path(s) in the sandbox, unmutated")
+    control_started = time.monotonic()
     outcome, detail = _run_tests(repo, control_tests, timeout * 3)
     if outcome != "survived":
         shutil.rmtree(sandbox_root, ignore_errors=True)
@@ -421,17 +507,53 @@ def run_mutation_sweep(
             f"the sandbox does not pass the suite before any mutation ({outcome}: {detail}). "
             "Every mutant would be scored as killed against a broken baseline, so no score is reported."
         )
+    # The control's counts travel in the report. On 2026-10-16 an interpreter without the optional
+    # `cryptography` extra skipped the signature tests, so five mutants in `verify.py`'s own
+    # signature block had nothing left to catch them and were scored as survivors (171/177 instead
+    # of 176/177). The harness cannot tell a deliberate `skipif` from a missing dependency; it can
+    # stop a reader from having to guess which environment a score was taken in.
+    control = {
+        "tests": control_tests,
+        "counts": pytest_counts(detail),
+        "summary_line": detail,
+        "python": sys.version.split()[0],
+        "executable": sys.executable,
+        "duration_seconds": round(time.monotonic() - control_started, 2),
+    }
+    control["clean"] = (
+        bool(control["counts"]) and not control["counts"].get("skipped") and not control["counts"].get("failed")
+    )
+    # A counts line with no "skipped" in it means pytest saw no skips, so say `0 skipped`, not `?`:
+    # `?` reads as "unknown", and this is the line a reader checks to find out which it was.
+    skipped_in_control = control["counts"].get("skipped", 0) if control["counts"] else "?"
+    say(
+        f"  control: {control['counts'].get('passed', '?')} passed, {control['counts'].get('failed', 0)} failed, "
+        f"{skipped_in_control} skipped in {control['duration_seconds']:.1f}s — {detail}"
+    )
 
     planned: list[Mutant] = []
+    drops: list[dict[str, object]] = []
     for name in files:
-        found = mutants_for_source(originals[name], name, include_strings=include_strings)
+        found = mutants_for_source(originals[name], name, include_strings=include_strings, drops=drops)
         say(f"  {name}: {len(found)} candidate mutant(s)")
         planned.extend(found)
+    if drops:
+        # A dropped site is a harness limitation, not a survivor and not a kill: say so, and carry
+        # the records into the report so a reader can see which lines produced no mutant and why.
+        say(f"  {len(drops)} site(s) produced no mutant: {[(d['line'], d['reason']) for d in drops]}")
+
+    if only_lines:
+        wanted = sorted(set(only_lines))
+        planned = [mutant for mutant in planned if mutant.line in set(wanted)]
+        if not planned:
+            shutil.rmtree(sandbox_root, ignore_errors=True)
+            raise RuntimeError(f"no mutant sits on line(s) {wanted} of {', '.join(files)}")
+        say(f"  only-line {wanted}: running all {len(planned)} mutant(s) on that line, sampled none")
 
     rng = random.Random(seed)
     order = list(range(len(planned)))
     rng.shuffle(order)
-    chosen = sorted(order[:max_mutants]) if max_mutants < len(planned) else order
+    chosen = order if only_lines else (sorted(order[:max_mutants]) if max_mutants < len(planned) else order)
     chosen_mutants = [planned[index] for index in chosen]
 
     results: list[dict] = []
@@ -459,7 +581,9 @@ def run_mutation_sweep(
         "seed": seed,
         "files": files,
         "tests": control_tests,
+        "control": control,
         "candidates": len(planned),
+        "dropped": drops,
         "sampled": len(chosen_mutants),
         "run": len(results),
         "killed": len(killed),
@@ -470,6 +594,7 @@ def run_mutation_sweep(
         "score_denominator": scored,
         "duration_seconds": round(time.monotonic() - started, 2),
         "include_strings": include_strings,
+        "only_lines": sorted(set(only_lines)) if only_lines else [],
         "survivors": survived,
         "mutants": results,
         "sandbox_kept": keep,
@@ -487,6 +612,27 @@ def write_markdown(report: dict, path: Path) -> None:
         f"- survived: {report['survived']} · timed out (reported, not scored): {report['timed_out']}",
         f"- **score: {report['score']:.1%}** over {report['score_denominator']} scored mutant(s)",
         f"- string constants mutated: {report['include_strings']}",
+        f"- selected lines: {report['only_lines'] or 'all'}",
+        f"- sites that produced no mutant: {len(report.get('dropped', []))}",
+    ]
+    control = report.get("control")
+    if control:
+        counts = control.get("counts", {})
+        lines.insert(
+            4,
+            f"- control: {counts.get('passed', 0)} passed, {counts.get('failed', 0)} failed, "
+            f"{counts.get('skipped', 0)} skipped in {control.get('duration_seconds', 0.0):.1f}s before any "
+            f"mutation (Python {control.get('python', '?')})",
+        )
+        if counts.get("skipped"):
+            lines.insert(
+                5,
+                f"  - **{counts['skipped']} test(s) skipped in the control run: a mutant only a skipped test "
+                "would catch survives, and the score below reflects that environment.**",
+            )
+    for drop in report.get("dropped", []):
+        lines.append(f"  - `{drop['file']}:{drop['line']}` [{drop['operator']}]: {drop['reason']}")
+    lines += [
         "",
         "## Survivors",
         "",
@@ -509,6 +655,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--file", action="append", dest="files", help="a file to mutate (repeatable)")
     parser.add_argument("--tests", help="comma-separated tests to run for every mutant (default: per-file map)")
     parser.add_argument("--max-mutants", type=int, default=30, help="how many mutants to run (default 30)")
+    parser.add_argument(
+        "--only-line",
+        action="append",
+        dest="only_lines",
+        type=int,
+        metavar="LINE",
+        help="run every mutant on this source line, sampling nothing (repeatable; ignores --max-mutants). "
+        "The cheap way to re-check a survivor with the harness's own machinery",
+    )
     parser.add_argument("--seed", type=int, default=0, help="sampling seed (default 0)")
     parser.add_argument("--timeout", type=float, default=120.0, help="seconds allowed per mutant")
     parser.add_argument("--budget-seconds", type=float, default=600.0, help="stop after this long")
@@ -532,6 +687,8 @@ def main(argv: list[str] | None = None) -> int:
         for name in files:
             source = (ROOT / name).read_text(encoding="utf-8")
             found = mutants_for_source(source, name, include_strings=args.include_strings)
+            if args.only_lines:
+                found = [mutant for mutant in found if mutant.line in set(args.only_lines)]
             total += len(found)
             for mutant in found:
                 print(f"  {mutant.describe()}")
@@ -551,6 +708,7 @@ def main(argv: list[str] | None = None) -> int:
         timeout=args.timeout,
         include_strings=args.include_strings,
         budget_seconds=args.budget_seconds,
+        only_lines=args.only_lines,
         keep=args.keep,
         log=print,
     )
@@ -558,6 +716,13 @@ def main(argv: list[str] | None = None) -> int:
         f"\n{report['killed']} killed, {report['survived']} survived, {report['timed_out']} timed out "
         f"of {report['run']} run — score {report['score']:.1%} (seed {report['seed']})"
     )
+    skipped_in_control = report.get("control", {}).get("counts", {}).get("skipped", 0)
+    if skipped_in_control:
+        print(
+            f"\nwarning: the control run skipped {skipped_in_control} test(s) before any mutation, so a "
+            "mutant only a skipped test would catch is scored as a survivor. The score is conditional "
+            "on a subset that did not run; install the optional extras and re-run."
+        )
     if report["survivors"]:
         print("\nSurvivors (a change no test noticed):")
         for item in report["survivors"]:

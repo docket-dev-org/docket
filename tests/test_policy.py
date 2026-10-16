@@ -143,3 +143,66 @@ def test_denial_code_reads_only_the_boundary_s_own_envelope():
     assert denial_code(None) == ""
     assert denial_code([]) == ""
     assert denial_code(b"") == ""
+
+
+def test_a_policy_file_that_omits_the_byte_ceiling_gets_the_documented_default():
+    """The ceiling that silence used to remove.
+
+    `docs/resilience.md` and every deployment manifest describe `max_ledger_bytes` as
+    having a 256 MiB default. A policy file that said nothing about it used to get *no*
+    ceiling at all — a weaker policy than the one the documentation promised, applied
+    silently to anyone who hand-wrote a policy (both shipped examples did). Absent now
+    means the default, like every other key in the section, and `0` is how an operator
+    asks for no ceiling on purpose.
+    """
+    from docket.policy import Resilience
+
+    default = Policy.from_dict({})
+    assert default.resilience.max_ledger_bytes == Resilience().max_ledger_bytes == 268_435_456
+    assert default.digest() == Policy().digest(), "silence must mean the default, not a different policy"
+
+    unlimited = Policy.from_dict({"resilience": {"max_ledger_bytes": 0}})
+    assert unlimited.resilience.max_ledger_bytes is None
+    assert unlimited.to_dict()["resilience"]["max_ledger_bytes"] is None
+    assert unlimited.digest() != default.digest()
+
+    tuned = Policy.from_dict({"resilience": {"max_ledger_bytes": 8192}})
+    assert tuned.resilience.max_ledger_bytes == 8192
+    with pytest.raises(ValueError, match="no ceiling"):
+        Policy.from_dict({"resilience": {"max_ledger_bytes": 1024}})
+
+
+def test_every_default_written_down_in_a_parser_is_the_dataclass_default():
+    """A default spelled twice is a default that can drift, so the two are compared here.
+
+    Several parsers spell a default inline rather than reading the dataclass's own field —
+    `caps_raw.get("warn_at", 0.8)`, `egress_raw.get("mode", "deny")`, `300.0` for the cache's TTL.
+    That is readable and fine right up until one of the two is edited: `resilience.max_ledger_bytes`
+    was written down as "absent means no ceiling" in the parser and as 256 MiB in the dataclass, and
+    a hand-written policy file got the weaker of the two for as long as it took someone to notice.
+    This test walks every dataclass behind a section of the policy document and asserts that a
+    document which says nothing produces exactly the object the dataclass describes, value for
+    value, so the next drift fails here instead of in someone's audit trail.
+    """
+    from dataclasses import fields
+
+    silent = Policy.from_dict({})
+    default = Policy()
+    assert silent.to_dict() == default.to_dict()
+    assert silent.digest() == default.digest()
+
+    # Naming a section without any keys must also land on the defaults: this is the path where a
+    # parser supplies the value itself instead of falling through to the dataclass constructor.
+    empty_sections = Policy.from_dict(
+        {name: {} for name in ("caps", "models", "egress", "files", "resilience", "cache", "policy", "budget")}
+    )
+    assert empty_sections.to_dict() == default.to_dict(), empty_sections.to_dict()["resilience"]
+
+    for name in ("caps", "models", "egress", "files", "resilience", "cache"):
+        parsed = getattr(silent, name)
+        built = type(parsed)()
+        for field in fields(parsed):
+            assert getattr(parsed, field.name) == getattr(built, field.name), (
+                f"{name}.{field.name}: the parser's default is {getattr(parsed, field.name)!r}, "
+                f"the dataclass's is {getattr(built, field.name)!r}"
+            )

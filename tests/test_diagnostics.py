@@ -2,9 +2,11 @@
 
 ``docket selftest`` is the surface a CI job or a cron runs against a deployment, so the
 properties it asserts must be the properties the project actually promises — forwarding,
-recording, refusal, capping, throttling, breaking, injecting, surviving a failing disk,
-building a receipt, and catching a tampered one. If a probe ever stops being able to fail,
-these tests fail, which is the only way a self-test stays worth running.
+recording, refusal, capping, throttling, breaking, injecting, caching, surviving a failing
+disk, building a receipt, and catching a tampered one. If a probe ever stops being able to
+fail, these tests fail, which is the only way a self-test stays worth running. The cache
+probes earned their place on the first run: they found a supplied cache the boundary was
+silently ignoring (see `CHANGELOG.md`, Unreleased → Fixed).
 """
 
 from __future__ import annotations
@@ -53,6 +55,9 @@ def test_the_probe_suite_covers_each_advertised_guarantee(probes):
         "circuit",  # circuit breaking
         "not recorded as a successful",  # failure classification
         "injects faults",  # chaos
+        "repeated request from the cache",  # the response cache answers without the provider
+        "a hit costs nothing",  # ...and the saving is not a spend
+        "miss, never a wrong answer",  # ...and a different request is still a call
         "descriptor was closed",  # recovery
         "failing write",  # evidence degradation under a real kernel limit
         "closing a ledger on a failing filesystem",  # cleanup that must not raise

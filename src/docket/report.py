@@ -70,6 +70,21 @@ def render_receipt(receipt: dict[str, Any], *, color: bool = True, show_findings
             color,
         )
     )
+    cache = receipt.get("cache") or {}
+    if cache.get("hits"):
+        # Reported on its own line, never folded into the spend above it: `spend` is money
+        # that was paid, `cache` is money that was not, and adding them would produce a
+        # number that describes neither.
+        lines.append(
+            _row(
+                "cache",
+                f"{human_int(int(cache.get('hits') or 0))} call(s) answered without the provider"
+                f"  ({human_usd(cache.get('saved_usd', '0.00'))} not spent, "
+                f"{human_int(int(cache.get('avoided_tokens') or 0))} tokens avoided"
+                + (", ceiling reached)" if cache.get("hits_ceiling_reached") else ")"),
+                color,
+            )
+        )
     latency = receipt.get("latency") or {}
     if latency.get("measured_calls"):
         measured = int(latency.get("measured_calls") or 0)
@@ -257,6 +272,15 @@ def render_markdown(receipt: dict[str, Any]) -> str:
         "| --- | --- |",
         f"| estimated cost | {human_usd(totals.get('cost_usd', '0.00'))} ({totals.get('cost_basis', '')}) |",
         f"| model calls | {totals.get('calls', 0)} ({receipt.get('model_calls', {}).get('denied', 0)} denied) |",
+        *(
+            [
+                f"| answered from cache | {human_int(int((cache := receipt.get('cache') or {}).get('hits') or 0))} "
+                f"call(s) · {human_usd(cache.get('saved_usd', '0.00'))} not spent · "
+                f"{human_int(int(cache.get('avoided_tokens') or 0))} tokens avoided |"
+            ]
+            if (receipt.get("cache") or {}).get("hits")
+            else []
+        ),
         f"| tokens | {human_int(int(totals.get('total_tokens') or 0))} "
         f"(in {human_int(int(totals.get('input_tokens') or 0))}, cached {human_int(int(totals.get('cached_input_tokens') or 0))}, "
         f"out {human_int(int(totals.get('output_tokens') or 0))}) |",

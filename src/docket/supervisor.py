@@ -596,6 +596,7 @@ class Supervisor:
             limiter=limiter,
             injector=injector,
             health=health,
+            cache=proxy.cache,
         )
         ledger.close()
         proxy.stop()

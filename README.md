@@ -181,6 +181,12 @@ before it started, `70` internal error, `130` interrupted. `42` means the bounda
    and restorable later by hand with `docket restore`, which refuses to overwrite anything that
    changed after the run. It is off by default, it prints what it cannot cover, and it will not
    write outside the tree it was pointed at.
+7. **A response cache that can be audited** (`--cache`): a repeated request is answered at the
+   boundary without contacting the provider, every hit is a `model.cache_hit` event, and the money
+   it saved is *recomputed by the verifier* from the call it replayed — never folded into the
+   spend, which keeps describing money that was actually paid. A cached loop spends nothing, so no
+   dollar cap can end it; `cache.max_hits` is the brake that makes it start paying again, and the
+   moment it engages is in the ledger. See [the response cache](docs/caching.md).
 
 ## What it proves, and what it does not
 
@@ -307,7 +313,7 @@ pipx install docket         # or keep it out of your project venvs
 uvx docket demo             # or run it without installing anything
 ```
 
-From source: `git clone … && cd docket && make check` (834 tests, fully offline — no API keys,
+From source: `git clone … && cd docket && make check` (1025 tests, fully offline — no API keys,
 no network, ~90 s).
 
 ## Documentation
@@ -318,14 +324,17 @@ no network, ~90 s).
 | [Concepts](docs/concepts.md) | boundary, ledger, receipt, findings, caps |
 | [CLI reference](docs/cli.md) | every command and flag, exit codes, environment |
 | [Policy reference](docs/policy-reference.md) | the whole `docket.toml` schema |
+| [Response cache](docs/caching.md) | what a hit is, what it is not, the brake it needs, and the measured cost |
 | [Verification](docs/verification.md) | what each check means and how to run it in CI |
 | [Integrations](docs/integrations.md) | Claude Code, Codex, Gemini CLI, opencode, aider, SDKs, HTTP |
 | [Threat model and limits](docs/threat-model.md) | what Docket does not defend against |
 | [Testing](docs/testing.md) | what is tested, by kind, and what is deliberately not |
-| [Measurements](docs/measurements/2026-10-15-2core/README.md) | throughput, client latency and memory from three real runs, with the host and the limits stated |
+| [Measurements](docs/measurements/2026-10-15-2core/README.md) | throughput, client latency and memory from four real runs, with the host and the limits stated |
 | [Resilience](docs/resilience.md) | breakers, throttles, timeouts, caps, the evidence guard — and what each one records |
 | [Deployment](docs/deployment.md) | containers, pods, the Helm chart, and what the deploy check does and does not prove |
-| [Production coverage](docs/production-coverage.md) | ~110 production-engineering concepts, each with what exists here and where |
+| [Production coverage](docs/production-coverage.md) | 77 production-engineering concepts, each with what exists here and where |
+| [Standards](docs/standards.md) | the norm or paper behind each mechanism — RFCs, CAP, Sagas, the tail at scale, Chaos Engineering — and where Docket departs |
+| [Resilience practice coverage](docs/sre-coverage.md) | 22 resilience practices — stress, fuzzing, chaos, game days, red teaming, FMEA, post-mortems — and which are actually practised |
 | [Evidence](docs/evidence.md) | every problem claim with its source and its strength |
 | [Comparison](docs/comparison.md) | Docket vs gateways, observability, sandboxes, LLM cassette tools |
 | [Format specification](spec/docket-receipt-1.md) | the normative `docket/receipt/v1` contract |
@@ -380,7 +389,8 @@ number.
 Bug reports, "this estimate is wrong" reports, and format critiques are all welcome. The two
 rules that matter: **the test suite must stay offline**, and **nothing that hashes a structure
 may change without a spec change** (a format break invalidates every receipt ever issued).
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md); for where to ask questions, what to include in a report, and
+what this project does not support, see [SUPPORT.md](SUPPORT.md).
 
 ## Sponsorship
 

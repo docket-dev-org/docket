@@ -60,6 +60,21 @@ def _cap_amount(text: str) -> str:
     return value
 
 
+def _cache_seconds(text: str) -> float:
+    """A cache TTL: zero (never expire) or a positive number of seconds.
+
+    Refused at parse time with the flag named, like every other number this CLI takes:
+    `--cache-ttl -1` must not become a cache that behaves as though it had no TTL at all.
+    """
+    try:
+        seconds = float(str(text).strip())
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(f"not a number of seconds: {text!r}") from exc
+    if seconds != seconds or seconds < 0:
+        raise argparse.ArgumentTypeError(f"must be zero or a positive number of seconds, got {text!r}")
+    return seconds
+
+
 def _whole_number(text: str) -> int:
     """An argparse ``type=`` for a count: a whole, non-negative number.
 
@@ -193,6 +208,22 @@ def cmd_run(args: argparse.Namespace) -> int:
     if args.max_events is not None:
         policy.resilience.max_events = args.max_events
         overrides.append(f"max_events={args.max_events}")
+    # The cache is off unless one of these says otherwise. The tuning flags turn it on
+    # too: `--cache-max-entries` on its own would configure a cache that never answers,
+    # which is a policy nobody means.
+    cache_flags = (args.cache, args.cache_ttl, args.cache_max_entries, args.cache_max_hits)
+    if any(flag is not None and flag is not False for flag in cache_flags):
+        policy.cache.enabled = True
+        overrides.append("cache.enabled=true")
+    if args.cache_ttl is not None:
+        policy.cache.ttl_seconds = args.cache_ttl
+        overrides.append(f"cache.ttl_seconds={args.cache_ttl}")
+    if args.cache_max_entries is not None:
+        policy.cache.max_entries = args.cache_max_entries
+        overrides.append(f"cache.max_entries={args.cache_max_entries}")
+    if args.cache_max_hits is not None:
+        policy.cache.max_hits = args.cache_max_hits
+        overrides.append(f"cache.max_hits={args.cache_max_hits}")
     if args.fail_fast_evidence:
         policy.resilience.fail_fast_evidence = True
         overrides.append("fail_fast_evidence=true")
@@ -802,6 +833,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
         max_usd=Decimal(args.max_usd),
         keep=args.keep,
         tamper=args.tamper,
+        cache=args.cache,
         color=_color_enabled(sys.stdout) and not args.json,
         # --json means "machine-readable, nothing else": the narrative goes to a
         # buffer so that stdout is a single JSON object and nothing pipes a
@@ -1120,6 +1152,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="throttle: refuse calls beyond this rate (recorded, HTTP 429)",
     )
     run.add_argument("--max-events", type=_whole_number, help="ceiling on this run's own ledger events")
+    run.add_argument(
+        "--cache",
+        action="store_true",
+        help="answer an identical request from the boundary's response cache instead of the provider "
+        "(every hit is a model.cache_hit event; see docs/caching.md)",
+    )
+    run.add_argument("--cache-ttl", type=_cache_seconds, help="seconds an entry stays usable (0 = never expires)")
+    run.add_argument(
+        "--cache-max-entries", type=_at_least_one, help="least-recently-used entries are evicted above this"
+    )
+    run.add_argument(
+        "--cache-max-hits",
+        type=_whole_number,
+        help="ceiling on calls the cache may answer in this run (0 = no ceiling); a cached loop spends "
+        "nothing, so it needs its own brake",
+    )
     run.add_argument("--fail-fast-evidence", action="store_true", help="stop the run if evidence cannot be written")
     run.add_argument(
         "--fault-inject",
@@ -1191,6 +1239,12 @@ def build_parser() -> argparse.ArgumentParser:
     demo = sub.add_parser("demo", help="watch a runaway agent get stopped, offline, no API key")
     demo.add_argument("--max-usd", type=_cap_amount, default="2.00")
     demo.add_argument("--tamper", action="store_true", help="also show tamper detection")
+    demo.add_argument(
+        "--cache",
+        action="store_true",
+        help="run the same scripted loop with the response cache on, so the receipt shows what the "
+        "repeated calls would have cost (see docs/caching.md)",
+    )
     demo.add_argument("--keep", action="store_true", help="keep the demo workspace")
     demo.add_argument("--json", action="store_true")
     demo.set_defaults(func=cmd_demo)

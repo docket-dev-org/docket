@@ -26,7 +26,7 @@ from typing import Any
 
 from .fakeupstream import FakeUpstream, Step
 from .ledger import Ledger
-from .policy import Caps, Files, Policy
+from .policy import Cache, Caps, Files, Policy
 from .report import render_receipt
 from .supervisor import EXIT_CAP_EXCEEDED, Supervisor
 from .util import http_url, local_http_url
@@ -157,15 +157,31 @@ def child_main() -> int:
     return 0
 
 
+#: How many calls the demo's cache is allowed to answer when ``--cache`` is on.
+#: Deliberately small, and deliberately not the default: this demo exists to show a
+#: cached loop being *braked*, so the number has to be low enough that the run reaches
+#: the ceiling and starts paying again — the point being that a cache which answers a
+#: loop forever is a run no dollar cap can end (`docs/caching.md`).
+DEMO_CACHE_MAX_HITS = 5
+
+
 def run_demo(
     *,
     max_usd: Decimal = DEFAULT_MAX_USD,
     keep: bool = False,
     tamper: bool = False,
+    cache: bool = False,
     color: bool = True,
     out: Any = None,
 ) -> dict[str, Any]:
-    """Run the offline demo end to end and print a narrative report."""
+    """Run the offline demo end to end and print a narrative report.
+
+    ``cache=True`` runs the same scripted loop with the boundary's response cache on,
+    capped at :data:`DEMO_CACHE_MAX_HITS` answers. The loop's repeated request is then
+    answered from the cache until that ceiling is reached, at which point it starts
+    costing money again and the USD cap does what it always did. Both halves of that
+    sentence are in the receipt: what the cache saved, and the call it stopped saving.
+    """
     stream = out if out is not None else sys.stdout
     workspace = Path(tempfile.mkdtemp(prefix="docket-demo-"))
     _write_workspace(workspace)
@@ -190,6 +206,7 @@ def run_demo(
         name="demo: stop a runaway agent",
         caps=Caps(max_usd=max_usd, warn_at=0.7, on_breach="kill", grace_seconds=2.0),
         files=Files(watch=["."], ignore=[".docket/**"], deny_write=[".env", "**/.env"]),
+        cache=Cache(enabled=cache, max_hits=DEMO_CACHE_MAX_HITS if cache else 1000),
     )
 
     print(file=stream)
@@ -198,6 +215,12 @@ def run_demo(
     print("  the same request. Nothing inside the agent will ever stop it.", file=stream)
     print(file=stream)
     print(f"  Policy: max_usd = ${max_usd}, deny_write = [.env], watch = [.]", file=stream)
+    if cache:
+        print(
+            f"  Response cache: on, capped at {DEMO_CACHE_MAX_HITS} answered calls "
+            "(so the loop is free only until the brake is reached)",
+            file=stream,
+        )
     print(file=stream)
     print("  running (real supervisor, real boundary, scripted provider)…", file=stream)
     stream.flush()
@@ -225,7 +248,23 @@ def run_demo(
     receipt = result.receipt
     print(file=stream)
     print(render_receipt(receipt, color=color), file=stream)
-    print(file=stream)
+    cache_block = receipt.get("cache")
+    if isinstance(cache_block, dict):
+        # Said in the demo's own words, because it is the sentence that explains why a
+        # cached loop needs a ceiling of its own: the loop cost nothing while the cache
+        # was answering, so nothing about the spend would ever have stopped it.
+        print(file=stream)
+        print(
+            f"  Response cache: {cache_block['hits']} call(s) answered without the provider, "
+            f"{cache_block['saved_usd']} not spent"
+            + (
+                " — the ceiling was reached, after which the loop paid again and the USD cap fired."
+                if cache_block.get("hits_ceiling_reached")
+                else "."
+            ),
+            file=stream,
+        )
+        print(file=stream)
     verification = verify_receipt(receipt, ledger_events=Ledger.read(result.ledger_path))
     print(verification.render(color=color), file=stream)
 
@@ -239,6 +278,12 @@ def run_demo(
         "cost_usd": receipt.get("totals", {}).get("cost_usd"),
         "stopped_as_expected": result.exit_code == EXIT_CAP_EXCEEDED,
     }
+    if isinstance(cache_block, dict):
+        outcome["cache"] = {
+            "hits": cache_block["hits"],
+            "saved_usd": cache_block["saved_usd"],
+            "hits_ceiling_reached": cache_block["hits_ceiling_reached"],
+        }
 
     if tamper:
         print(file=stream)

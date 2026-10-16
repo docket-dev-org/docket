@@ -11,7 +11,7 @@ rest is the real thing: the real supervisor, boundary proxy, ledger and verifier
 
 ```console
 $ PYTHONPATH=src python3 examples/quickstart/run_example.py
-workspace   /tmp/docket-quickstart-fycfcz1x
+workspace   /tmp/docket-quickstart-ehfp0eb0
 policy      max_usd = $0.0005, on_breach = deny
 model calls 4 scripted (third one is expensive)
 
@@ -26,29 +26,31 @@ breached    max_usd
 spend       $0.004510 of $0.0005 cap
 calls       3 forwarded, 1 refused
 tokens      42,300 (reported: provider usage fields)
-receipt     /tmp/docket-quickstart-fycfcz1x/.docket/receipts/DKT-20261015-841AF2.receipt.json
+receipt     /tmp/docket-quickstart-ehfp0eb0/.docket/receipts/DKT-20261015-E17EA9.receipt.json
 
-VERIFIED  DKT-20261015-841AF2
+VERIFIED  DKT-20261015-E17EA9
   PASS  format: docket/receipt/v1
-  PASS  ledger-chain: 17 events, every hash and link recomputed
-  PASS  head: head matches receipt (1bd4f0ae117f6508…)
-  PASS  event-count: 17 events
-  PASS  merkle-root: de1d2ef5b8399a7f…
-  PASS  ledger-file-digest: sha256 f1a62273d4050aea…
+  PASS  ledger-chain: 18 events, every hash and link recomputed
+  PASS  head: head matches receipt (7d9db1073f7f1c14…)
+  PASS  event-count: 18 events
+  PASS  merkle-root: a28fae262f856518…
+  PASS  ledger-file-digest: sha256 2f4101b4db724524…
   PASS  usage-inclusion-proofs: 3 usage rows proven against the receipt's claimed Merkle root and re-bound to the recomputed ledger
   PASS  usage-rows-rebound: 3 usage rows re-bound to the recomputed ledger
   PASS  cost-recomputation: 3 calls recomputed from token counts
   PASS  totals: total 0.004510 agrees with recomputation
   PASS  token-totals: 42,300 tokens
-  PASS  latency-summary: p50 0 ms · p99 1 ms over 3 measured call(s), nearest-rank
+  PASS  latency-summary: p50 1 ms · p99 1 ms over 3 measured call(s), nearest-rank
+  SKIP  cache-savings: this run had no response cache: every call was forwarded
   SKIP  seal: receipt is not sealed
   SKIP  signature: receipt is not signed
   PASS  limits-disclosure: receipt states what Docket could and could not observe
   PASS  evidence-completeness: every event reached the ledger file
 ```
 
-(One real capture. The workspace path, the docket number's random suffix and the digests differ
-per run; the totals, the events and the verdicts do not.)
+(One real capture. The workspace path, the docket number's random suffix, the digests and the
+measured latency line differ per run and per machine; the totals, the event count and the
+verdicts do not.)
 
 What to notice:
 

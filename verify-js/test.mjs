@@ -90,6 +90,41 @@ for (const checkItem of result.checks) {
 }
 check("receipt verifies overall", result.ok, result.failures.join("; "));
 
+console.log("cache vectors");
+const cacheReceipt = load("cache.json");
+const cacheDigest = load("cache-digest.json");
+const cacheResult = verifyReceipt(cacheReceipt);
+for (const item of cacheResult.checks) {
+  if (item.status === "skip") continue;
+  check(`cache ${item.name}`, item.status === "pass", item.detail);
+}
+check("cached receipt verifies overall", cacheResult.ok, cacheResult.failures.join("; "));
+check(
+  "the saving is what the vector says, and the spend is untouched by it",
+  cacheReceipt.cache.hits === cacheDigest.expected.hits &&
+    cacheReceipt.cache.saved_usd === cacheDigest.expected.saved_usd &&
+    cacheReceipt.totals.cost_usd === cacheDigest.expected.spend_usd &&
+    cacheReceipt.totals.calls === cacheDigest.expected.metered_calls,
+  JSON.stringify(cacheDigest.expected),
+);
+const editedCache = JSON.parse(JSON.stringify(cacheReceipt));
+editedCache.cache.saved_usd = "9.99";
+const editedCacheResult = verifyReceipt(editedCache);
+check(
+  "an overstated saving is caught",
+  !editedCacheResult.ok && editedCacheResult.failures.some((f) => f.includes("cache.saved_usd is")),
+  editedCacheResult.failures.join("; "),
+);
+const editedGroup = JSON.parse(JSON.stringify(cacheReceipt));
+editedGroup.cache.by_origin[0].origin_seq = 99;
+check("a hit citing a call the receipt does not carry is caught", !verifyReceipt(editedGroup).ok);
+const flippedProof = JSON.parse(JSON.stringify(cacheReceipt));
+flippedProof.cache.by_origin[0].merkle_path[0].hash = "0".repeat(64);
+check(
+  "a flipped digit in a group proof is caught",
+  verifyReceipt(flippedProof).failures.some((f) => f.startsWith("cache-hit-proofs")),
+);
+
 console.log("tamper detection");
 const tampered = JSON.parse(JSON.stringify(receipt));
 tampered.appendix.usage[0].output_tokens += 1;
@@ -169,10 +204,23 @@ check(
   !verifyReceipt(fractional, { ledgerEvents: ledger.events }).ok,
 );
 
-const noLatency = verifyReceipt(receipt, { ledgerEvents: ledger.events });
+// Built explicitly rather than read off the committed vector: when this test was written it
+// asserted that `receipt.json` had no latency member, which *was* true — the vector had been
+// generated before the feature landed and never regenerated, so the test was holding a drift
+// in place instead of checking a rule. The rule is what matters: a receipt with no measurement
+// must skip, not pass.
+const noLatencyReceipt = JSON.parse(JSON.stringify(withLatency));
+delete noLatencyReceipt.latency;
+noLatencyReceipt.appendix.usage = noLatencyReceipt.appendix.usage.map((row) => {
+  const copy = { ...row };
+  delete copy.latency_ms;
+  return copy;
+});
+const noLatency = verifyReceipt(noLatencyReceipt, { ledgerEvents: ledger.events });
 check(
   "a receipt with no latency skips rather than passing",
   (noLatency.checks.find((check) => check.name === "latency-summary") ?? {}).status === "skip",
+  JSON.stringify((noLatency.checks.find((check) => check.name === "latency-summary") ?? {}).detail),
 );
 
 console.log("money");

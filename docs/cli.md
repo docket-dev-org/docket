@@ -46,6 +46,10 @@ Runs a command under a policy, records everything observable, and writes a recei
 | `--max-calls-per-minute N` | policy | refuse calls beyond N per minute (recorded, answered `429`) |
 | `--max-events N` | policy | ceiling on this run's own ledger events; the run stops at the ceiling rather than losing the record |
 | `--fail-fast-evidence` | off | stop the run when an event cannot be written, instead of continuing with a disclosed gap |
+| `--cache` | off | answer an identical request (same upstream path, same canonical body) from the boundary's response cache instead of the provider. Every hit is a `model.cache_hit` event, the provider sees nothing, and the saving is reported beside the spend, never inside it — [docs/caching.md](caching.md) |
+| `--cache-ttl SECONDS` | `300` | how long an entry stays usable; `0` means entries never expire on time (capacity still bounds them). Turns the cache on |
+| `--cache-max-entries N` | `256` | least-recently-used entries are evicted above this. At least 1. Turns the cache on |
+| `--cache-max-hits N` | `1000` | ceiling on calls the cache may answer in this run; `0` means no ceiling. A cached loop spends nothing, so no dollar cap can end it — **this** is the brake that makes it start paying again, and the moment it engages is written to the ledger as a note. Turns the cache on |
 | `--fault-inject SPEC` | off | make the boundary misbehave on purpose (see `docket chaos`) |
 | `--fault-seed N` | random | seed for `--fault-inject`; the same seed reproduces the same faults |
 | `--snapshot` | off | copy the *contents* of watched files before the agent starts, so the run can be undone |
@@ -233,7 +237,7 @@ Compares two receipts: spend, calls, tokens, models, tools, files, findings. The
 is *drift detection* — did last week's prompt change double the cost, did the model swap move
 p95 calls to a pricier tier, did a new tool start returning huge payloads.
 
-## `docket demo [--max-usd N] [--tamper] [--keep] [--json]`
+## `docket demo [--max-usd N] [--tamper] [--cache] [--keep] [--json]`
 
 Runs the scripted runaway agent against an in-process fake provider: **offline, no API key,
 deterministic**. `--tamper` then edits one byte of the ledger and shows verification failing at
@@ -278,7 +282,8 @@ fired.
 ## `docket game-day [--out DIR] [--phases …] [--online] [--max-usd N] [--json]`
 
 Runs the scripted failure phases end to end — baseline, upstream failure, circuit breaker,
-upstream latency, rate limit, ledger pressure, rollback, supervisor killed mid-run — and writes
+upstream latency, rate limit, ledger pressure, rollback, supervisor killed mid-run, and a response
+cache driven to its own ceiling — and writes
 a post-mortem next to the evidence: what was injected, what the record shows, which phase failed
 its own audit, and the expected-vs-actual for each.
 
@@ -358,8 +363,9 @@ numbers, the host they came from and the limits of the method are in
 | tool | what it does | how it can fail |
 | --- | --- | --- |
 | `tools/deploy_check.py` | statically validates `deploy/`: renders the Helm chart through a declared subset of the template language (refusing any construct it does not implement), then checks hardening, probes, image pinning, one-writer-per-volume, the compose wait-and-read-only contract, the policy inside every ConfigMap (parsed by Docket's own loader), and that workflows parse | exits `1` on any finding, `2` when its YAML reader is missing — it never passes without running. `tests/test_deploy_check.py` breaks each invariant on purpose |
+| `tools/helm_fidelity.py` | renders the chart with the real Helm client and with `tools/deploy_check.py`'s renderer, pairs the documents by kind and name, and reports the path of the first field that differs — the check that found a `float64` reaching a config file as `6.7108864e+07` | exits `1` on any divergence, `2` when Helm is not installed, printing "This is not a pass" rather than reporting success; not part of `make check`, because CI has no Helm. `make helm-fidelity` |
 | `tools/loadtest.py` | runs the load point and the soak described above | exits `1` when the run is not usable as evidence, `2` when the run cannot start |
-| `tools/mutate.py` | seeded single-site mutation of a source file, with the tests that must kill each mutant; reports every survivor classified as a gap or an equivalent mutant (`make mutation`) | non-zero when the score is under `--min-score`; a survivor with a subset that never touches the file is the artefact the tool warns about |
+| `tools/mutate.py` | seeded single-site mutation of a source file, with the tests that must kill each mutant; reports every survivor classified as a gap or an equivalent mutant, counts the sites that produced no mutant, and re-checks a single line with `--only-line N` (`make mutation`) | non-zero when the score is under `--min-score`; a survivor with a subset that never touches the file is the artefact the tool warns about, a `--only-line` run names its selection so it is never read as a whole-file score, and a line with no mutant is refused rather than reported as clean |
 | `tools/fuzz.py` | time-boxed property tests over the parsers and the canonicaliser (`--target`, `--seconds`, `--seed`, `-n`) | non-zero on a counterexample, naming the target and the input text that produced it |
 | `tools/transcript_run.py` | runs the exact command a transcript was captured from, against a scripted provider, and prints the real output (the README's transcripts were produced this way and pasted verbatim) | non-zero if the run fails; nothing here writes documentation, so a stale transcript stays visible in the diff instead of being silently refreshed |
 | `tools/build_docs_site.py` | builds the documentation site strictly (`make site-check`) | non-zero on a broken link or a page missing from the nav |

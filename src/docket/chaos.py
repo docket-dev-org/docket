@@ -35,6 +35,7 @@ import signal
 import subprocess
 import sys
 import time
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from pathlib import Path
@@ -42,7 +43,7 @@ from typing import Any
 
 from . import events as ev
 from .ledger import Ledger
-from .policy import Caps, Policy
+from .policy import Cache, Caps, Policy
 from .resilience import parse_fault_spec
 from .util import atomic_write, scratch_workspace
 
@@ -82,6 +83,14 @@ def ledger_facts(ledger_path: Path) -> dict[str, Any]:
         "cap_events": [e.data for e in events if e.type == ev.CAP_EXCEEDED],
         "model_responses": counts.get(ev.MODEL_RESPONSE, 0),
         "model_requests": counts.get(ev.MODEL_REQUEST, 0),
+        # The cache's own facts, for the checks a phase makes about it: how many calls the
+        # boundary answered itself, and whether the declared ceiling was reached (the note is
+        # the only place the moment is recorded, so this is what the receipt is checked against).
+        "cache_hits": counts.get(ev.MODEL_CACHE_HIT, 0),
+        "cache_ceiling_note": any(
+            e.type == ev.NOTE and isinstance(e.data, dict) and e.data.get("event") == "cache.hits_ceiling_reached"
+            for e in events
+        ),
         "evidence_gaps": [e.data for e in events if e.type == "x-docket.evidence-gap"],
         "rollbacks": [e.data for e in events if e.type == "x-docket.rollback-applied"],
         # A restore that declined every path is the outcome an operator most needs to see, and
@@ -574,6 +583,20 @@ GAME_DAY_PHASES: list[Phase] = [
         },
     ),
     Phase(
+        name="cache-brake",
+        description=(
+            "A capped response cache against an agent that repeats itself: the loop stops costing "
+            "money, so what stops the loop?"
+        ),
+        expect=[
+            "identical requests are answered without the provider, one model.cache_hit event per hit",
+            "when the hit ceiling is reached the moment is in the ledger and calls are forwarded again",
+            "the receipt's saving is recomputed by verification, and the spend keeps describing money spent",
+        ],
+        env={"DOCKET_AGENT_CALLS": "8", "DOCKET_AGENT_MODE": "loop"},
+        policy_mutator="cache",
+    ),
+    Phase(
         name="supervisor-killed",
         description="SIGKILL the supervisor mid-run: what survives, what is lost, what recovery looks like.",
         expect=[
@@ -588,23 +611,30 @@ GAME_DAY_PHASES: list[Phase] = [
 
 
 def _phase_policy(phase: Phase, base: Policy) -> Policy:
-    policy = Policy(
-        name=base.name,
-        budget_mode=base.budget_mode,
-        caps=base.caps,
-        files=base.files,
-        models=base.models,
-        egress=base.egress,
-        resilience=base.resilience,
-    )
+    """The base policy plus this phase's one deliberate change, and nothing else.
+
+    A **copy**, not a view. The first version of this function shared `base.resilience`, so the
+    rate-limit phase's two-calls-per-second bucket and the ledger-pressure phase's eight-event
+    ceiling were still in force for every phase after them — the phase order is a sequence of
+    experiments, and each one was quietly inheriting the limits of the last. The phase that proved
+    it was `cache-brake`: it was stopped by a ledger ceiling another experiment had installed,
+    having never reached its own hypothesis (one provider call, zero hits, and two checks failed).
+    `rollback` "passed" the same way, with a cap breach that was not the one it declares. Copying
+    the whole policy is the cheap version of getting this right: a phase can no longer edit
+    anything the next phase reads.
+    """
+    policy = deepcopy(base)
     if phase.policy_mutator == "per_second":
         policy.resilience.max_calls_per_second = 2
     elif phase.policy_mutator == "max_events":
         policy.resilience.max_events = 8
+    elif phase.policy_mutator == "cache":
+        # Two answers, so the brake is reached inside a short phase: the point of this phase is
+        # what happens *after* the ceiling, and a phase that never reaches it tests the easy half.
+        policy.cache = Cache(enabled=True, ttl_seconds=120, max_entries=16, max_hits=2)
     elif phase.policy_mutator == "tight_cap":
         # A cap a single scripted call crosses, so the breach (and therefore the rollback)
-        # happens on a schedule rather than by luck. Copied, not mutated: `Caps` is shared
-        # with the base policy, and a phase that edited it in place would change the next phase.
+        # happens on a schedule rather than by luck.
         policy.caps = replace(policy.caps, max_usd=Decimal("0.01"))
     return policy
 
@@ -714,6 +744,10 @@ def run_phase(
             # facts about the run that the post-mortem has to be able to show, and the record
             # is read by people who will not open a 14 kB receipt to find them.
             record["receipt_ops"] = receipt.get("ops")
+            # The cache block and the spend travel together into the record, because the phase's
+            # claim is about the *relationship* between them: money saved beside money spent.
+            record["receipt_cache"] = receipt.get("cache")
+            record["receipt_totals"] = receipt.get("totals")
             verification = verify_receipt(receipt, ledger_path=result.ledger_path)
             record["verification"] = {
                 "ok": verification.ok,
@@ -728,10 +762,59 @@ def run_phase(
     # a digest of a digest.
     if phase.snapshot:
         record.setdefault("checks", []).extend(_rollback_checks(phase, workspace, docket_dir, record))
+    if phase.policy_mutator == "cache":
+        record.setdefault("checks", []).extend(_cache_checks(record))
     # A phase "passes" when nothing failed. Skips do not count as failures — but they
     # are also never reported as passes, and the post-mortem lists them.
     record["phase_ok"] = not [c for c in record.get("checks", []) if c["status"] == "fail"]
     return record
+
+
+def _cache_checks(record: dict[str, Any]) -> list[dict[str, str]]:
+    """Did the cache do what the phase said it would, including stop doing it?
+
+    Three claims, each checked against a different source: the ledger (hit events exist and name
+    their origin), the receipt (the saving and the ceiling note agree with the ledger), and the
+    verification of that receipt (the saving is arithmetic, not testimony). "The cache worked" is
+    not a checkable statement; those three are.
+    """
+    checks: list[dict[str, str]] = []
+    block = record.get("receipt_cache") if isinstance(record.get("receipt_cache"), dict) else None
+    totals = record.get("receipt_totals") if isinstance(record.get("receipt_totals"), dict) else {}
+    facts = record.get("facts") or {}
+    hits = int(facts.get("cache_hits") or 0)
+    checks.append(
+        {
+            "name": "identical requests were answered without the provider, and each hit is an event",
+            "status": "pass" if hits >= 2 and block and int(block.get("hits") or 0) == hits else "fail",
+            "detail": f"{hits} model.cache_hit event(s) in the ledger; the receipt claims "
+            f"{(block or {}).get('hits')!r}",
+        }
+    )
+    ceiling_hit = bool(block and block.get("hits_ceiling_reached"))
+    note = bool(facts.get("cache_ceiling_note"))
+    checks.append(
+        {
+            "name": "the hit ceiling was reached, recorded in the ledger, and reported in the receipt",
+            "status": "pass" if ceiling_hit and note else "fail",
+            "detail": f"receipt.hits_ceiling_reached={ceiling_hit}, ledger note present={note} "
+            f"(max_hits={((block or {}).get('policy') or {}).get('max_hits')!r}); after the ceiling, "
+            f"{int(facts.get('model_responses') or 0)} call(s) reached the provider",
+        }
+    )
+    verification = record.get("verification") or {}
+    checks.append(
+        {
+            "name": "the saving is recomputed by verification and the spend is untouched by it",
+            "status": "pass" if verification.get("ok") and not verification.get("failed") else "fail",
+            "detail": f"verify: {'ok' if verification.get('ok') else 'FAILED'} "
+            f"({verification.get('passed')} pass / {verification.get('failed')} fail / "
+            f"{verification.get('skipped')} skip); spend {totals.get('cost_usd')!r} for "
+            f"{totals.get('calls')!r} metered call(s), saved {(block or {}).get('saved_usd')!r} over "
+            f"{int(facts.get('cache_hits') or 0)} hit(s)",
+        }
+    )
+    return checks
 
 
 def _rollback_checks(phase: Phase, workspace: Path, docket_dir: Path, record: dict[str, Any]) -> list[dict[str, str]]:

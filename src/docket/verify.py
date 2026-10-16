@@ -16,7 +16,11 @@ Checks performed
    the receipt, compared call by call;
 6. the ledger file's SHA-256 matches, when the ledger is supplied;
 7. the seal (HMAC, needs the operator's key) and/or signature (Ed25519, needs only
-   the public key in the receipt) verify, when present.
+   the public key in the receipt) verify, when present;
+8. the response cache's saving: recomputed from the origin calls the hits replay and
+   the embedded price table, with every hit group proven present in the ledger's
+   Merkle tree, and — when the ledger is supplied — every hit resolving to the stored
+   response it claims to replay.
 
 Anything that cannot be checked is reported as *unchecked* with the reason, never
 as passed. A verification tool that overstates its own coverage is worse than none.
@@ -30,7 +34,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from .canon import merkle_root, sha256_hex, verify_merkle_proof
+from .canon import merkle_root, sha256_hex, usd, verify_merkle_proof
 from .latency import REPORTED, check_summary, is_latency
 from .ledger import Event, Ledger
 from .pricing import recompute_totals
@@ -563,6 +567,329 @@ def verify_receipt(
                     f"p50 {measured and stated_latency.get('p50_ms')} ms · "
                     f"p{REPORTED[-1]} {stated_latency.get(f'p{REPORTED[-1]}_ms')} ms over "
                     f"{len(measured)} measured call(s), nearest-rank",
+                )
+
+    # -- 6b. the response cache, when the run had one --------------------- #
+    # A saving is the easiest number in a receipt to overstate, because nothing about
+    # the spend contradicts it: a run that spent $4 and claims to have saved $400 looks
+    # exactly like a run that spent $4. So the claim is checked the way every other
+    # number here is — arithmetic, redone from raw counts and the embedded price table.
+    #
+    # What is recomputed: each group's per-hit amount against the origin row it names
+    # (a metered call, so it is in `appendix.usage` and already proven against the root),
+    # and the totals against the sum of the groups. What is *checked* rather than
+    # recomputed: how many times each origin was replayed. A hit is an event, not
+    # arithmetic, so the count is a measurement — bound to the ledger by the inclusion
+    # proof carried on each group, and compared with the ledger's own events when the
+    # ledger is supplied. Absent member: this run had no cache, and that is a skip with
+    # the reason, never a pass.
+    stated_cache = receipt.get("cache", _ABSENT)
+    if stated_cache is _ABSENT:
+        add("cache-savings", "skip", "this run had no response cache: every call was forwarded")
+    elif not isinstance(stated_cache, dict):
+        add(
+            "cache-savings",
+            "fail",
+            f"the receipt's cache member is not an object: {type(stated_cache).__name__}",
+        )
+    else:
+        groups_raw = stated_cache.get("by_origin")
+        savings_problems: list[str] = []
+        origin_problems: list[str] = []
+        proof_failures = 0
+        proven = 0
+        without_proof = 0
+        total_hits = 0
+        saved_total = Decimal("0")
+        avoided_tokens_total = 0
+        if not isinstance(groups_raw, list):
+            add(
+                "cache-savings",
+                "fail",
+                f"the receipt's cache.by_origin is not a list: {type(groups_raw).__name__}",
+            )
+            groups_raw = []
+        rows_by_seq: dict[Any, dict[str, Any]] = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            seq = row.get("seq")
+            if isinstance(seq, int) and not isinstance(seq, bool):
+                rows_by_seq[seq] = row
+        for index, group in enumerate(groups_raw):
+            if not isinstance(group, dict):
+                savings_problems.append(f"cache group {index} is not an object: {type(group).__name__}")
+                continue
+            hits = whole(group.get("hits"), f"cache group {index} hits")
+            usage = group.get("usage")
+            key = group.get("key")
+            model = group.get("model")
+            origin_seq = whole(group.get("origin_seq"), f"cache group {index} origin_seq")
+            if hits is None or hits < 1:
+                savings_problems.append(
+                    f"cache group {index} does not say how many hits it counts: {group.get('hits')!r}"
+                )
+                continue
+            if not isinstance(key, str) or not key:
+                savings_problems.append(f"cache group {index} carries no cache key")
+            if not isinstance(usage, dict):
+                savings_problems.append(f"cache group {index} carries no usage object")
+                continue
+            total_hits += hits
+            avoided_tokens_total += (int(usage.get("input_tokens") or 0) + int(usage.get("output_tokens") or 0)) * hits
+            # -- the origin: a metered call this receipt already proves ------ #
+            if origin_seq is None:
+                origin_problems.append(
+                    f"cache group {index} does not cite the call it replays: origin_seq {group.get('origin_seq')!r}"
+                )
+            else:
+                row = rows_by_seq.get(origin_seq)
+                if row is None:
+                    origin_problems.append(
+                        f"cache group {index} cites origin seq {origin_seq}, which is not a metered call "
+                        "in this receipt's appendix"
+                    )
+                else:
+                    if row.get("cache_key") != key:
+                        origin_problems.append(
+                            f"cache group {index}: the call at seq {origin_seq} is not recorded as a "
+                            "cached response with this key"
+                        )
+                    if row.get("model") != model:
+                        origin_problems.append(
+                            f"cache group {index}: replayed model {model!r} but seq {origin_seq} returned "
+                            f"{row.get('model')!r}"
+                        )
+                    for field in ("input_tokens", "cached_input_tokens", "output_tokens"):
+                        if int(usage.get(field) or 0) != int(row.get(field) or 0):
+                            origin_problems.append(
+                                f"cache group {index}: {field} {usage.get(field)!r} does not match the call "
+                                f"at seq {origin_seq} ({row.get(field)!r})"
+                            )
+            # -- the money: the same arithmetic the totals use -------------- #
+            if not isinstance(price_doc, dict):
+                savings_problems.append(
+                    f"cache group {index} cannot be priced: the receipt does not embed the price table it used"
+                )
+            else:
+                try:
+                    recomputed_group = recompute_totals(
+                        [
+                            {
+                                "seq": origin_seq,
+                                "type": "model.response",
+                                "data": {
+                                    "model": model,
+                                    "usage": {
+                                        "input_tokens": usage.get("input_tokens"),
+                                        "cached_input_tokens": usage.get("cached_input_tokens"),
+                                        "output_tokens": usage.get("output_tokens"),
+                                    },
+                                },
+                            }
+                        ],
+                        price_doc,
+                    )
+                except (ValueError, ArithmeticError, LookupError) as exc:
+                    savings_problems.append(f"cache group {index} cannot be priced: {exc}")
+                else:
+                    per_hit = recomputed_group["cost_usd"]
+                    if str(group.get("avoided_usd_per_hit")) != per_hit:
+                        savings_problems.append(
+                            f"cache group {index} claims {group.get('avoided_usd_per_hit')!r} saved per hit; "
+                            f"the price table says {per_hit}"
+                        )
+                    saved_total += Decimal(per_hit) * hits
+            # -- the proof: one row per group, pinned to the tree ------------ #
+            path_value = group.get("merkle_path")
+            if not path_value:
+                without_proof += 1
+            else:
+                try:
+                    if verify_merkle_proof(str(group.get("event_hash")), path_value, root_value):
+                        proven += 1
+                    else:
+                        proof_failures += 1
+                except ValueError as exc:
+                    proof_failures += 1
+                    savings_problems.append(f"cache group {index} carries a malformed inclusion proof: {exc}")
+        declared_hits = whole(stated_cache.get("hits"), "the receipt's cache.hits")
+        if isinstance(groups_raw, list):
+            if declared_hits is None:
+                savings_problems.append(f"the receipt's cache.hits is not a whole number: {stated_cache.get('hits')!r}")
+            elif declared_hits != total_hits:
+                savings_problems.append(
+                    f"cache.hits is {declared_hits}, but the groups below it add up to {total_hits}"
+                )
+            declared_saved = stated_cache.get("saved_usd")
+            try:
+                declared_amount = _amount(declared_saved)
+            except (InvalidOperation, ValueError, TypeError):
+                savings_problems.append(
+                    f"the receipt's cache.saved_usd is not a decimal amount: {declared_saved!r} "
+                    f"({type(declared_saved).__name__})"
+                )
+            else:
+                if declared_amount != Decimal(usd(saved_total)):
+                    savings_problems.append(
+                        f"cache.saved_usd is {declared_saved}, but the groups recompute to {usd(saved_total)}"
+                    )
+            declared_tokens = whole(stated_cache.get("avoided_tokens"), "the receipt's cache.avoided_tokens")
+            if declared_tokens is None:
+                savings_problems.append(
+                    f"the receipt's cache.avoided_tokens is not a whole number: "
+                    f"{stated_cache.get('avoided_tokens')!r}"
+                )
+            elif declared_tokens != avoided_tokens_total:
+                savings_problems.append(
+                    f"cache.avoided_tokens is {declared_tokens}, but the groups add up to {avoided_tokens_total}"
+                )
+        if savings_problems:
+            for problem in savings_problems[:3]:
+                add("cache-savings", "fail", problem)
+            if len(savings_problems) > 3:
+                add("cache-savings", "fail", f"further cache savings problems: {len(savings_problems) - 3} more")
+        else:
+            add(
+                "cache-savings",
+                "pass",
+                f"{total_hits} hit(s) recomputed at the origin's price: {usd(saved_total)} not spent",
+            )
+        if origin_problems:
+            for problem in origin_problems[:3]:
+                add("cache-hit-origins", "fail", problem)
+            if len(origin_problems) > 3:
+                add("cache-hit-origins", "fail", f"further origin problems: {len(origin_problems) - 3} more")
+        elif total_hits:
+            add("cache-hit-origins", "pass", "every hit resolves to the stored response it replays")
+        if groups_raw and without_proof == len(groups_raw):
+            add(
+                "cache-hit-proofs",
+                "skip",
+                "receipt carries a cache summary without inclusion proofs (large session)",
+            )
+        elif groups_raw:
+            if proof_failures:
+                add(
+                    "cache-hit-proofs",
+                    "fail",
+                    f"{proof_failures} cache group(s) do not prove against the receipt's Merkle root "
+                    f"{root_value[:16]}…",
+                )
+            else:
+                add(
+                    "cache-hit-proofs",
+                    "pass",
+                    f"{proven} cache group(s) proven against the receipt's claimed Merkle root",
+                )
+
+        # -- and the events themselves, when the ledger is here ------------- #
+        if events is not None:
+            hit_events = [e for e in events if getattr(e, "type", None) == "model.cache_hit"]
+            if len(hit_events) != total_hits:
+                add(
+                    "cache-savings",
+                    "fail",
+                    f"the receipt claims {total_hits} cache hit(s); the ledger records {len(hit_events)}",
+                )
+            tally: dict[tuple[Any, ...], int] = {}
+            event_problems: list[str] = []
+            for event in hit_events:
+                data = event.data if isinstance(event.data, dict) else {}
+                origin = data.get("origin") if isinstance(data.get("origin"), dict) else {}
+                usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+                identity = (
+                    origin.get("seq"),
+                    origin.get("hash"),
+                    data.get("key"),
+                    data.get("model"),
+                    usage.get("input_tokens"),
+                    usage.get("cached_input_tokens"),
+                    usage.get("output_tokens"),
+                    str(data.get("avoided_cost_usd") or ""),
+                )
+                tally[identity] = tally.get(identity, 0) + 1
+                seq = origin.get("seq")
+                if not isinstance(seq, int) or isinstance(seq, bool) or not 0 <= seq < len(events):
+                    event_problems.append(
+                        f"the hit at seq {event.seq} cites origin seq {seq!r}, which is not an event in this ledger"
+                    )
+                    continue
+                origin_event = events[seq]
+                if getattr(origin_event, "type", "") != "model.response":
+                    event_problems.append(
+                        f"the hit at seq {event.seq} replays seq {seq}, which is a "
+                        f"{getattr(origin_event, 'type', '?')} event, not a response"
+                    )
+                    continue
+                origin_data = origin_event.data if isinstance(origin_event.data, dict) else {}
+                meta = origin_data.get("cache") if isinstance(origin_data.get("cache"), dict) else {}
+                if meta.get("stored") is not True:
+                    event_problems.append(
+                        f"the hit at seq {event.seq} replays seq {seq}, which was not recorded as a stored response"
+                    )
+                if meta.get("key") != data.get("key"):
+                    event_problems.append(
+                        f"the hit at seq {event.seq} carries key {str(data.get('key'))[:12]}…, but the response "
+                        f"at seq {seq} was stored under {str(meta.get('key'))[:12]}…"
+                    )
+                if origin.get("hash") != getattr(origin_event, "hash", None):
+                    event_problems.append(
+                        f"the hit at seq {event.seq} cites origin hash {str(origin.get('hash'))[:12]}…, but the "
+                        f"event at seq {seq} hashes to {str(getattr(origin_event, 'hash', ''))[:12]}…"
+                    )
+                origin_usage = origin_data.get("usage") if isinstance(origin_data.get("usage"), dict) else {}
+                for field in ("input_tokens", "cached_input_tokens", "output_tokens"):
+                    if int(usage.get(field) or 0) != int(origin_usage.get(field) or 0):
+                        event_problems.append(
+                            f"the hit at seq {event.seq} reports {field} {usage.get(field)!r}; the response it "
+                            f"replays recorded {origin_usage.get(field)!r}"
+                        )
+            if event_problems:
+                for problem in event_problems[:3]:
+                    add("cache-hit-origins", "fail", problem)
+                if len(event_problems) > 3:
+                    add("cache-hit-origins", "fail", f"further origin problems: {len(event_problems) - 3} more")
+            for index, group in enumerate(groups_raw):
+                if not isinstance(group, dict):
+                    continue
+                usage = group.get("usage") if isinstance(group.get("usage"), dict) else {}
+                identity = (
+                    group.get("origin_seq"),
+                    group.get("origin_hash"),
+                    group.get("key"),
+                    group.get("model"),
+                    usage.get("input_tokens"),
+                    usage.get("cached_input_tokens"),
+                    usage.get("output_tokens"),
+                    str(group.get("avoided_usd_per_hit") or ""),
+                )
+                if tally.get(identity, 0) != int(group.get("hits") or 0):
+                    add(
+                        "cache-hit-origins",
+                        "fail",
+                        f"cache group {index} claims {group.get('hits')} hit(s) replaying seq "
+                        f"{group.get('origin_seq')}; the ledger records {tally.get(identity, 0)}",
+                    )
+            # The ceiling note is a ledger fact, so a receipt that claims the ceiling
+            # was reached must have the note to show for it — and a ledger that has the
+            # note must not be summarised as a run that never hit the ceiling.
+            note_present = any(
+                getattr(e, "type", None) == "note"
+                and isinstance(e.data, dict)
+                and e.data.get("event") == "cache.hits_ceiling_reached"
+                for e in events
+            )
+            if bool(stated_cache.get("hits_ceiling_reached")) != note_present:
+                add(
+                    "cache-savings",
+                    "fail",
+                    "the receipt and the ledger disagree about whether the cache reached its hit ceiling"
+                    + (
+                        f" (receipt says {bool(stated_cache.get('hits_ceiling_reached'))}, ledger records the note)"
+                        if note_present
+                        else " (receipt says it was reached; no such note is in the ledger)"
+                    ),
                 )
 
     # -- 7. sealing and signing ------------------------------------------- #

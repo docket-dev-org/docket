@@ -6,6 +6,12 @@ metadata:
     app.kubernetes.io/name: docket
     app.kubernetes.io/instance: {{ .Values.instance }}
 data:
+  # `| int64` is not decoration. Helm hands a template a `float64` for every number in
+  # values.yaml, and Go prints a large one in scientific notation — `67108864` renders as
+  # `6.7108864e+07`, which TOML reads as a float, not as the integer this document promises.
+  # The filter says what type the value is. (The static checker in tools/deploy_check.py now
+  # renders numbers the way Helm does, and refuses an integer key rendered as a float, so a
+  # template that forgets this fails `make deploy-check` instead of reaching a cluster.)
   policy.toml: |
     [policy]
     name = "{{ .Values.policy.name }}"
@@ -18,8 +24,8 @@ data:
     warn_at = 0.8
     on_breach = "kill"
     grace_seconds = 5.0
-    max_model_calls = {{ .Values.policy.maxModelCalls }}
-    max_wall_seconds = {{ .Values.policy.maxWallSeconds }}
+    max_model_calls = {{ .Values.policy.maxModelCalls | int64 }}
+    max_wall_seconds = {{ .Values.policy.maxWallSeconds | int64 }}
 
     [models]
     allow = []
@@ -38,9 +44,9 @@ data:
     breaker_threshold = 5
     breaker_cooldown_seconds = 30
     breaker_max_cooldown_seconds = 300
-    max_calls_per_minute = {{ .Values.policy.maxCallsPerMinute }}
-    max_events = {{ .Values.policy.maxEvents }}
-    max_ledger_bytes = {{ .Values.policy.maxLedgerBytes }}
+    max_calls_per_minute = {{ .Values.policy.maxCallsPerMinute | int64 }}
+    max_events = {{ .Values.policy.maxEvents | int64 }}
+    max_ledger_bytes = {{ .Values.policy.maxLedgerBytes | int64 }}
     fail_fast_evidence = true
-    min_free_bytes = {{ .Values.policy.minFreeBytes }}
+    min_free_bytes = {{ .Values.policy.minFreeBytes | int64 }}
 {{ end }}

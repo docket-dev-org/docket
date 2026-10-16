@@ -12,64 +12,103 @@ and can be told to fail on cue.
 ## The suite
 
 ```console
-$ make test          # 834 tests, ~126 s, no network
+$ make test          # 1025 tests, no network (2-4 min on a 2-vCPU box)
 $ make check         # + ruff, + bandit, + the independent Node verifier
 ```
 
 | file | tests | what it pins |
 | --- | --- | --- |
 | `test_canon.py` | 44 | canonical JSON, Merkle trees and proofs, the no-floats rule |
-| `test_vectors.py` | 9 | the committed conformance vectors, including that regenerating them changes nothing |
-| `test_policy.py` | 12 | accept and reject paths for every policy key |
+| `test_vectors.py` | 11 | the committed conformance vectors, including that regenerating them changes nothing — and that the *generator actually wrote where the test is looking*, which it did not for as long as that check existed |
+| `test_policy.py` | 14 | accept and reject paths for every policy key |
 | `test_pricing.py` | 19 | price table, cost arithmetic, the missing-model path, ceilings |
 | `test_ledger.py` | 18 | append/read, chain resumes, ceilings, `unwritten` bookkeeping |
-| `test_ledger_contracts.py` | 33 | the ledger's caller-facing contracts: event dicts, byte accounting, ceilings, a file that grew behind the writer, the lock file, the repair sidecar |
+| `test_ledger_contracts.py` | 35 | the ledger's caller-facing contracts: event dicts, byte accounting, ceilings, a file that grew behind the writer, the lock file, the repair sidecar |
 | `test_ledger_faults.py` | 29 | a ledger on a failing filesystem: ENOSPC, EIO, a closed handle, an OS error while opening |
 | `test_ledger_concurrency.py` | 4 | one ledger, eight writer threads: order, chain, agreement, file digest |
 | `test_latency.py` | 21 | the percentile rule, hostile row values, the verifier's recomputation, the report's tail line |
 | `test_receipt_verify.py` | 96 | the receipt and every verification check, plus one name to one verdict |
 | `test_proxy.py` | 16 | pass-through, streaming, policy enforcement, what is never recorded |
+| `test_cache.py` | 74 | the response cache: what may be stored and what may never be, hit/miss/TTL/LRU/ceiling behaviour, the key covering the request as sent, an open breaker not blocking a hit, concurrency, every receipt-level attack on a saving, and twenty-five tests written to kill survivors of a mutation sweep — nine for the cache itself and sixteen for the verifier that recomputes a stated saving |
 | `test_proxy_concurrency.py` | 6 | parallel calls through the real boundary: chain, totals, limiter, breaker, cap |
-| `test_resilience.py` | 38 | breaker, limiter, fault injection grammar, evidence guard |
+| `test_resilience.py` | 60 | breaker, limiter, fault injection grammar, evidence guard |
+| `test_supply_chain.py` | 4 | what the package installs and what it imports: `dependencies = []` read from the manifest, the three extras by name, and an AST walk asserting every import outside the standard library resolves to a declared, guarded extra |
 | `test_explain.py` | 13 | analysis rules and their attributed impact |
 | `test_supervisor.py` | 11 | the run lifecycle, exit codes, the evidence directory exclusion |
-| `test_snapshot_restore.py` | 25 | snapshot, plan, apply, the CLI, idempotence, the restore record |
+| `test_snapshot_restore.py` | 26 | snapshot, plan, apply, the CLI, idempotence, the restore record |
 | `test_snapshot_confinement.py` | 25 | hostile documents: paths, digests, modes, symlinks, keys |
 | `test_fsdiff.py` | 5 | what the file diff sees, with a relative and an absolute cwd |
 | `test_invariants.py` | 16 | executed properties: one writer per ledger, 200 events from 8 threads, no deduplication of a replayed call, socket and thread release, a SIGKILLed agent, a clock that steps forwards or backwards |
-| `test_chaos.py` | 29 | the fault grammar, `audit_run`, the game-day phases |
+| `test_chaos.py` | 34 | the fault grammar, `audit_run`, the game-day phases (including the cache brake), the reference agent repeating itself on request, and the independence of the phases' policies from one another |
 | `test_security.py` | 40 | red team: forgery, injection, bypass, confinement, secret capture |
 | `test_cli_input.py` | 51 | numeric flags: every cap, every way to spell it wrong |
 | `test_cli_sdk_demo.py` | 17 | the commands end to end, the SDK, the demo |
+| `test_examples.py` | 9 | the five examples executed rather than described: the quickstart and the SDK program run offline and the receipt each one prints is then verified with the command each one prints, one digit of the quickstart's ledger is edited and the same verification is required to fail, both policy files are accepted by a real supervised run, and every README's links, repository paths and Python files are checked |
 | `test_i18n.py` | 16 | locale independence, Unicode round trips, non-ASCII paths |
 | `test_url_guards.py` | 43 | the two URL guards, and a syntax-tree walk that every `urlopen` uses one |
 | `test_diagnostics.py` | 8 | the self-test's probes against a working installation |
 | `test_signing_and_attach.py` | 8 | HMAC sealing, Ed25519 signing, agent-asserted events |
 | `test_render_golden.py` | 3 | the rendered receipt, report and diff, against golden files |
 | `test_loadtest.py` | 37 | the load harness: refusal classification, the pacing schedule, the RSS sentinel, and the orchestrator refusing to call a self-inconsistent run evidence |
-| `test_deploy_check.py` | 40 | the static deployment checker, one broken fixture per invariant it claims to enforce — a checker that cannot fail is decoration |
-| `test_doc_links.py` | 4 | every `docs/…md` reference in the tree resolves, every page is in the nav, and the scanner itself can fail |
+| `test_deploy_check.py` | 44 | the static deployment checker, one broken fixture per invariant it claims to enforce, the number formatting Helm actually produces, and the ConfigMap value that arrived as a float — a checker that cannot fail is decoration |
+| `test_mutate.py` | 40 | the mutation harness itself: the splice is a byte-for-byte no-op, every mutant changes exactly one line and compiles, a site on a line with non-ASCII text splices by character not by byte (the regression that hid 82 of `verify.py`'s 177 sites), a site at byte zero is a candidate rather than a drop, every operator is exercised and labelled, the docstring rule answers `is True`/`is False` when it is asked directly, the verdict maps pytest's exit code to survived/killed/killed-import/timeout, timeouts stay out of the score, `--only-line` runs every mutant on a line and refuses a line with none, a dropped site is counted rather than lost, a sandbox that cannot be deleted does not replace the report or any of the three refusals beside it, and the CLI writes both reports, re-runs into a directory it already made, and decides its exit code against `--min-score` inclusively |
+| `test_helm_fidelity.py` | 17 | the comparison between the checker's chart render and a real Helm render: pairing by kind and name, the block scalar's final newline, the path of the first difference, exit 2 when Helm is absent, and — where Helm is installed — the end-to-end comparison |
+| `test_doc_links.py` | 13 | every `docs/…md` reference in the tree resolves, every page is in the nav, the scanner itself can fail, a staged site copy is not read as a second copy of the documentation, this table's own counts are reconciled against the suite, the counts written beside a test filename in the other pages are reconciled too, the size the README quotes for the whole suite is reconciled, every source line cited in prose (`verify.py:186`) exists and carries a site the mutation harness would mutate, and the coverage maps have a row for every concept and practice they claim |
 | `test_fuzz_regressions.py` | 98 | one test per defect a fuzzer found (see below) |
 
-Counts are collected (`pytest --collect-only`), not remembered, and they are checked by the CI
-run rather than by a reader: a test file that grows without the number changing is a document that
-has started to lie.
+Counts are collected (`pytest --collect-only`), not remembered — and "they are checked" is now a
+property rather than a claim: `tests/test_doc_links.py::test_the_counted_test_table_in_the_docs_matches_the_suite`
+runs the collection and fails on any row that disagrees with it, or on a test file the table has
+forgotten. (The sentence here used to say the CI run checked them. Nothing did. A number in a table
+is exactly the kind of statement that goes stale silently while every test stays green, which this
+repository has already demonstrated once with a conformance vector.)
 
 Two options are not required to use Docket — the core has **zero runtime dependencies** — and the
 suite says so by *skipping with a reason* rather than failing, because a bare clone that goes red
 looks like a broken project:
 
+The counts in that table come from `pytest --collect-only -q` (how many tests exist) and from a run
+with `-ra` (how many passed and why the rest skipped) — never from a `-q` run's last line, which on
+pytest 9.1.1 does not exist: in quiet mode the summary line is suppressed, so a script that greps for
+it records a pass count of zero and a reader has no way to tell that from a suite that genuinely has
+none. The same reason is why the release checklist quotes counts collected at a commit rather than a
+number copied out of a log.
+
 | installed | result | the skips |
 | --- | --- | --- |
-| `pytest` alone (`make test`) | 796 passed, 33 skipped | 28 need PyYAML, 5 need `cryptography` |
-| `+ cryptography` | 801 passed, 28 skipped | the 28 are `tools/deploy_check.py`'s |
-| `+ pyyaml` | 824 passed, 5 skipped | the 5 are Ed25519 sealing and signing |
-| `pip install -e '.[dev,sign]'` (**the documented dev setup**) | **834 passed, 0 skipped** | none |
+| `pytest` alone (`make test`) | 840 passed, 33 skipped | 28 need PyYAML, 5 need `cryptography` |
+| `+ cryptography` | 845 passed, 28 skipped | the 28 are `tools/deploy_check.py`'s |
+| `+ pyyaml` | 868 passed, 5 skipped | the 5 are Ed25519 sealing and signing |
+| `pip install -e '.[dev,sign]'` (**the documented dev setup**) | **878 passed, 0 skipped** | none |
 
-The skips are not a way of hiding a defect: the checker these 28 cover **exits 2 with a reason**
+Each cell is a fresh virtual environment with `pip install pytest` plus the extras its row names, then
+`pytest tests -ra` from the repository root; the collected count comes from a separate
+`pytest --collect-only -q`, which is why the first two rows collect fewer tests than the last two — a
+module that cannot be imported is skipped with its reason rather than collected. `-ra` is what makes
+the last column checkable: every skip is a sentence, and a cell that skipped something without saying
+why would be indistinguishable from a cell that never had the test. One measurement defect is worth
+recording here because it produced a *plausible* number rather than an error: the 2026-10-15 version of
+this table recorded `0 skipped` in every cell, while the four runs it summarised had reported their
+skips as 47, 42, 6 and 1. The counts had been summed with `paste | bc`, and `bc` is not installed
+everywhere; the sum is `awk` now, and each cell's counts are checked against that cell's own summary
+line before they are quoted — by the reader rather than by the writer.
+
+The skips are not a way of hiding a defect: the checker these 30 cover **exits 2 with a reason**
 when PyYAML is absent — "could not run", a different code from the 1 that means "found a problem" —
 and `tests/test_deploy_check.py` includes the test that pins exactly that, on a machine that *has*
 PyYAML, by shadowing the import rather than uninstalling anything.
+
+The previous matrix is filed rather than overwritten — `mutation/matrix-2026-10-16T080524Z/` holds
+that round's cells, because a matrix someone might check is evidence and a matrix edited in place
+is not.
+Its fourth cell exited 1 with 4 failure(s): three were the stale suite counts this round fixed,
+and the fourth was `tests/test_mutate.py`'s CLI test, which died on the harness's own refusal to
+score a run whose sandbox does not pass its baseline first (`tools/mutate.py` reports `killed:
+stand-in` — the verdict of the stand-in that test installs — and reports no score at all).
+The same cell passes on this tree. `tests/test_mutate.py` held 23 tests in that round and holds 40
+now, so the two runs are not measuring the same file.
+What is recorded here is the failure and the re-run: this page does not supply a cause that
+neither run demonstrated.
 
 ## By kind
 
@@ -77,41 +116,43 @@ PyYAML, by shadowing the import rather than uninstalling anything.
 | --- | --- |
 | unit | per-module files above; the pure functions (`canon`, `pricing`, `policy`) are tested directly |
 | integration | `test_proxy.py` / `test_supervisor.py`: real loopback HTTP, real subprocess, real files |
-| system | `docket demo`, `docket game-day` and the clean-venv install in CI: the whole thing, as shipped |
-| acceptance / UAT | the transcripts in the README and `docs/cli.md` are captured from real runs, not written by hand; `tools/transcript_run.py` reproduces them |
+| system | `docket demo`, `docket selftest` (19 probes against a real boundary in one process) and `docket game-day` (every failure phase, with a post-mortem) — all three run in CI on every push — plus the clean-venv install of the wheel: the whole thing, as shipped |
+| acceptance / UAT | the transcripts in the README and `docs/cli.md` are captured from real runs, not written by hand; `tools/transcript_run.py` reproduces them; and the example READMEs are checked against live runs by `tests/test_examples.py`, which asserts the quickstart's own numbers, edits one digit of its ledger, and requires the verification it prints to fail |
 | functional | every documented feature has a test named after the claim it makes |
 | non-functional | concurrency, locale, fault tolerance and cost; see the other tables |
-| smoke | CI installs the wheel into a clean venv and runs `docket demo`, asserting `VERIFIED` appears |
-| sanity | `docket doctor` and `docket selftest` (16 probes) before anything else, when something looks wrong |
+| smoke | CI installs the wheel into a clean venv and runs `docket demo`, asserting `VERIFIED` appears; the suite also runs the quickstart and the SDK example end to end (`tests/test_examples.py`) |
+| sanity | `docket doctor` and `docket selftest` (19 probes) before anything else, when something looks wrong |
 | regression | `test_fuzz_regressions.py`: 98 named tests, each reproducing one defect that was found and fixed |
-| end-to-end | `tools/transcript_run.py`: supervisor → proxy → child agent → ledger → receipt → verifier, offline |
+| end-to-end (E2E) | `tools/transcript_run.py`: supervisor → proxy → child agent → ledger → receipt → verifier, offline |
 | performance / load / stress | `tools/loadtest.py`, which drives a real supervised run under load (2,000 calls over 8 threads, and a paced soak), plus the game-day `rate-limit` and `ledger-pressure` phases and the concurrency files — numbers below |
 | endurance / soak | `tools/loadtest.py --seconds`: a paced run against a real boundary, RSS sampled once a second — ten minutes is the longest run in the suite (`make soak`). Bound in the section below |
 | spike | `test_proxy_concurrency.py`: a burst of parallel calls against a one-call cap |
 | volume | the game day's ledger-pressure phase grows a ledger to its ceiling and asserts the run stops rather than dropping events |
 | scalability | one process, threads rather than workers; the ledger is the only shared resource, serialised deliberately by one append lock — and the load point is where that serialisation becomes a number |
-| security | `test_security.py` (red team) + `bandit` in CI + the URL-guard walk |
+| security | `test_security.py` (red team) + `bandit` in CI + the URL-guard walk + `tests/test_supply_chain.py` (the manifest and the imports agreeing) + `pip-audit` over the development toolchain on a schedule (`.github/workflows/security.yml`): *no known vulnerabilities* as of 2026-10-15 |
 | penetration | the red team's forgery cases: a doctored receipt, a doctored ledger, a doctored manifest, a path traversal, a setuid mode, a swapped blob |
 | usability | the transcripts are the usability test; a change that makes the output harder to read shows up in the golden files |
 | accessibility | the terminal output is plain UTF-8 box drawing with a `NO_COLOR` path, and the machine-readable form (`--json`, the markdown report) carries the same content — so nothing is *only* conveyed by colour |
 | compatibility | CI matrix: Python 3.11, 3.12, 3.13; Node 20 for the independent verifier |
-| reliability | `chaos.py` + the eight game-day phases; a broken ledger tails off, a full one is declared |
+| reliability | `chaos.py` + the nine game-day phases; a broken ledger tails off, a full one is declared |
+| the practices rather than the kinds | [`docs/sre-coverage.md`](sre-coverage.md): 22 resilience practices — stress, fuzzing, chaos monkey, game days, red teaming, synthetic monitoring, FMEA, rejuvenation, post-mortems (postmortems) — with the status of each |
 | maintainability | ruff (lint **and** format, **pinned** to one version in both the `dev` extra and CI: the formatter rewrites different files in 0.17 than in 0.6.9), bandit, and the seam rule in CONTRIBUTING (each claim has one test file) |
-| localisation / i18n | `test_i18n.py`: identical digests under `C`, `de_DE`, `tr_TR`, `ja_JP`; NFC ≠ NFD; non-ASCII paths round-trip |
-| black / white / grey box | black: the CLI and the JS verifier; white: internals such as `_open_ledger_handle`; grey: the red team, which reads the code and then attacks the interface |
+| localisation / localization / i18n | `test_i18n.py`: identical digests under `C`, `de_DE`, `tr_TR`, `ja_JP`; NFC ≠ NFD; non-ASCII paths round-trip |
+| black-box / white-box / grey-box | black: the CLI and the JS verifier; white: internals such as `_open_ledger_handle`; grey: the red team, which reads the code and then attacks the interface |
 | manual | the game-day post-mortem is read by a person; the record it writes is for that person |
 | automation | `make check`; CI runs the same on every push |
 | exploratory | the defects in "Found by testing" below were found by trying things, not by a plan |
 | ad-hoc | `docket chaos --fault …` and `tools/fuzz.py --target …` are the ad-hoc entry points |
 | monkey / gorilla | `docket game-day` kills the supervisor with SIGKILL mid-run and asserts what survives |
 | boundary-value | every cap: 0, 1, exactly at the limit, one over; every ceiling in `pricing`/`policy` |
-| equivalence partitioning | the fault grammar, the policy validators, the URL guards (loopback vs not, scheme by scheme) |
-| mutation | `tools/mutate.py`: seeded single-site mutation of `canon.py`, `verify.py`, `ledger.py`, `latency.py` and `loaddriver.py`, with every survivor classified — see *Mutation testing* |
+| equivalence partitioning | the fault grammar, the policy validators, the URL guards (loopback vs not, scheme by scheme), and the cache key (same body vs differing field, stream vs non-stream) |
+| mutation | `tools/mutate.py`: seeded single-site mutation of `canon.py`, `verify.py`, `ledger.py`, `latency.py`, `loaddriver.py`, `cache.py` and `resilience.py`, plus the Helm-fidelity tool and the harness's own tests (it scores itself with the file you are reading), with every survivor classified — see *Mutation testing* |
 | static | `ruff check`, `ruff format --check`, `bandit -q -c pyproject.toml -r src tools` |
 | dynamic | `tools/fuzz.py`: six property-based targets, time-boxed, seeded and reproducible |
 | alpha / beta | **not applicable yet** — no release channel beyond the source tree |
-| A / B | **not applicable** — nothing here is a user-facing choice to optimise |
+| A/B | **not applicable** — nothing here is a user-facing choice to optimise |
 | recovery | the game-day `rollback` phase, `test_snapshot_restore.py`, and the torn-tail recovery path |
+| cache invalidation | three ways, all counted and all tested: `ttl_seconds` expiry (checked on lookup, entry dropped), LRU eviction at `max_entries`, and the refusal to store a response the provider did not send (error, truncated stream, injected fault). The one that is *policy* rather than mechanism is `max_hits`, which stops the cache answering so the run starts paying again |
 | configuration | `test_policy.py` (accept/reject), plus the game day running with mutated policies |
 | installation | CI: `pip install --no-index --find-links dist docket` into a fresh venv, then `docket --version` and `docket demo` |
 | visual | `test_render_golden.py`: the receipt, the markdown report and the diff, byte-for-byte |
@@ -168,11 +209,12 @@ statement, not a measurement.
 | `rate-limit` | a fast agent against `max_calls_per_second` | exactly the budget is admitted, each refusal is recorded, HTTP 429 |
 | `ledger-pressure` | a ledger driven to its event ceiling | the run stops with exit `42` rather than dropping events |
 | `rollback` | seeded files, a damaging agent, a cap breach | the files are byte-identical afterwards, the rollback is in the receipt and the ledger, the run's own evidence survives |
+| `cache-brake` | a repeated loop (`DOCKET_AGENT_MODE=loop`) against a response cache with `max_hits = 2` | the hits are in the ledger as events, the ceiling is recorded *and* named in the receipt, and the calls after it reached the provider again — the one phase whose subject is a number rather than a failure, so verification recomputes the saving and the spend still describes money actually spent |
 | `supervisor-killed` | SIGKILL mid-run | the ledger up to the kill is readable and classified, no receipt is claimed, recovery is stated |
 
 `docket game-day` writes a post-mortem beside the evidence, including expected-vs-actual per
 phase, and exits non-zero if a phase misses its own stated expectation. The last recorded full
-run: **8/8 phases**, ~15 s, offline.
+run: **9/9 phases**, ~20 s, offline.
 
 ## Found by testing
 
@@ -187,11 +229,16 @@ with a named regression test in `test_fuzz_regressions.py` or the relevant file:
 | concurrency tests | a ledger written out of sequence order by parallel calls (the tool accusing its own run of tampering) |
 | input testing | `--max-usd nan` silently disabling the cap; `--max-usd abc` printing a decimal exception's `args` |
 | repeating an action | `docket restore` failing on the second run and blaming the operator for Docket's own edit |
+| writing an end-to-end probe for a feature already tested | a response cache handed to the boundary was silently discarded while it was empty — `ResponseCache` defines `__len__`, so `cache or ResponseCache(...)` replaced the caller's enabled cache with the policy-built one, and the boundary did no caching at all. Forty-one unit tests could not see it: every one of them configured the cache through the *policy*, and the defect only appears while the cache is empty. Fixed at both ends and pinned by a regression test that passes a cache as an argument, the way a host application does |
+| reading the site navigation | `mkdocs.yml` listed two ADRs twice (0002 and 0003 again after 0005): the pages resolve, so no strict build fails, and the menu simply shows the same entry twice. The link checker now asserts every document is in the navigation |
 | the conformance check | `spec/vectors` going stale after a policy change (the digest bound into every event) |
 | re-reading the spec against the implementation | `NaN`/`Infinity` are read by Python and rejected by `JSON.parse`: a request body carrying one became `502 docket internal error` in the run's own evidence, a ledger line carrying one was reported as "cannot be canonicalised" instead of "not JSON", and a hand-written `Infinity` on the last line claimed the torn-tail crash-recovery path |
 | reading the artefacts the way CI would | `mkdocs build --strict` aborted on this repository — the documentation links to `tools/deploy_check.py` and `tools/loadtest.py`, and the staging step that feeds mkdocs did not copy `.py` files, so the docs job would have failed for anyone who enabled it. The staging step carries them now, and a test stages the tree and resolves every relative link in the docs against it, without needing `mkdocs-material` installed |
 | installing the documented dev setup | `pip install -e '.[dev,sign]'` pulled the newest formatted, while CI pins `0.6.9` — and the two disagree about seventeen files of this tree, so a contributor's `make lint` could fail on files CI calls formatted. The extra pins the version CI installs |
+| writing a probe for a feature end to end | `docket selftest`'s new cache probe drives two identical calls through a real boundary and found that **a cache supplied to `RecordingProxy` was silently ignored while it was empty**: `ResponseCache` defines `__len__`, so the boundary's `cache or ResponseCache(...)` replaced the caller's configured, enabled object with a policy-built one. Every unit test passed a cache through the *policy*, so none of them could see it, and the failure appeared or vanished with the cache's contents. Fixed at both ends (`is not None`, and `__bool__` so an empty cache is still a cache), with a regression test that supplies one as an argument |
+| checking the manifests the way a cluster would | the chart rendered by **Helm itself** (v3.16.3) produced `max_ledger_bytes = 6.7108864e+07` where the static checker produced `67108864`: Helm hands every template a `float64` for each number in `values.yaml`, and Go prints a large one in scientific notation, which TOML reads as a float. Docket's loader accepted it, so nothing in the tree noticed — the divergence was invisible because the checker rendered numbers the way *Python* writes them. The chart's integers now go through `\| int64`, the checker renders values the way Helm does (pinned against a table produced by running Helm), it refuses an integer key that arrives as a float by name, and the two renderers now agree document for document (`deploy/README.md`) |
 | installing the package the way a user would | `tools/deploy_check.py` needs PyYAML, and the suite around it *failed* — 28 tests, not skipped — when it was absent, so a bare clone was red while the README promised a green suite (`pip install -e '.[dev]'` did not pull it in either). The same tool also exited `1` when it could not run, which is the code it uses for "found a problem"; its own docstring promised `2`. Both are fixed, and the exit code now has a test that blocks the import rather than uninstalling anything |
+| running the dependency matrix | `tests/test_snapshot_restore.py` looked the two `docket restore` record documents up by *filename*, expecting the second to carry the `-2` collision suffix. In the `pytest` + PyYAML cell the two commands stamped their records one second apart (`…T081327Z` and `…T081328Z`), so there was no collision, no suffix, and a `StopIteration` on a machine merely slower than the one the test was written on — the matrix's only failure in that cell, and the reason the test now identifies its records by what they say. |
 
 ## Mutation testing
 
@@ -210,9 +257,16 @@ Properties of the harness itself, because a mutation score is only as good as it
 
 - **It falsifies itself first.** Splicing every site back verbatim must be a byte-for-byte
   no-op (`splice_only`), and the unmutated sandbox must pass the whole subset before any mutant
-  runs. If either check fails, no score is printed.
+  runs. If either check fails, no score is printed. The report also carries that control run's own
+  counts — passed, failed, skipped — because *passing* and *running* are different facts: a skipped
+  test cannot fail, so a mutant in the region a skip covers is scored as a survivor. The
+  2026-10-16 verify sweep is why the counts are there: run under an interpreter without the optional
+  `cryptography` extra it skipped the signature tests, and the five mutants in `verify.py`'s
+  signature block survived a sweep with nothing left to catch them — 171/177 on the same tree that
+  scores 176/177 with the extra installed. The harness cannot tell a deliberate `skipif` from a
+  missing dependency; it can refuse to let a reader guess which environment a score was taken in.
 - **It mutates a copy**, one mutation at a time, restoring the file between runs.
-- **The subset is declared, not implied.** `TARGET_TESTS` names the test files that make claims
+- **The subset is declared, not implied.** `DEFAULT_TESTS` names the test files that make claims
   about each module. A survivor from a subset that does not cover the module's branches is an
   artefact of the subset, not a gap: verify.py's first wide run reported 23 survivors, four of
   them in the signing branch, and after `test_signing_and_attach.py` was added to the subset and
@@ -226,6 +280,54 @@ Properties of the harness itself, because a mutation score is only as good as it
   and copies the sandbox without `__pycache__`, so a *reported* survivor is a real survivor; anyone
   reproducing a survivor by hand has to clear `src/docket/__pycache__` between edits or they will be
   measuring the previous program.
+- **The harness has its own tests, and one of them found a bug that had been inflating the
+  documentation's numbers.** `tests/test_mutate.py` (40) exercises the tool the way the tool exercises
+  the source: a fixture with one of every site kind, the splice checked for being a byte-for-byte
+  no-op, every mutant checked for changing exactly one line and still compiling, the six verdicts
+  `_run_tests` can return pinned against real pytest runs, and the sampling checked for being a
+  function of the seed. The first version of that file asserted a mutant on a line containing an em
+  dash and got **none**. The cause was `_span`: `ast` reports `col_offset` as a **UTF-8 byte** offset
+  while the splice indexes *characters*, so on any line with a non-ASCII character before the token
+  the splice landed inside a character, produced text that did not compile, and the site was dropped
+  by a bare `continue`. `splice_only` could not catch it — splicing the original text back is a no-op
+  at any offset — and nothing counted the drops, so the effect was invisible: `verify.py` offered 95
+  candidate mutants instead of 177 (`ledger.py` 171 instead of 172; every other mutated file was
+  unaffected, because their sites sit on ASCII lines). The fix converts both offsets through
+  `_char_offset`, and the regression is pinned by a fixture line with an em dash in it. Every score
+  in the table below was re-measured afterwards; the reports written before the fix are kept beside
+  the later ones (in the `mutation/` directory of the workspace that produced them, which is not part
+  of this repository — a report is an observation of the tree it ran against, so it is filed rather
+  than overwritten).
+- **A site that produces no mutant is counted, not dropped silently.** `mutants_for_source` now
+  records one `{"file", "line", "operator", "reason"}` per dropped site, the sweep prints the count,
+  and the JSON report and the markdown header carry it. The four reasons are named — the span does not
+  lie inside the file, the operator could not be applied, the replacement does not compile, the
+  replacement is the original text — and two of them are driven by tests rather than waiting for the
+  corpus to produce them. A report that says `0 candidates` without saying why is indistinguishable
+  from a clean sweep of a file with nothing to mutate.
+- **A single survivor can be re-checked with the harness's own machinery, in seconds.**
+  `--only-line 384` runs *every* mutant on that line, sampling nothing, in the harness's own sandbox
+  with its own interpreter and environment; the report records the selection so a filtered run is never
+  read as a whole-file score, and a line with no mutant is refused rather than reported as a clean
+  file. This exists because the honest next step after reading a survivor list is to reproduce one
+  verdict, and reproducing it by hand is how a reader measures a stale `__pycache__` — or, as the
+  em-dash bug shows, how a reader measures something the harness never mutated at all.
+- **A paydown note is a claim, and it can be stale in three different ways.** The tests written to
+  close a survivor name the mutant they were written for in their docstring, which is what makes a
+  later sweep readable against them — and a named mutant is a line-number index into a file that
+  moves, so the claim expires the moment either file does. Re-measuring `resilience.py` after the
+  module grew showed two names were false: one test claimed both `return True` mutants of
+  `record_failure` while only ever reaching the first, and another believed it killed the two
+  `probes_in_flight = 0` assignments, which are unreachable behind the reset in `allow`. The
+  2026-10-16 sweep of `verify.py` then showed a third shape, and it is the one worth looking for
+  first: the test *did* kill a mutant on its line and stopped one token short of the other. Four
+  sites in `verify.py` were that shape — an assertion that ended before the type suffix, a
+  fixture where two percentiles were the same number, a boundary whose two spellings part
+  company only at exactly three problems, and a sentence nobody had asked for — and each one is
+  written out in *The paydown* below, with the receipt it reads. All four are repaired in
+  `tests/test_cache.py`, and the residue is one diagnosed equivalent (`:186`). Names are corrected
+  here rather than deleted, because a docstring that says "kills X" is how the next reader decides
+  whether a site is covered — and the sweep is what keeps the claim honest.
 - **A survivor in a branch nothing can reach is not a gap.** Two of this round's survivors were
   mutants of dead defensive code — a second `torn_tail is None` check under a guard that had
   already returned, and an `events is None` check the reader cannot produce. They were deleted,
@@ -240,12 +342,23 @@ because the sample differs, and the candidate count changes with the source.
 
 | module | candidates | run | killed | survived | timed out | score | wall clock | seed |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `src/docket/verify.py` | 95 | 95 | 94 | 1 | 0 | **98.9%** | 66 s | 42 |
+| `src/docket/verify.py` | 95 | 95 | 94 | 1 | 0 | **98.9%** ([^prefile]) | 66 s | 42 |
+| `src/docket/verify.py` (after the tests below) | 177 | 177 | 176 | 1 | 0 | **99.4%** | 2,125 s | 0 |
 | `src/docket/canon.py` | 63 | 63 | 58 | 1 | 4 | **98.3%** ([^timeouts]) | 209 s | 42 |
-| `src/docket/ledger.py` | 171 | 171 | 143 | 28 | 0 | **83.6%** | 276 s | 11 |
+| `src/docket/ledger.py` | 171 | 171 | 143 | 28 | 0 | **83.6%** ([^prefile]) | 276 s | 11 |
+| `src/docket/ledger.py` (after the tests below) | 172 | 172 | 144 | 28 | 0 | **83.7%** | 788 s | 0 |
 | `src/docket/latency.py` | 21 | 21 | 21 | 0 | 0 | **100%** | 12 s | 0 |
 | `src/docket/loaddriver.py` (first) | 63 | 60 | 45 | 12 | 3 | **78.9%** | 822 s | 0 |
-| `src/docket/loaddriver.py` (after the tests below) | 61 | 60 | 55 | 2 | 3 | **96.5%** | 783 s | 0 |
+| `src/docket/loaddriver.py` (after the tests below) | 61 | 61 | 56 | 2 | 3 | **96.5%** | 817 s | 0 |
+| `src/docket/cache.py` (first) | 126 | 60 | 49 | 11 | 0 | **81.7%** | 378 s | 0 |
+| `src/docket/cache.py` (wide re-run) | 128 | 128 | 120 | 8 | 0 | **93.8%** | 618 s | 0 |
+| `src/docket/cache.py` (after the tests below) | 128 | 128 | 128 | 0 | 0 | **100%** | 432 s | 0 |
+| `src/docket/resilience.py` (first) | 166 | 60 | 46 | 14 | 0 | **76.7%** | 454 s | 0 |
+| `src/docket/resilience.py` (wide re-run) | 166 | 166 | 141 | 25 | 0 | **84.9%** | 877 s | 0 |
+| `src/docket/resilience.py` (after the tests below) | 166 | 166 | 163 | 3 | 0 | **98.2%** | 228 s | 0 |
+| `tools/helm_fidelity.py` (first) | 47 | 47 | 13 | 34 | 0 | **27.7%** | 28 s | 0 |
+| `tools/helm_fidelity.py` (after the tests below) | 47 | 47 | 45 | 2 | 0 | **95.7%** | 41 s | 0 |
+| `tools/mutate.py` (after the tests below) | 144 | 144 | 144 | 0 | 0 | **100%** | 367 s | 0 |
 
 `latency.py` was written *after* the harness existed, and the harness earned its keep immediately:
 its first run left one survivor — the `return problems` inside the "the receipt states a latency
@@ -264,6 +377,38 @@ candidates, seed 11). The ledger number moved because the *tests* moved: the fir
 test for the lock file's contents, the byte accounting, the ceiling fields, `degraded()`, the
 repair path's sidecar naming, or the chain verdict's own silence.
 
+### The paydown
+
+The verifier's corpus is 177 candidates — the number the byte-offset fix revealed — and the first
+full round scored 126 of them, because the subset named three test files where the claims live in
+four. Naming the fourth moved the score without touching one line of the verifier: **148 of 177
+(83.6%)**. The tests written for the survivors that round left moved it again, to **172 of 177
+(97.2%)** in a 2,109-second sweep at seed 0. Five survivors remained, which is few enough to read one
+at a time — and reading them was the point, because four of the five were tests that had killed one
+mutant on their line and stopped one token short of the other. Each stop was a different kind of near
+miss.
+
+| site | what the test asserted | what the second mutant did behind it |
+| --- | --- | --- |
+| `verify.py:554` | `… count: 'seven'` — the value, and not the type suffix beside it | `type(malformed[1]).__name__`: with two malformed rows of the *same* type the sentence reads identically either way, so the assertion could not see whose type was quoted |
+| `verify.py:568` | `p50 12 ms · p99 12 ms over 1 measured call(s)` | the fixture measured **one** call, where p50 and p99 are the same number: looking up the wrong percentile printed the same sentence, character for character |
+| `verify.py:761` | `not [failure for failure in result.failures if "further origin problems" in failure]` | the stop condition counts a list, and its two spellings (`> 3` and `>= 3`) print the *same* sentence for every length except one: at exactly three the mutant adds "further origin problems: 0 more" where the original says nothing. The test holds exactly three now — a group naming the wrong model, a token count that does not match the call it cites, and the appendix key that both takes the call out of the cached-response record and stops the tally containing it — and asserts the four sentences that follow, plus the absence of a fifth |
+| `verify.py:867` | that a group whose `hits` is not a positive count is refused | the guard refuses it, and the *tally* loop is a second pass over the same groups that does not skip them: with `int(group.get("hits") or 0)` mutated to `or 1`, the falsy count becomes the ledger's own count, the comparison agrees, and the second sentence about the same group is never written |
+
+All four repairs are in `tests/test_cache.py` and marked in place: the assertion extended to include
+`(str)`; a second metered call with a different latency (`extra_latency=40`) so that the two
+percentiles differ before one of them can be looked up wrongly; a third origin problem, so the list
+holds exactly three — the one length at which the two spellings of the stop condition part company;
+and an assertion for the tally sentence, which no test had ever asked for. None of the four needed a
+change to `src/docket/verify.py`, and the re-sweep over the repaired tests is the
+`src/docket/verify.py` row marked *(after the tests below)* above: **176 of 177, 99.4%**,
+2,125 s at seed 0, 1 survivor (`verify.py:186`).
+
+That survivor is the argued-equivalent `verify.py:186` in the table below. The general lesson is
+narrower than "write more tests" and worth stating: a docstring that names a mutant is a claim about
+*that* mutant, a line can carry two of them, and an assertion that is right about the sentence it
+checks can still be blind to the half of the sentence it stopped before.
+
 ### Every survivor, classified
 
 A survivor is either a gap or an equivalent mutant. Each one is listed here with which it is and
@@ -271,7 +416,7 @@ why; an equivalent mutant is not a defect and no test pretends otherwise.
 
 | site | mutant | verdict |
 | --- | --- | --- |
-| `verify.py:178` | `isinstance(value, bool) or value is None` → `and` | **equivalent.** `whole(True)` fails as a bool on one path and as the unparsable string `"True"` on the other, and `whole(None)` likewise; both routes record the same named failure with the same text. |
+| `verify.py:186` | `isinstance(value, bool) or value is None` → `and` | **equivalent.** `whole(True)` fails as a bool on one path and as the unparsable string `"True"` on the other, and `whole(None)` likewise; both routes record the same named failure with the same text. |
 | `canon.py:51` | `or` → `and` in the early return for bool/`None`/str | **equivalent.** The fallback at the end of `_normalise` returns those three types unchanged as well; the early return is a fast path, not a behaviour. |
 | `canon.py:139`, `canon.py:160` | `len(level) > 1` → `>=` and `1` → `0` in the `while` loop of `merkle_root` and of `merkle_proof` | **non-terminating, all four.** Each turns a one-node level into a level that is promoted to itself, so the tree never finishes. They exceed a 45 s per-mutant timeout (the same sites exceeded 120 s in an earlier run): reported as timeouts, never as kills, because a hang is not the suite noticing a wrong answer. |
 | `ledger.py:153,160,161,168` | `compare=False` → `True` on the clock, the two handles and the append lock | **equivalent.** Nothing compares two `Ledger` objects — the field option is declared so that a repr and a comparison cannot reach into a descriptor, and the *repr* half of the same declaration is killed by `test_the_repr_of_a_ledger_is_safe_to_put_in_a_log`. |
@@ -283,10 +428,17 @@ why; an equivalent mutant is not a defect and no test pretends otherwise.
 | `ledger.py:406` | the diagnostics skeleton's `trailing_newline: True` → `False` | **equivalent.** Every path that reads bytes overwrites it; it is readable only for a file that does not exist, where neither value is a claim about bytes. |
 | `ledger.py:628-646` | six mutants: the `and`/`not` of the stale-lock test, `unlink(missing_ok=True)` in both the stale branch and the release path, and the two `return`s of that branch | **unreachable here.** Those branches are the `else` of `fcntl is not None`, so on any platform with `flock` they cannot run at all; the POSIX equivalents are killed. `missing_ok=False` is additionally covered by the surrounding `contextlib.suppress(OSError)`. |
 | `loaddriver.py:216` | `if next_call > now` → `>=` | **equivalent.** At `next_call == now` the mutant calls `time.sleep(0.0)` where the original skips the call; a zero-length sleep does not move the schedule. |
-| `loaddriver.py:265` | `while time.monotonic() < due` → `<=` | **equivalent.** A single extra poll iteration on the instant the sample is due, whose body is a 20 ms sleep and whose condition is then false; the only statement that records anything sits in the outer loop. |
+| `loaddriver.py:265` | `while time.monotonic() < due` → `<=` | **equivalent in effect, and stated precisely.** The outer loop samples RSS on a fixed cadence; this inner loop only waits until the next sample is due, sleeping in 20 ms steps. The mutant takes one extra step when the clock reads *exactly* `due` — a nanosecond-level coincidence — and the only consequence is that the next sample can be up to 20 ms later than it would have been. No sample is added or lost, and the sampling quantum is 20 ms, so the series a soak reports is the same series. |
 | `loaddriver.py:130,132,133` | `return False` → `True` on the call budget and on the deadline, and `issued += 1` → `+= 0` | **non-terminating, all three.** Remove the guard that stops a run and the run does not stop, so the test that drives it never returns within the 45 s per-mutant timeout. Reported as timeouts, never as kills — same family as the `merkle_root` mutants above. |
 | `ledger.py:664-672` | ten mutants in the Windows process-liveness probe (both `if not …` guards, both `return`s, the exit-code comparison, the `OpenProcess` arguments) | **unreachable here.** Exercised on Windows only, where the process table is asked directly — see *Windows* below. |
+| `resilience.py:76,151,161` | `probes_in_flight = 0` → `1` in the dataclass default, in `record_success` and in `record_failure` | **equivalent, and the file's own test says why.** `allow` sets `probes_in_flight = 0` on the transition from `open` to `half-open` — that is the site the test kills — so the value these three sites leave behind is overwritten before anything reads it. What the test pins instead is the behaviour a reader cares about: an upstream that recovered is admitted again on the *next* outage, not only the first. |
+| `helm_fidelity.py:53` | `if spec is None or spec.loader is None` → `and` | **unreachable, and marked as such.** The guard carries `# pragma: no cover`; `spec` is `None` only when `spec_from_file_location` fails, and for a file that exists the loader it returns is never `None`. Reaching the branch needs an interpreter whose import machinery returns a loaderless spec. |
+| `helm_fidelity.py:105` | `zip(left, right, strict=True)` → `strict=False` | **equivalent.** The line above returns a length mismatch before the `zip` is built, so the two lists are always the same length by then and `strict` can never fire. A belt kept on after the braces. |
 | `ledger.py:680` | `except (ValueError, OverflowError)` → the two mutants of its `return False` | **unreachable on this kernel.** `os.kill` reports a pid no kernel would hand out as `ESRCH`, which is an `OSError` and is handled (and killed) by the branch above; this guard is for the platforms that raise `OverflowError` instead. |
+[^prefile]: Measured before the `_span` byte-offset fix in `tools/mutate.py` (see *Mutation
+    testing*): the candidate count for `verify.py` and `ledger.py` here is lower than the number
+    of mutable sites those files actually hold (95 of 177, and 171 of 172), so these scores
+    describe a smaller corpus than the rows below them. The numbers are kept as they ran.
 
 [^timeouts]: All four mutants in this family failed to terminate within the 45 s per-mutant
     timeout. The score is over the 59 mutants that produced a verdict (63 candidates minus the
@@ -306,27 +458,39 @@ Writing the tests that kill a mutant is where the defects were:
 | reading a ledger's repr | the repr carried a descriptor, a lock handle and a memory address into CI logs. |
 | a test for a surviving `max` → `min` | the existing rate test **passed with the mutant applied**: it measured total wall clock through a *cold* boundary, where the first call's own cost cleared the 0.4 s threshold, so the soak's central claim ("the load is paced") was pinned by nothing. It now warms up first, asserts the schedule's floor, and compares against an unpaced run. |
 | a surviving sentinel comparison | `note_rss` compared a bare `-1` against a bare `0` in the same expression, and both mutants survived. The answer is now a named constant (`UNMEASURABLE`) with a test that feeds the sampler the sentinel and a real reading. |
+| mutating the harness and asking it a question its own call site cannot | `_is_docstring`'s four guards and its two `return`s — six mutants — survived because the one place that *calls* the function has already established what they check: it is reached only from the `--include-strings` branch, where the node is a non-empty string constant. Raising the guard's lower bound from byte zero to byte one was worse than unkillable-and-harmless: a site at the first byte of a file was silently *dropped*, and a drop is reported as "a site that produced no mutant", never as a survivor. Both are now asked directly. |
+| treating `rmtree(ignore_errors=True)` as strict | four mutants, all in the sweep's cleanup. The cleanup runs in `finally:`, so a `PermissionError` there would replace whatever the run was about to report — the report, a broken baseline's refusal, a refused splice, or a refused line filter — with a traceback about a temporary directory. A test under mutation can leave exactly that shape behind (a read-only directory is a normal thing for a test to create), so a fixture tree now contains one, and four tests assert that each exit still reaches the reader. |
+| a survivor in a *liveness probe* | `os.kill(pid, 0)` → `os.kill(pid, 1)`: the probe answers the same question and sends `SIGHUP` while asking it — the same defect class as the Windows `os.kill`, which *is* `TerminateProcess` there. The existing test could not see it, and the reason is a property of the measuring environment: every sweep runs under `nohup`, which ignores `SIGHUP` and passes that disposition to its children, so the signal is a no-op where the score is measured. The new test makes *delivery* observable instead of fatal — the child installs a handler and creates a marker file inside it. |
+| reading 51 survivors of `verify.py` | they were not gaps in the verifier and not equivalent mutants: `DEFAULT_TESTS` gave the file three test paths, and the block that recomputes a *stated* cache saving (`cache-savings`, `cache-hit-origins`, `cache-hit-proofs`) is exercised from `tests/test_cache.py`, which the list did not name. A subset is part of the measurement: the same 177 candidates scored 71.2% against three files, 83.6% once the fourth was named, and 97.2% after the tests those survivors asked for — and the five left after *that* are the round recorded in *The paydown* above, four of them tests that stopped one token short. The list now names `tests/test_cache.py`, first, with the reason beside it. |
 
 ### Not claimed
 
 A mutation score is a statement about the mutants a tool generated, over one subset, at one
 commit. It says nothing about the defects no mutant represents: a missing feature, a wrong
-decision, an interface nobody needed. 83.6% on `ledger.py` with every survivor explained is not
-"the ledger is 83.6% correct"; it is "of 171 single-site changes to this file that this harness
-produced, 143 were caught by these tests, 28 are provably equivalent or unreachable here, and
-none is unaccounted for".
+decision, an interface nobody needed. 83.7% on `ledger.py` with every survivor explained is not
+"the ledger is 83.7% correct"; it is "of 172 single-site changes to this file that this harness
+produced, 144 were caught by these tests, 28 are provably equivalent or unreachable here, and
+none is unaccounted for". The same sentence applies to the verifier with its own numbers:
+99.4% is not "the verifier is 99.4% correct"; it is "of 177 single-site changes to
+`verify.py` that this harness produced, 176 were caught by these tests and 1 is
+argued equivalent, with the argument written out below it".
 
 ## Not covered, and why
 
-- **A full mutation score over the whole source tree.** `tools/mutate.py` has been run over five
-  modules — the two whose promises are cryptographic (`canon.py`, `verify.py`), the one that
-  holds the evidence (`ledger.py`), the measurement added on top of them (`latency.py`), and the
-  load driver (`loaddriver.py`). The rest of `src/docket` is not mutated: a score for `proxy.py`
-  or `cli.py` would be a much larger run, and a number nobody has run is not a number. The harness's per-module test subsets now name
-  the files each module's promises are made in, including the invariant suite for the lifecycle
-  modules, so a future run of `supervisor.py` or `scriptagent.py` starts from a subset that can
-  actually fail. What *has* been run, and what every survivor turned out to be, is in *Mutation
-  testing* below.
+- **A full mutation score over the whole source tree.** `tools/mutate.py` has been run over nine
+  files — the two whose promises are cryptographic (`canon.py`, `verify.py`), the one that holds the
+  evidence (`ledger.py`), the measurement added on top of them (`latency.py`), the load driver
+  (`loaddriver.py`), the response cache, the resilience primitives, and two of the tools themselves
+  (`helm_fidelity.py` and `mutate.py`, the harness scoring its own tests). `deploy_check.py`,
+  `loadtest.py` and `fuzz.py` are mapped in `DEFAULT_TESTS` — each with the test file that would kill
+  its mutants — but not yet measured, and a mapping is not a score. The rest of `src/docket` is not
+  mutated: a score for `proxy.py` or `cli.py` would be a much larger run, and a number nobody has run
+  is not a number. The harness's
+  per-module test subsets name the files each module's promises are made in, including the invariant
+  suite for the lifecycle modules, so a future run of `supervisor.py` or `scriptagent.py` starts from
+  a subset that can actually fail. What *has* been run, and what every survivor turned out to be, is
+  in *Mutation testing* below. A tool is in that list only when its own tests exist: a harness with
+  no tests is a harness whose numbers nobody can check.
 - **Endurance beyond ten minutes, and at scale.** `make soak` runs a real boundary for ten
   minutes at a paced 20 calls/s and shows memory tracking events rather than time (≈1.1 KiB per
   event, both at 6,002 and at 12,002 calls). That is a bounded soak on one 2-vCPU host: it cannot

@@ -36,10 +36,10 @@ spec:
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["python", "-m", "docket.fakeupstream"]
-          args: ["--host", "127.0.0.1", "--port", "{{ .Values.provider.port }}", "--steps", "{{ .Values.provider.steps }}"]
+          args: ["--host", "127.0.0.1", "--port", "{{ .Values.provider.port | int64 }}", "--steps", "{{ .Values.provider.steps | int64 }}"]
           ports:
             - name: provider
-              containerPort: {{ .Values.provider.port }}
+              containerPort: {{ .Values.provider.port | int64 }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -76,7 +76,7 @@ spec:
             - --policy
             - /etc/docket/policy.toml
             - --port
-            - "{{ .Values.agent.port }}"
+            - "{{ .Values.agent.port | int64 }}"
 {{ range .Values.agent.upstreams }}
             - --upstream
             - {{ . }}
@@ -87,12 +87,12 @@ spec:
 {{ end }}
           env:
             - name: DOCKET_AGENT_CALLS
-              value: "{{ .Values.agent.calls }}"
+              value: "{{ .Values.agent.calls | int64 }}"
             - name: DOCKET_AGENT_MODE
               value: {{ .Values.agent.mode }}
           ports:
             - name: boundary
-              containerPort: {{ .Values.agent.port }}
+              containerPort: {{ .Values.agent.port | int64 }}
           livenessProbe:
             exec:
               command:
@@ -100,7 +100,7 @@ spec:
                 - -c
                 - |
                   import urllib.request
-                  urllib.request.urlopen("http://127.0.0.1:{{ .Values.agent.port }}/docket/healthz", timeout=2).read()
+                  urllib.request.urlopen("http://127.0.0.1:{{ .Values.agent.port | int64 }}/docket/healthz", timeout=2).read()
             initialDelaySeconds: 3
             periodSeconds: 10
             timeoutSeconds: 3
@@ -112,7 +112,7 @@ spec:
                 - -c
                 - |
                   import urllib.request
-                  urllib.request.urlopen("http://127.0.0.1:{{ .Values.agent.port }}/docket/readyz", timeout=2).read()
+                  urllib.request.urlopen("http://127.0.0.1:{{ .Values.agent.port | int64 }}/docket/readyz", timeout=2).read()
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3

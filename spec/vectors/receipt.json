@@ -333,6 +333,7 @@
         "usage_source": "reported",
         "cost_usd": "0.006000",
         "event_hash": "5d555ba9e8852a118d2eaeca8b5bbf315cced81b939f7db8f05b0d03ceec6bef",
+        "latency_ms": 100,
         "merkle_path": [
           {
             "side": "left",
@@ -362,6 +363,7 @@
         "usage_source": "reported",
         "cost_usd": "0.003300",
         "event_hash": "58b972d528f9743bf97b1c19c91b88e8878770307a14397d1491da1f14784a3e",
+        "latency_ms": 101,
         "merkle_path": [
           {
             "side": "left",
@@ -391,6 +393,7 @@
         "usage_source": "reported",
         "cost_usd": "0.000700",
         "event_hash": "226f14969563f84e2aa2148e5ccba5442ff3939ae83b3194afde22dd59ac10d4",
+        "latency_ms": 102,
         "merkle_path": [
           {
             "side": "left",
@@ -420,6 +423,7 @@
         "usage_source": "estimated",
         "cost_usd": "0.003500",
         "event_hash": "4f08e6e5c56bf255d49a11da51f9cf6b6cd85a339df94aa5e0764f41150e1696",
+        "latency_ms": 103,
         "merkle_path": [
           {
             "side": "left",
@@ -473,6 +477,9 @@
       "requests to an upstream whose circuit breaker is open",
       "any further model call once the ledger has reached its configured limit"
     ],
+    "cache_behaviour": [
+      "no response cache is configured: every request is forwarded"
+    ],
     "recorded_not_enforced": [
       "filesystem changes under watched paths (detected by snapshot diffing)",
       "writes to deny_write paths (proven after the fact, flagged as violations)",
@@ -492,6 +499,16 @@
       "the operator ran Docket honestly; the chain proves what was written, not that nothing else happened",
       "reported token usage is the provider's own count; estimated usage is marked as estimated"
     ]
+  },
+  "latency": {
+    "method": "nearest-rank",
+    "measured_calls": 4,
+    "total_rows": 4,
+    "total_ms": 406,
+    "max_ms": 103,
+    "p50_ms": 101,
+    "p95_ms": 103,
+    "p99_ms": 103
   },
   "seal": null,
   "signature": null

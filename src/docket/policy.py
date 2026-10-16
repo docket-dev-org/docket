@@ -248,6 +248,32 @@ class Resilience:
 
 
 @dataclass
+class Cache:
+    """The boundary's response cache: what may be answered without the provider.
+
+    Off by default, like every other intervention this recorder can make. The
+    numbers here are policy, not tuning: they are copied into the receipt, so a
+    reader can see the exact configuration under which a saving was claimed.
+    ``max_hits`` is a ceiling on the cache's *own* answers rather than on spend —
+    a cached loop spends nothing, so no dollar cap can stop it, and this is the
+    knob that makes such a loop start paying again (``docs/caching.md``).
+    """
+
+    enabled: bool = False
+    ttl_seconds: float = 300.0
+    max_entries: int = 256
+    max_hits: int = 1000
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "ttl_seconds": num(self.ttl_seconds),
+            "max_entries": self.max_entries,
+            "max_hits": self.max_hits,
+        }
+
+
+@dataclass
 class Egress:
     mode: str = "deny"  # deny | tunnel
     allow: list[str] = field(default_factory=lambda: list(DEFAULT_EGRESS_ALLOW))
@@ -285,6 +311,7 @@ class Policy:
     files: Files = field(default_factory=Files)
     budget_mode: str = "usd"  # usd | quota
     resilience: Resilience = field(default_factory=Resilience)
+    cache: Cache = field(default_factory=Cache)
     source_path: str | None = None
 
     # -- loading ----------------------------------------------------------- #
@@ -445,6 +472,7 @@ class Policy:
                 deny_write=cls._string_list("files", "deny_write", files_raw.get("deny_write")),
             ),
             budget_mode=str(budget_raw.get("mode", "usd")),
+            cache=_cache_from(cls._section(raw, "cache")),
             source_path=source_path,
         )
         if policy.budget_mode not in {"usd", "quota"}:
@@ -453,7 +481,7 @@ class Policy:
 
     # -- introspection ------------------------------------------------------ #
     def to_dict(self) -> dict[str, Any]:
-        return {
+        document: dict[str, Any] = {
             "name": self.name,
             "caps": self.caps.to_dict(),
             "models": self.models.to_dict(),
@@ -462,6 +490,14 @@ class Policy:
             "budget": {"mode": self.budget_mode},
             "resilience": self.resilience.to_dict(),
         }
+        # The cache appears only when it is on. A policy that says nothing about
+        # caching *is* the policy it always was, and it must keep the same digest:
+        # receipts and signatures written by an earlier version name that digest,
+        # and a digest that moves when a feature is added turns every one of them
+        # into a document nobody can re-derive.
+        if self.cache.enabled:
+            document["cache"] = self.cache.to_dict()
+        return document
 
     def digest(self) -> str:
         return digest_of(self.to_dict())
@@ -518,9 +554,19 @@ class Policy:
             "# max_calls_per_minute = 120      # sliding-window throttle in front of the upstream",
             "# max_calls_per_second = 5        # token bucket; burst = one second of steady traffic",
             "# max_events = 200000             # ceiling on this run's own record",
-            f"max_ledger_bytes = {self.resilience.max_ledger_bytes}  # ceiling on the ledger file (bytes)",
+            f"max_ledger_bytes = {self.resilience.max_ledger_bytes or 0}  # ceiling on the ledger file in bytes; 0 = no ceiling",
             f"fail_fast_evidence = {str(self.resilience.fail_fast_evidence).lower()}      # true: stop the run if evidence cannot be written",
             f"min_free_bytes = {self.resilience.min_free_bytes}    # readiness reports not-ready below this floor",
+            "",
+            "# Response cache. Off by default: a recorder that changes what your agent",
+            "# receives without being asked is not a recorder you can trust. When it is on,",
+            "# every call it answers is a `model.cache_hit` event in the ledger and the saving",
+            "# is recomputed by `docket verify` — see docs/caching.md.",
+            "[cache]",
+            f"enabled = {str(self.cache.enabled).lower()}            # answer an identical request from the cache instead of the provider",
+            f"ttl_seconds = {self.cache.ttl_seconds}       # 0 = entries never expire on time (capacity still bounds them)",
+            f"max_entries = {self.cache.max_entries}         # least-recently-used entries are evicted above this",
+            f"max_hits = {self.cache.max_hits}          # 0 = no ceiling; a cached loop stops paying, so it needs its own brake",
             "",
         ]
         return "\n".join(lines)
@@ -542,6 +588,16 @@ class Policy:
                 "requests to an upstream whose circuit breaker is open",
                 "any further model call once the ledger has reached its configured limit",
             ],
+            "cache_behaviour": (
+                [
+                    "when cache.enabled is set, an identical request (same upstream path and same",
+                    "canonical body) is answered from the response cache instead of the provider:",
+                    "the provider never sees it, and it is recorded as model.cache_hit",
+                    "the saving is reported beside the spend, never inside it",
+                ]
+                if self.cache.enabled
+                else ["no response cache is configured: every request is forwarded"]
+            ),
             "recorded_not_enforced": [
                 "filesystem changes under watched paths (detected by snapshot diffing)",
                 "writes to deny_write paths (proven after the fact, flagged as violations)",
@@ -620,6 +676,33 @@ def _bool_key(section: str, key: str, value: Any, default: bool) -> bool:
     return value
 
 
+def _cache_from(raw: dict[str, Any]) -> Cache:
+    """Parse ``[cache]``, refusing anything that would make the cache dishonest.
+
+    A negative TTL, a fractional entry ceiling or a hit cap that is not a number is
+    a configuration the boundary cannot honour, and it is refused at load time with
+    the key named — the same rule as every other policy key: a bad value must never
+    become a 502 in the middle of a run.
+    """
+    # A `[cache]` section that names any tuning key is an operator asking for a cache: on
+    # its own, `ttl_seconds` configures a cache that never answers, which is a policy
+    # nobody means. `enabled = false` written beside other keys is the one way to say
+    # "configured, but off" — and it wins, because it is the explicit statement.
+    other_keys = sorted(set(raw) - {"enabled"})
+    enabled = _bool_key("cache", "enabled", raw.get("enabled"), bool(other_keys))
+    raw_ttl = raw.get("ttl_seconds")
+    ttl = 300.0 if raw_ttl is None else _finite_number("cache", "ttl_seconds", raw_ttl)
+    if ttl < 0:
+        raise ValueError(f"cache.ttl_seconds must be zero (never expire) or positive, got {raw_ttl!r}")
+    max_entries = _whole_key("cache", "max_entries", raw.get("max_entries"), 256)
+    max_hits = _whole_key("cache", "max_hits", raw.get("max_hits"), 1000)
+    if max_entries is None or max_entries < 1:
+        raise ValueError(f"cache.max_entries must be at least 1, got {raw.get('max_entries')!r}")
+    if max_hits is None or max_hits < 0:
+        raise ValueError(f"cache.max_hits must be zero (no ceiling) or positive, got {raw.get('max_hits')!r}")
+    return Cache(enabled=enabled, ttl_seconds=ttl, max_entries=int(max_entries), max_hits=int(max_hits))
+
+
 def _resilience_from(raw: dict[str, Any]) -> Resilience:
     """Build the resilience section, rejecting values that cannot mean anything.
 
@@ -653,7 +736,15 @@ def _resilience_from(raw: dict[str, Any]) -> Resilience:
         max_calls_per_minute=_whole_key("resilience", "max_calls_per_minute", raw.get("max_calls_per_minute"), None),
         max_calls_per_second=_amount_key("resilience", "max_calls_per_second", raw.get("max_calls_per_second"), None),
         max_events=_whole_key("resilience", "max_events", raw.get("max_events"), None),
-        max_ledger_bytes=_whole_key("resilience", "max_ledger_bytes", raw.get("max_ledger_bytes"), None),
+        # Absent means the documented default, like every other key in this section.
+        # It used to mean `None` — no byte ceiling at all — which is a *weaker* policy
+        # than the one `docs/resilience.md` and the deployment manifests describe, and a
+        # hand-written policy file got it by saying nothing. `0` is how an operator asks
+        # for no ceiling on purpose, and it is stored as `None` because that is what
+        # `Ledger.open` understands.
+        max_ledger_bytes=_whole_key(
+            "resilience", "max_ledger_bytes", raw.get("max_ledger_bytes"), defaults.max_ledger_bytes
+        ),
         fail_fast_evidence=_bool_key(
             "resilience", "fail_fast_evidence", raw.get("fail_fast_evidence"), defaults.fail_fast_evidence
         ),
@@ -669,8 +760,15 @@ def _resilience_from(raw: dict[str, Any]) -> Resilience:
         raise ValueError("resilience.max_calls_per_second must be positive")
     if resilience.max_events is not None and resilience.max_events < 1:
         raise ValueError("resilience.max_events must be at least 1")
+    if resilience.max_ledger_bytes == 0:
+        # Deliberate and explicit: no byte ceiling. The disk is then the only bound, and
+        # readiness still reports on free space (resilience.min_free_bytes).
+        resilience.max_ledger_bytes = None
     if resilience.max_ledger_bytes is not None and resilience.max_ledger_bytes < 4096:
-        raise ValueError("resilience.max_ledger_bytes must be at least 4096 (below that the ledger cannot hold a run)")
+        raise ValueError(
+            "resilience.max_ledger_bytes must be 0 (no ceiling) or at least 4096 "
+            "(below that the ledger cannot hold a run)"
+        )
     if resilience.min_free_bytes < 0:
         raise ValueError("resilience.min_free_bytes must not be negative")
     return resilience
