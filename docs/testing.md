@@ -12,7 +12,7 @@ and can be told to fail on cue.
 ## The suite
 
 ```console
-$ make test          # 1191 tests, no network (2-4 min on a 2-vCPU box)
+$ make test          # 1198 tests, no network (2-4 min on a 2-vCPU box)
 $ make check         # + ruff, + bandit, + the independent Node verifier
 ```
 
@@ -28,7 +28,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | `test_ledger_faults.py` | 29 | a ledger on a failing filesystem: ENOSPC, EIO, a closed handle, an OS error while opening |
 | `test_ledger_concurrency.py` | 4 | one ledger, eight writer threads: order, chain, agreement, file digest |
 | `test_latency.py` | 21 | the percentile rule, hostile row values, the verifier's recomputation, the report's tail line |
-| `test_receipt_verify.py` | 114 | the receipt and every verification check, plus one name to one verdict |
+| `test_receipt_verify.py` | 121 | the receipt and every verification check, plus one name to one verdict |
 | `test_proxy.py` | 16 | pass-through, streaming, policy enforcement, what is never recorded |
 | `test_cache.py` | 74 | the response cache: what may be stored and what may never be, hit/miss/TTL/LRU/ceiling behaviour, the key covering the request as sent, an open breaker not blocking a hit, concurrency, every receipt-level attack on a saving, and twenty-five tests written to kill survivors of a mutation sweep — nine for the cache itself and sixteen for the verifier that recomputes a stated saving |
 | `test_proxy_concurrency.py` | 6 | parallel calls through the real boundary: chain, totals, limiter, breaker, cap |
@@ -508,14 +508,33 @@ All four repairs are in `tests/test_cache.py` and marked in place: the assertion
 percentiles differ before one of them can be looked up wrongly; a third origin problem, so the list
 holds exactly three — the one length at which the two spellings of the stop condition part company;
 and an assertion for the tally sentence, which no test had ever asked for. None of the four needed a
-change to `src/docket/verify.py`, and the re-sweep over the repaired tests is the
-`src/docket/verify.py` row marked *(after the tests below)* above: **176 of 177, 99.4%**,
-2,125 s at seed 0, 1 survivor (`verify.py:194`).
+change to `src/docket/verify.py`.
 
-That survivor is the argued-equivalent `verify.py:194` in the table below. The general lesson is
-narrower than "write more tests" and worth stating: a docstring that names a mutant is a claim about
-*that* mutant, a line can carry two of them, and an assertion that is right about the sentence it
-checks can still be blind to the half of the sentence it stopped before.
+The sweep was then re-run over the file as it stands after those tests **and** after the derived-member
+checks (§8 items 5a/5b), which took it from 189 mutable sites to **237**: `237 run, 229 killed,
+8 survived, 0 timed out — 96.6%`, 2,988 s at seed 0, control run 264 tests. Eight survivors is a
+worse number than the last run's one, and the reason is not that the tests got worse: 189 of those
+sites did not exist before, and a new check is written before the test that pins every branch of it.
+
+Each of the eight was then classified, and the classification is what the table below records rather
+than a score. Four were gaps in the new code and were closed with tests that name the behaviour —
+`by_model` members as integral floats (§3.2 normalises them), the three usage-source counts omitted
+on a session with no metered calls (absent is not zero), and a `mixed` basis over rows that are all
+one kind (a claim that must be falsifiable). One was a false pass in `cost-basis`: `not (reported and
+estimated)` weakened to `or` makes "mixed" unfalsifiable for exactly the case it exists for. Three are
+equivalents, demonstrated rather than argued: the two bool/`None` fast paths produce the same status
+*and the same sentence* for `true` and `null` (`verify.py:194` in `whole`, `verify.py:646` in the
+`by_model` normaliser), and the `breakdown_judged` flag at `verify.py:686` sits behind
+`if recomputed is not None` — a row whose cost is not an amount fails `cost-recomputation` and the
+breakdown block is never entered, which is shown by probing both shapes and observing no
+`by-model-totals` verdict at all.
+
+Re-running just those eight lines afterwards gives **8 killed, 3 survived** — the three equivalents,
+which no test can kill and none pretends to.
+
+The general lesson is narrower than "write more tests" and worth stating: a docstring that names a
+mutant is a claim about *that* mutant, a line can carry two of them, and an assertion that is right
+about the sentence it checks can still be blind to the half of the sentence it stopped before.
 
 ### Every survivor, classified
 
@@ -525,6 +544,8 @@ why; an equivalent mutant is not a defect and no test pretends otherwise.
 | site | mutant | verdict |
 | --- | --- | --- |
 | `verify.py:194` | `isinstance(value, bool) or value is None` → `and` | **equivalent.** `whole(True)` fails as a bool on one path and as the unparsable string `"True"` on the other, and `whole(None)` likewise; both routes record the same named failure with the same text. |
+| `verify.py:646` | the same expression in `quiet_whole`, the `by_model` normaliser | **equivalent.** Probed with `by_model[0].calls` set to `true` and to `null`: the mutant and the original both report `by_model['claude-sonnet-5'].calls is not a whole number`, character for character. |
+| `verify.py:686` | `breakdown_judged = True` → `False` in the arithmetic-failure branch | **unreachable.** The branch that sets it is inside `if recomputed is not None`; every input that could raise there (a non-numeric token count, a cost that is not an amount) fails `cost-recomputation` first and returns `recomputed = None`, so the derived-member block never runs — probed with both shapes, and `by-model-totals` is absent from the report in each. |
 | `canon.py:51` | `or` → `and` in the early return for bool/`None`/str | **equivalent.** The fallback at the end of `_normalise` returns those three types unchanged as well; the early return is a fast path, not a behaviour. |
 | `canon.py:139`, `canon.py:160` | `len(level) > 1` → `>=` and `1` → `0` in the `while` loop of `merkle_root` and of `merkle_proof` | **non-terminating, all four.** Each turns a one-node level into a level that is promoted to itself, so the tree never finishes. They exceed a 45 s per-mutant timeout (the same sites exceeded 120 s in an earlier run): reported as timeouts, never as kills, because a hang is not the suite noticing a wrong answer. |
 | `ledger.py:153,160,161,168` | `compare=False` → `True` on the clock, the two handles and the append lock | **equivalent.** Nothing compares two `Ledger` objects — the field option is declared so that a repr and a comparison cannot reach into a descriptor, and the *repr* half of the same declaration is killed by `test_the_repr_of_a_ledger_is_safe_to_put_in_a_log`. |

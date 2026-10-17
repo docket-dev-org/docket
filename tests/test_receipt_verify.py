@@ -895,3 +895,90 @@ def test_an_empty_appendix_must_state_an_empty_breakdown():
     receipt["totals"]["by_model"] = []
     emptied = verify_receipt(receipt)
     assert next(c for c in emptied.checks if c.name == "by-model-totals").status == "pass", emptied.failures
+
+
+def test_an_integral_float_in_the_breakdown_is_a_number_not_a_refusal():
+    """§3.2 says an integral float is normalised, and the breakdown is no exception.
+
+    `quiet_whole` normalises it on purpose; a version that returned `None` for every float would
+    report "is not a whole number" for a document the format says to read.
+    """
+    receipt = json.loads((SPEC_VECTORS / "receipt.json").read_text(encoding="utf-8"))
+    receipt["totals"]["by_model"][0]["calls"] = float(receipt["totals"]["by_model"][0]["calls"])
+    result = verify_receipt(receipt)
+    named = [c for c in result.checks if c.name == "by-model-totals"]
+    assert [c.status for c in named] == ["pass"], named[0].detail
+
+
+def test_a_row_whose_cost_is_garbage_fails_before_any_breakdown_verdict():
+    """One id, one verdict — including when the row itself is unreadable.
+
+    A row whose `cost_usd` is not an amount stops the arithmetic at `cost-recomputation`; the
+    breakdown is never computed from it, so no second `by-model-totals` row can appear beside a
+    first. That is the invariant a reader relies on to know which document their failure is about.
+    """
+    receipt = json.loads((SPEC_VECTORS / "receipt.json").read_text(encoding="utf-8"))
+    receipt["appendix"]["usage"][0]["cost_usd"] = "not an amount"
+    result = verify_receipt(receipt)
+    assert result.ok is False
+    assert next(c for c in result.checks if c.name == "cost-recomputation").status == "fail"
+    assert [c for c in result.checks if c.name == "by-model-totals"] == []
+
+
+@pytest.mark.parametrize("member", ["usage_reported_calls", "usage_estimated_calls", "asserted_calls"])
+def test_an_omitted_usage_count_is_absent_not_zero(member):
+    """Same rule as the totals: `-1` is a sentinel, `0` is a claim.
+
+    A session with no metered calls has zero in every column, so the only thing that separates
+    "the receipt did not say" from "the receipt said none" is the sentinel — and the suite proved
+    it only for non-zero counts, where any wrong default fails anyway.
+    """
+    receipt = json.loads((SPEC_VECTORS / "receipt.json").read_text(encoding="utf-8"))
+    receipt.pop("latency", None)
+    receipt["appendix"]["usage"] = []
+    receipt["totals"].update(
+        {
+            "cost_usd": "0.000000",
+            "calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "by_model": [],
+            "usage_reported_calls": 0,
+            "usage_estimated_calls": 0,
+            "asserted_calls": 0,
+            "cost_basis": "reported: provider usage fields",
+        }
+    )
+    baseline = verify_receipt(receipt)
+    assert baseline.ok, baseline.failures
+
+    receipt["totals"].pop(member)
+    result = verify_receipt(receipt)
+    assert result.ok is False, f"a receipt with no totals.{member} verified"
+    assert next(c for c in result.checks if c.name == "usage-source-counts").status == "fail"
+
+
+@pytest.mark.parametrize(
+    ("rows", "basis"),
+    [("all-reported", "mixed: reported and estimated usage"), ("all-estimated", "mixed: reported and estimated usage")],
+)
+def test_a_mixed_basis_needs_both_kinds_of_row(rows, basis):
+    """`mixed` is a claim about the rows, so it needs a row of each kind to be true.
+
+    The check reads `not (reported and estimated)`; weakening that to `or` makes the sentence
+    unfalsifiable for the one case it exists for — a receipt that calls itself mixed when every
+    row came from the same source.
+    """
+    receipt = json.loads((SPEC_VECTORS / "receipt.json").read_text(encoding="utf-8"))
+    source = "reported" if rows == "all-reported" else "estimated"
+    for row in receipt["appendix"]["usage"]:
+        row["usage_source"] = source
+    count = len(receipt["appendix"]["usage"])
+    receipt["totals"]["usage_reported_calls"] = count if source == "reported" else 0
+    receipt["totals"]["usage_estimated_calls"] = 0 if source == "reported" else count
+    receipt["totals"]["cost_basis"] = basis
+    result = verify_receipt(receipt)
+    named = [c for c in result.checks if c.name == "cost-basis"]
+    assert [c.status for c in named] == ["fail"], named[0].detail
