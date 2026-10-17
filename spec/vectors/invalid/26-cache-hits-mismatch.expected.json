@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "26-cache-hits-mismatch.json",
+ "ledger": null,
+ "check": "cache-savings",
+ "reject": null,
+ "rule": "spec \u00a78 item 10",
+ "mutation": "cache.hits is 99 while the groups add up to 2"
+}

@@ -1,0 +1,464 @@
+{
+ "format": "docket/receipt/v1",
+ "docket_number": "DKT-20260102-VECHC1",
+ "label": null,
+ "created_at": "2026-01-02T03:04:05Z",
+ "tool": {
+  "name": "docket",
+  "version": "0.1.0",
+  "format": "docket/receipt/v1"
+ },
+ "session": {
+  "id": "vectorcache",
+  "argv": [
+   "agent",
+   "--task",
+   "cache-vector"
+  ],
+  "cwd": "/srv/vectors",
+  "exit_code": 0,
+  "duration_seconds": "1.250",
+  "breached": null,
+  "interrupted": false,
+  "host": {
+   "platform": "vector",
+   "python": "3.13.0",
+   "machine": "x86_64"
+  }
+ },
+ "policy": {
+  "name": "vector-cache",
+  "digest": "9573b27fbc78682d0ff5d75c8e5b9e609bbd11b3c66fa6a091eb91eebb69a7ee",
+  "document": {
+   "name": "vector-cache",
+   "caps": {
+    "max_usd": "5.00",
+    "max_tokens": null,
+    "max_model_calls": null,
+    "max_wall_seconds": null,
+    "warn_at": "0.8",
+    "on_breach": "kill",
+    "grace_seconds": 5
+   },
+   "models": {
+    "allow": [],
+    "deny": []
+   },
+   "egress": {
+    "mode": "deny",
+    "allow": [
+     "api.anthropic.com",
+     "api.openai.com",
+     "generativelanguage.googleapis.com",
+     "api.deepseek.com",
+     "api.mistral.ai",
+     "openrouter.ai",
+     "api.groq.com",
+     "localhost",
+     "127.0.0.1"
+    ]
+   },
+   "files": {
+    "watch": [
+     "."
+    ],
+    "ignore": [],
+    "deny_write": []
+   },
+   "budget": {
+    "mode": "usd"
+   },
+   "resilience": {
+    "breaker_threshold": 5,
+    "breaker_cooldown_seconds": 30,
+    "breaker_max_cooldown_seconds": 300,
+    "max_calls_per_minute": null,
+    "max_calls_per_second": null,
+    "max_events": null,
+    "max_ledger_bytes": 268435456,
+    "fail_fast_evidence": false,
+    "min_free_bytes": 16777216
+   },
+   "cache": {
+    "enabled": true,
+    "ttl_seconds": 60,
+    "max_entries": 8,
+    "max_hits": 3
+   }
+  },
+  "source": null
+ },
+ "totals": {
+  "calls": 1,
+  "input_tokens": 1000,
+  "cached_input_tokens": 0,
+  "output_tokens": 200,
+  "total_tokens": 1200,
+  "cost_usd": "0.006000",
+  "cost_basis": "reported: provider usage fields",
+  "usage_reported_calls": 1,
+  "usage_estimated_calls": 0,
+  "asserted_calls": 0,
+  "assumed_price_models": [],
+  "by_model": [
+   {
+    "model": "claude-sonnet-5",
+    "calls": 1,
+    "input_tokens": 1000,
+    "cached_input_tokens": 0,
+    "output_tokens": 200,
+    "cost_usd": "0.006000"
+   }
+  ]
+ },
+ "model_calls": {
+  "count": 1,
+  "by_provider": {
+   "vector": 1
+  },
+  "denied": 0,
+  "errors": 0
+ },
+ "tools": {
+  "calls": 0,
+  "names": [],
+  "failures": 0
+ },
+ "files": {
+  "changed": 0,
+  "added": 0,
+  "modified": 0,
+  "removed": 0,
+  "violations": 0,
+  "top_paths": []
+ },
+ "network": {
+  "tunnels_allowed": 0,
+  "tunnels_denied": 0
+ },
+ "caps": {
+  "exceeded": 0,
+  "warnings": 0
+ },
+ "event_counts": {
+  "session.start": 1,
+  "policy.applied": 1,
+  "model.request": 1,
+  "model.response": 1,
+  "model.cache_hit": 2,
+  "note": 1,
+  "session.end": 1
+ },
+ "ledger": {
+  "format": "docket/ledger/v1",
+  "events": 8,
+  "head": "6c8fbba672c5886065598a4d52f040232c1d4728eb4ecc09a5905d73ce5c5ab3",
+  "genesis": "adf41ffdf0fd9128f8f4fe88fa09fba359e27453b02be87886b621a2c2b0f7dc",
+  "merkle_root": "bb98a9fb04ba75b1dbf44c75d97affcf0d884505447738db9c5d2bcd42afd9bc",
+  "file_sha256": "00fed5bc26d0d3b268516fd0f6f5f593266a656befe53f27501b324fa0965a57",
+  "chain": "sha256(prev + canonical_json(event))"
+ },
+ "price_table": {
+  "schema": "docket/prices/v1",
+  "as_of": "2026-10-13",
+  "digest": "61cd61c7fe295ef1e93b41907c0d73c5075aa63c6d730c325c4e9def95cc53f0",
+  "document": {
+   "_meta": {
+    "schema": "docket/prices/v1",
+    "as_of": "2026-10-13",
+    "currency": "USD",
+    "unit": "per_million_tokens",
+    "note": "List prices for public APIs, used to ESTIMATE cost from token counts reported by the provider. Docket never bills anyone and never claims these are the prices you pay: negotiated, regional, batch, flex, priority and subscription pricing all differ. Amounts are strings to keep verification reproducible across languages.",
+    "sources": [
+     "https://developers.openai.com/api/docs/pricing",
+     "https://www.anthropic.com/pricing",
+     "https://ai.google.dev/gemini-api/docs/pricing",
+     "https://api-docs.deepseek.com/quick_start/pricing"
+    ],
+    "matched_by": "fnmatch-style glob, case-insensitive, FIRST MATCH IN FILE ORDER WINS, so narrower families must be listed before wider ones (see gpt-6-luna* before gpt-6*)"
+   },
+   "families": [
+    {
+     "pattern": "gpt-6-luna*",
+     "input": "0.10",
+     "cached_input": "0.01",
+     "output": "0.50",
+     "source": "OpenAI, standard tier, smallest of the gpt-6 family (must precede gpt-6*)"
+    },
+    {
+     "pattern": "gpt-6.1*",
+     "input": "2.00",
+     "cached_input": "0.10",
+     "output": "10.00",
+     "source": "OpenAI, standard tier, short context"
+    },
+    {
+     "pattern": "gpt-6*",
+     "input": "10.00",
+     "cached_input": "1.00",
+     "output": "50.00",
+     "source": "OpenAI, standard tier, short context (flagship tier)"
+    },
+    {
+     "pattern": "gpt-5.6*",
+     "input": "4.00",
+     "cached_input": "0.40",
+     "output": "20.00",
+     "source": "OpenAI, standard tier, short context"
+    },
+    {
+     "pattern": "gpt-5*",
+     "input": "1.25",
+     "cached_input": "0.125",
+     "output": "10.00",
+     "source": "OpenAI, standard tier, short context"
+    },
+    {
+     "pattern": "gpt-4.1*",
+     "input": "2.00",
+     "cached_input": "0.50",
+     "output": "8.00",
+     "source": "OpenAI, standard tier"
+    },
+    {
+     "pattern": "o4* / o3*",
+     "input": "2.00",
+     "cached_input": "0.50",
+     "output": "8.00",
+     "source": "OpenAI, standard tier (reasoning)"
+    },
+    {
+     "pattern": "*opus*",
+     "input": "5.00",
+     "cached_input": "0.50",
+     "output": "25.00",
+     "source": "Anthropic listed API pricing, Claude Opus tier"
+    },
+    {
+     "pattern": "*sonnet*",
+     "input": "3.00",
+     "cached_input": "0.30",
+     "output": "15.00",
+     "source": "Anthropic listed API pricing, Claude Sonnet tier"
+    },
+    {
+     "pattern": "*haiku*",
+     "input": "1.00",
+     "cached_input": "0.10",
+     "output": "5.00",
+     "source": "Anthropic listed API pricing, Claude Haiku tier"
+    },
+    {
+     "pattern": "gemini-*-pro*",
+     "input": "2.00",
+     "cached_input": "0.20",
+     "output": "12.00",
+     "source": "Google Gemini API pricing"
+    },
+    {
+     "pattern": "gemini-*-flash*",
+     "input": "0.30",
+     "cached_input": "0.03",
+     "output": "2.50",
+     "source": "Google Gemini API pricing"
+    },
+    {
+     "pattern": "deepseek-*pro*",
+     "input": "0.44",
+     "cached_input": "0.004",
+     "output": "0.87",
+     "source": "DeepSeek API pricing"
+    },
+    {
+     "pattern": "deepseek-*",
+     "input": "0.14",
+     "cached_input": "0.003",
+     "output": "0.28",
+     "source": "DeepSeek API pricing"
+    },
+    {
+     "pattern": "*mini*",
+     "input": "0.25",
+     "cached_input": "0.025",
+     "output": "2.00",
+     "source": "OpenAI, standard tier (small model)"
+    },
+    {
+     "pattern": "*nano*",
+     "input": "0.05",
+     "cached_input": "0.005",
+     "output": "0.40",
+     "source": "OpenAI, standard tier (smallest model)"
+    },
+    {
+     "pattern": "llama-*",
+     "input": "0.00",
+     "cached_input": "0.00",
+     "output": "0.00",
+     "source": "self-hosted/open-weight: zero marginal list price"
+    },
+    {
+     "pattern": "*",
+     "input": "1.25",
+     "cached_input": "0.125",
+     "output": "10.00",
+     "source": "fallback: mid-tier assumption, flagged as 'assumed' in the receipt"
+    }
+   ],
+   "fallback_marker": "assumed"
+  }
+ },
+ "appendix": {
+  "usage": [
+   {
+    "seq": 3,
+    "model": "claude-sonnet-5",
+    "provider": "vector",
+    "input_tokens": 1000,
+    "cached_input_tokens": 0,
+    "output_tokens": 200,
+    "usage_source": "reported",
+    "cost_usd": "0.006000",
+    "event_hash": "fac008628bf2556b5c6257738441832d5f3168d7d9fe9fc6c64c6f60a98e1312",
+    "latency_ms": 90,
+    "cache_key": "383e1c577a213bf192032b1824f60401af1476b62d9c59de7285071eca837fc0",
+    "merkle_path": [
+     {
+      "side": "left",
+      "hash": "29ff725536b477060b4c71197f7a68ded5e7f4f4da3a3ebf05c30780c2a2d1f2"
+     },
+     {
+      "side": "left",
+      "hash": "bac8435c7a5a92e95664b40a646891b320563d07cadb894ba45891bfc121095e"
+     },
+     {
+      "side": "right",
+      "hash": "1c7a0c931c0fe07be172d5cacd849610d2c7f4c18188f86430c6df3ae9454718"
+     }
+    ]
+   }
+  ],
+  "proof_included": true,
+  "note": "Each usage row carries the hash of its ledger event and a Merkle inclusion proof against ledger.merkle_root. Recompute cost from these rows using the embedded price_table to check this receipt without trusting docket."
+ },
+ "evidence": {
+  "ledger_complete": true,
+  "unwritten_events": 0,
+  "first_failing_seq": null,
+  "write_failures": 0,
+  "fail_fast": false,
+  "policy_limits": {
+   "max_events": null,
+   "max_ledger_bytes": 268435456
+  },
+  "note": "every event reached the ledger file"
+ },
+ "ops": {
+  "circuit_breaker": null,
+  "rate_limiter": null,
+  "health": null,
+  "proxy": null,
+  "fault_injection": null,
+  "chaos_run": false,
+  "snapshot": null,
+  "rollback": null
+ },
+ "findings": [],
+ "limits_disclosure": {
+  "enforced_before_send": [
+   "per-session USD ceiling (where usage is reported or estimated)",
+   "per-session token ceiling",
+   "per-session model-call ceiling",
+   "model allow/deny rules",
+   "wall-clock ceiling (by terminating the supervised process)",
+   "call-rate ceiling, when resilience.max_calls_per_minute or max_calls_per_second is set",
+   "requests to an upstream whose circuit breaker is open",
+   "any further model call once the ledger has reached its configured limit"
+  ],
+  "cache_behaviour": [
+   "when cache.enabled is set, an identical request (same upstream path and same",
+   "canonical body) is answered from the response cache instead of the provider:",
+   "the provider never sees it, and it is recorded as model.cache_hit",
+   "the saving is reported beside the spend, never inside it"
+  ],
+  "recorded_not_enforced": [
+   "filesystem changes under watched paths (detected by snapshot diffing)",
+   "writes to deny_write paths (proven after the fact, flagged as violations)",
+   "process spawn/exit of the supervised child only, not its descendants' syscalls"
+  ],
+  "not_observed": [
+   "traffic that does not pass through the Docket boundary (e.g. an agent configured with a direct provider URL, or HTTPS tunnels when egress.mode = tunnel)",
+   "prompts, completions or file contents unless --record-bodies is enabled",
+   "actions taken by processes outside the supervised process tree"
+  ],
+  "failure_behaviour": [
+   "upstream failures are counted per provider; a circuit breaker stops sending after the configured threshold and records every state change",
+   "when the ledger cannot be written, the run continues by default and the receipt declares the gap (resilience.fail_fast_evidence = true stops it instead)",
+   "a torn final line in a ledger is reported, never silently repaired; `docket doctor --quarantine-torn-tail` moves the bytes aside and keeps them"
+  ],
+  "trust_assumptions": [
+   "the operator ran Docket honestly; the chain proves what was written, not that nothing else happened",
+   "reported token usage is the provider's own count; estimated usage is marked as estimated"
+  ]
+ },
+ "latency": {
+  "method": "nearest-rank",
+  "measured_calls": 1,
+  "total_rows": 1,
+  "total_ms": 90,
+  "max_ms": 90,
+  "p50_ms": 90,
+  "p95_ms": 90,
+  "p99_ms": 90
+ },
+ "cache": {
+  "enabled": true,
+  "policy": {
+   "enabled": true,
+   "ttl_seconds": 60,
+   "max_entries": 8,
+   "max_hits": 3
+  },
+  "hits": 2,
+  "saved_usd": "9.990000",
+  "avoided_tokens": 2400,
+  "by_origin": [
+   {
+    "key": "383e1c577a213bf192032b1824f60401af1476b62d9c59de7285071eca837fc0",
+    "origin_seq": 3,
+    "origin_hash": "fac008628bf2556b5c6257738441832d5f3168d7d9fe9fc6c64c6f60a98e1312",
+    "model": "claude-sonnet-5",
+    "usage": {
+     "input_tokens": 1000,
+     "cached_input_tokens": 0,
+     "output_tokens": 200
+    },
+    "avoided_usd_per_hit": "0.006000",
+    "usage_source": "reported",
+    "hits": 2,
+    "first_seq": 4,
+    "last_seq": 5,
+    "event_hash": "4cd45271c0ca690bd869487a539813f781d73a1d81695180406e425ed74ad2f6",
+    "merkle_path": [
+     {
+      "side": "right",
+      "hash": "4e501e8e1c5c000f1f1de5fa74f814c81d029fc20ed49df165224453f74c70c2"
+     },
+     {
+      "side": "right",
+      "hash": "36d99f40b9a2610fb8d069ddc738569f9a93332e405d4cef7aebc79e5c9e56fd"
+     },
+     {
+      "side": "left",
+      "hash": "75c6a31cd783facf87645ab169be7fd0aa53782ce04d9a81c8372a9b21a323b7"
+     }
+    ],
+    "avoided_usd_total": "0.012000"
+   }
+  ],
+  "hits_ceiling_reached": true,
+  "note": "Every hit is a model.cache_hit event in the ledger; the saved amount is recomputed by docket verify from appendix.usage and the embedded price table, and each group below pins one of its hits to ledger.merkle_root with an inclusion proof. The saving is reported beside the spend, never inside it: totals.cost_usd remains money that was actually spent."
+ },
+ "seal": null,
+ "signature": null
+}

@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "13-usage-proof-tampered.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "usage-inclusion-proofs",
+ "reject": null,
+ "rule": "spec \u00a78 item 4",
+ "mutation": "one hex digit of one inclusion path is zeroed"
+}

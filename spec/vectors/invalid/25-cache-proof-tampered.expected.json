@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "25-cache-proof-tampered.json",
+ "ledger": null,
+ "check": "cache-hit-proofs",
+ "reject": null,
+ "rule": "spec \u00a78 item 10",
+ "mutation": "one hex digit of one cache proof is zeroed"
+}

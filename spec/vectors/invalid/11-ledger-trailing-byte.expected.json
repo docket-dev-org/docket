@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "11-ledger-trailing-byte.json",
+ "ledger": "ledgers/11-ledger-trailing-byte.jsonl",
+ "check": "ledger-file-digest",
+ "reject": null,
+ "rule": "spec \u00a78 item 7",
+ "mutation": "the ledger file gained a trailing newline"
+}

@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "10-merkle-root-mismatch.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "merkle-root",
+ "reject": null,
+ "rule": "spec \u00a78 item 3",
+ "mutation": "ledger.merkle_root is 64 zeros"
+}

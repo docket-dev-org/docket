@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "02-totals-not-object.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "receipt-shape",
+ "reject": null,
+ "rule": "spec \u00a76: every listed member is an object",
+ "mutation": "totals is a string"
+}

@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "19-token-totals-mismatch.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "token-totals",
+ "reject": null,
+ "rule": "spec \u00a78 item 5",
+ "mutation": "totals.total_tokens is one higher than the rows"
+}

@@ -271,15 +271,127 @@ function verifyLedgerChain(events) {
   };
 }
 
+/**
+ * The first object name that appears twice in one object, or null.
+ *
+ * `JSON.parse` keeps the last of two identical names and says nothing, which makes a file mean two
+ * different things to two readers: the one that computed it (usually `last`) and any consumer that
+ * takes the first. RFC 8259 §4 leaves the behaviour undefined, and spec §3.1 says a Docket receipt
+ * has unique names, so this verifier refuses rather than guesses. The scan is a real tokenizer —
+ * strings are skipped with their escapes honoured, so a brace inside a string is not a structural
+ * brace — because a regex over JSON text is how duplicate detectors get fooled by their own test
+ * data.
+ */
+function findDuplicateName(text) {
+  const stack = [];
+  let index = 0;
+  const length = text.length;
+  let pendingName = null;
+  let inObject = false;
+  while (index < length) {
+    const character = text[index];
+    if (character === '"') {
+      let end = index + 1;
+      let value = "";
+      while (end < length) {
+        const current = text[end];
+        if (current === "\\") {
+          value += text[end + 1] ?? "";
+          end += 2;
+          continue;
+        }
+        if (current === '"') break;
+        value += current;
+        end += 1;
+      }
+      if (inObject) {
+        const top = stack[stack.length - 1];
+        if (top.expecting === "name") {
+          top.expecting = "colon";
+          pendingName = value;
+        }
+      }
+      index = end + 1;
+      continue;
+    }
+    if (character === "{" || character === "[") {
+      stack.push({ kind: character, expecting: character === "{" ? "name" : "value", names: new Set() });
+      if (character === "{") inObject = true;
+      index += 1;
+      continue;
+    }
+    if (character === "}" || character === "]") {
+      stack.pop();
+      inObject = stack.length > 0 && stack[stack.length - 1].kind === "{";
+      index += 1;
+      continue;
+    }
+    if (inObject && stack.length > 0) {
+      const top = stack[stack.length - 1];
+      if (character === ":") {
+        if (pendingName !== null) {
+          if (top.names.has(pendingName)) return pendingName;
+          top.names.add(pendingName);
+          pendingName = null;
+        }
+        top.expecting = "value";
+      } else if (character === ",") {
+        top.expecting = top.kind === "{" ? "name" : "value";
+      }
+    }
+    index += 1;
+  }
+  return null;
+}
+
 function verifyReceipt(receipt, options = {}) {
   const checks = [];
   const add = (name, status, detail) => checks.push({ name, status, detail });
 
+  if (receipt === null || typeof receipt !== "object" || Array.isArray(receipt)) {
+    // A document that is not an object has no members to check; saying so once, under the id that
+    // means exactly that, is better than reporting `format: undefined` and eleven skips after it.
+    add("receipt-format", "fail", `the receipt is not a JSON object: ${Array.isArray(receipt) ? "array" : receipt === null ? "null" : typeof receipt}`);
+    return { ok: false, docket_number: null, checks };
+  }
   if (receipt.format !== "docket/receipt/v1") {
     add("format", "fail", `unrecognised format ${JSON.stringify(receipt.format)}`);
   } else {
     add("format", "pass", "docket/receipt/v1");
   }
+
+  // The same sweep the Python verifier performs, over the same members, before any check reads one:
+  // a member that must be an object and is not becomes one named failure here instead of an
+  // undefined-shaped read three checks later.
+  for (const member of [
+    "tool",
+    "session",
+    "policy",
+    "ledger",
+    "totals",
+    "caps",
+    "model_calls",
+    "files",
+    "network",
+    "event_counts",
+    "appendix",
+    "price_table",
+    "evidence",
+    "ops",
+    "limits_disclosure",
+  ]) {
+    const value = receipt[member];
+    if (value !== undefined && value !== null && (typeof value !== "object" || Array.isArray(value))) {
+      add("receipt-shape", "fail", `the receipt's ${member} is not an object: ${Array.isArray(value) ? "array" : typeof value}`);
+    }
+  }
+  // `usage_source` is an enum in spec §6.1, not free text: a consumer is required not to present
+  // estimated usage as metered, and a word outside the vocabulary tells it nothing.
+  (Array.isArray(receipt.appendix?.usage) ? receipt.appendix.usage : []).forEach((row, index) => {
+    if (row && typeof row === "object" && row.usage_source !== undefined && !["reported", "estimated"].includes(row.usage_source)) {
+      add("receipt-shape", "fail", `usage row ${index} has usage_source ${JSON.stringify(row.usage_source)}; the vocabulary is "reported" or "estimated"`);
+    }
+  });
 
   const ledgerMeta = receipt.ledger ?? {};
   const events = options.ledgerEvents ?? null;
@@ -325,48 +437,58 @@ function verifyReceipt(receipt, options = {}) {
   // proofs were fine and the ledger was edited sends a reader looking in the wrong place.
   const rows = receipt.appendix?.usage ?? [];
   const rootValue = chain ? merkleRoot(chain.recomputed) : String(ledgerMeta.merkle_root ?? "");
+  // Two facts about a usage row, reported as two checks. The Python verifier splits them and the
+  // registry makes its names canonical: `usage-inclusion-proofs` is "this row proves into the root the
+  // receipt claims", answerable from the receipt alone; `usage-rows-rebound` is "this row is the event
+  // the recomputed ledger holds at its seq", answerable only when a ledger is supplied. They failed
+  // together for a while, which meant a receipt whose ledger proved fine but whose rows had been
+  // shuffled reported a broken proof — the symptom, not the cause — and a consumer that only wanted to
+  // know whether the proofs were intact could not ask.
   let proven = 0;
-  let unproven = 0;
-  let rebound = 0;
   let proofBad = 0;
+  let firstBadProof = null;
+  let rebound = 0;
   let rebindBad = 0;
-  let firstBad = null;
+  let firstBadRebind = null;
   for (const row of rows) {
-    let ok = Boolean(row.merkle_path) && verifyInclusion(row.event_hash, row.merkle_path, rootValue);
-    if (!ok) proofBad += 1;
-    if (ok && events) {
-      const bound = chain.recomputed[row.seq];
-      if (bound !== row.event_hash) {
-        ok = false;
-        rebindBad += 1;
-      } else rebound += 1;
-    }
+    const ok = Boolean(row.merkle_path) && verifyInclusion(row.event_hash, row.merkle_path, rootValue);
     if (ok) proven += 1;
     else {
-      unproven += 1;
-      if (firstBad === null) firstBad = row.seq;
+      proofBad += 1;
+      if (firstBadProof === null) firstBadProof = row.seq;
+    }
+    if (events) {
+      const bound = chain.recomputed[row.seq];
+      if (bound === row.event_hash) rebound += 1;
+      else {
+        rebindBad += 1;
+        if (firstBadRebind === null) firstBadRebind = row.seq;
+      }
     }
   }
   if (rows.length === 0) {
     add("usage-inclusion-proofs", "pass", "no metered calls in this session");
-  } else if (unproven > 0) {
+  } else if (proofBad > 0) {
     add(
       "usage-inclusion-proofs",
       "fail",
-      events
-        ? `${unproven} of ${rows.length} usage rows do not match the recomputed ledger ` +
-          `(first: seq ${firstBad}; ${proofBad} failed their inclusion proof, ` +
-          `${rebindBad} are not the event the recomputed ledger holds at that sequence)`
-        : `${unproven} of ${rows.length} usage rows failed their inclusion proof`,
+      `${proofBad} of ${rows.length} usage rows failed their inclusion proof ` + `against the receipt's Merkle root (first: seq ${firstBadProof})`,
     );
   } else {
+    add("usage-inclusion-proofs", "pass", `${proven} usage rows proven against the Merkle root`);
+  }
+  if (!events) {
+    add("usage-rows-rebound", "skip", "no ledger supplied: re-binding needs the recomputed events");
+  } else if (rows.length === 0) {
+    add("usage-rows-rebound", "pass", "no metered calls in this session");
+  } else if (rebindBad > 0) {
     add(
-      "usage-inclusion-proofs",
-      "pass",
-      rebound
-        ? `${proven} usage rows proven against the Merkle root and re-bound to the recomputed ledger`
-        : `${proven} usage rows proven against the Merkle root`,
+      "usage-rows-rebound",
+      "fail",
+      `${rebindBad} of ${rows.length} usage rows are not the event the recomputed ledger holds at that sequence (first: seq ${firstBadRebind})`,
     );
+  } else {
+    add("usage-rows-rebound", "pass", `${rebound} usage rows re-bound to the recomputed ledger`);
   }
 
   // Cost recomputation — the property that lets a third party check the arithmetic.
@@ -424,8 +546,21 @@ function verifyReceipt(receipt, options = {}) {
         Number(receipt.totals?.cached_input_tokens ?? 0) === cachedTokens ? "pass" : "fail",
         `${cachedTokens.toLocaleString("en-US")} cached input tokens`,
       );
-      if (assumed.size > 0) {
-        add("assumed-prices", "pass", `flagged as assumed: ${[...assumed].join(", ")}`);
+      // Advisory, and the status means something specific: a fallback price is a guess about the
+      // tariff, so the question is not whether it was guessed (a session with an unlisted model has
+      // to be priced) but whether the receipt says so. This emitted `pass` for every assumption it
+      // noticed, which a consumer reads as "nothing to look at" — exactly backwards.
+      const disclosed = Array.isArray(receipt.totals?.assumed_price_models)
+        ? receipt.totals.assumed_price_models.map(String)
+        : [];
+      const assumedModels = [...assumed];
+      if (assumedModels.length === 0) {
+        add("assumed-prices", "pass", "every model matched a price entry");
+      } else if (assumedModels.every((model) => disclosed.includes(model))) {
+        add("assumed-prices", "pass", `priced by assumption and disclosed: ${assumedModels.join(", ")}`);
+      } else {
+        const hidden = assumedModels.filter((model) => !disclosed.includes(model));
+        add("assumed-prices", "fail", `priced by assumption but not disclosed in totals.assumed_price_models: ${hidden.join(", ")}`);
       }
     }
   }
@@ -817,9 +952,23 @@ function main(argv) {
     process.stderr.write("usage: node verify-js/verify.mjs <receipt.json> [--ledger <ledger.jsonl>] [--json]\n");
     return 2;
   }
+  let receiptText;
   let receipt;
   try {
-    receipt = JSON.parse(readFileSync(options.file, "utf8"));
+    receiptText = readFileSync(options.file, "utf8");
+  } catch (error) {
+    process.stderr.write(`verify-js: cannot read receipt: ${error.message}\n`);
+    return 2;
+  }
+  const repeated = findDuplicateName(receiptText);
+  if (repeated !== null) {
+    process.stderr.write(
+      `verify-js: the receipt names '${repeated}' twice; RFC 8259 leaves the result undefined and Docket will not guess which of the two values was meant\n`,
+    );
+    return 2;
+  }
+  try {
+    receipt = JSON.parse(receiptText);
   } catch (error) {
     process.stderr.write(`verify-js: cannot read receipt: ${error.message}\n`);
     return 2;
@@ -828,10 +977,19 @@ function main(argv) {
   if (options.ledger) {
     const bytes = readFileSync(options.ledger);
     settings.ledgerFileBytes = bytes;
-    settings.ledgerEvents = String(bytes)
+    const lines = String(bytes)
       .split("\n")
-      .filter((line) => line.trim().length > 0)
-      .map((line) => JSON.parse(line));
+      .filter((line) => line.trim().length > 0);
+    settings.ledgerEvents = lines.map((line, number) => {
+      const repeatedEventName = findDuplicateName(line);
+      if (repeatedEventName !== null) {
+        // A ledger with two names for one field is the same ambiguity as a receipt with two, and here
+        // it is worse: the event hash is computed over the canonical form of the event, so which of
+        // the two values was hashed is unknowable. Refuse rather than reconstruct one.
+        throw new Error(`ledger line ${number + 1} names '${repeatedEventName}' twice`);
+      }
+      return JSON.parse(line);
+    });
   }
   if (options.sealKey) {
     try {
@@ -860,6 +1018,7 @@ function main(argv) {
 
 export {
   canonical,
+  findDuplicateName,
   canonicalDigest,
   formatMicros,
   latencyProblems,

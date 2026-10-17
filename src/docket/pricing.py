@@ -385,6 +385,7 @@ def recompute_totals(events: Iterable[dict[str, Any]], price_document: dict[str,
     table.prices = prices
 
     cost = Decimal("0")
+    assumed_models: set[str] = set()
     input_tokens = 0
     cached = 0
     output_tokens = 0
@@ -442,6 +443,11 @@ def recompute_totals(events: Iterable[dict[str, Any]], price_document: dict[str,
         )
         if recorded_amount is not None and recorded_amount != computed:
             mismatches.append({"seq": ev.get("seq"), "model": model, "recorded": recorded, "recomputed": usd(computed)})
+        if _assumed:
+            # The assumption used to be dropped here. It is the one thing in a recomputation that a
+            # reader cannot redo from the receipt's numbers: a fallback price is a guess about which
+            # tariff applied, and spec §9.3 requires it to be visible wherever the cost is.
+            assumed_models.add(model)
         cost += computed
         input_tokens += it
         cached += ct
@@ -455,6 +461,7 @@ def recompute_totals(events: Iterable[dict[str, Any]], price_document: dict[str,
         "total_tokens": input_tokens + output_tokens,
         "cost_usd": usd(cost),
         "per_call_mismatches": mismatches,
+        "assumed_models": sorted(assumed_models),
     }
 
 

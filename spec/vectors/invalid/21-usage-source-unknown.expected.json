@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "21-usage-source-unknown.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "receipt-shape",
+ "reject": null,
+ "rule": "spec \u00a76.1: usage_source is 'reported' | 'estimated'",
+ "mutation": "one row's usage_source is 'guessed'"
+}

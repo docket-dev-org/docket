@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "18-totals-mismatch.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "totals",
+ "reject": null,
+ "rule": "spec \u00a78 item 5",
+ "mutation": "totals.cost_usd does not equal the sum of the rows"
+}

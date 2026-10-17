@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "09-event-count-mismatch.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "event-count",
+ "reject": null,
+ "rule": "spec \u00a78 item 3",
+ "mutation": "ledger.events is one short of the ledger"
+}

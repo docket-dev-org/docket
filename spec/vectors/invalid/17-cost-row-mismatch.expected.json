@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "17-cost-row-mismatch.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "cost-recomputation",
+ "reject": null,
+ "rule": "spec \u00a78 item 5",
+ "mutation": "one row's cost_usd is 9.99"
+}

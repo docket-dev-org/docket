@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "01-format-unknown.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "format",
+ "reject": null,
+ "rule": "spec \u00a76: format is docket/receipt/v1",
+ "mutation": "the format tag names a version that does not exist"
+}

@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "14-usage-row-without-proof.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "usage-inclusion-proofs",
+ "reject": null,
+ "rule": "spec \u00a78 item 4 + \u00a76.1",
+ "mutation": "one usage row was stripped of its merkle_path"
+}

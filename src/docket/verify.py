@@ -343,7 +343,12 @@ def verify_receipt(
     if not rows and not appendix_ok:
         pass  # block 5 reports the unreadable appendix; there is nothing here to recompute
     elif not rows:
-        add("every-usage-row-recomputed", "pass", "no metered calls in this session")
+        # Nothing to account for. `every-usage-row-recomputed` used to be a check of its own here,
+        # and *only* here: a receipt with rows never emitted it, so the id a consumer would reach for
+        # to ask "was every row accounted for?" was absent in every case where the answer was not
+        # already obvious. It is now part of `usage-inclusion-proofs`, whose assertion covers both
+        # halves (a row is proven, or the session says plainly that proofs were omitted).
+        add("usage-inclusion-proofs", "pass", "no metered calls in this session")
     else:
         proven = 0
         without_proof = 0
@@ -370,6 +375,19 @@ def verify_receipt(
                 proof_failures += 1
                 report_row("usage-inclusion-proofs", index, f"usage row {index} is not an object: {type(row).__name__}")
                 continue
+            # `usage_source` is an enum, not free text (spec §6.1: "reported" | "estimated"), and a
+            # consumer is required not to present estimated usage as metered. A value outside the
+            # vocabulary used to pass every check: the row's arithmetic was still recomputed, so the
+            # receipt verified while carrying a word no consumer could act on. The negative corpus
+            # found it — `21-usage-source-unknown` was written as a vector and the verifier accepted
+            # it, which is the point of writing the vector first.
+            source = row.get("usage_source")
+            if source not in ("reported", "estimated"):
+                add(
+                    "receipt-shape",
+                    "fail",
+                    f"usage row {index} has usage_source {source!r}; the vocabulary is 'reported' or 'estimated'",
+                )
             path = row.get("merkle_path")
             if not path:
                 without_proof += 1
@@ -520,6 +538,41 @@ def verify_receipt(
                     add("token-totals", "pass", f"{recomputed['total_tokens']:,} tokens")
                 else:
                     add("token-totals", "fail", "receipt token totals do not match the usage appendix")
+
+            # The Node verifier has always checked the cached half of the token total and the Python
+            # one never did: found by asking each implementation which ids it emits across the whole
+            # corpus, rather than by reading either one. A receipt can carry a correct total and a
+            # wrong cached subtotal, and the subtotal is what a saving is computed from.
+            if "cached_input_tokens" in totals:
+                cached_raw = totals.get("cached_input_tokens")
+                cached_declared = whole(cached_raw, "the receipt's totals.cached_input_tokens")
+                if cached_declared is None:
+                    add("cached-totals", "fail", f"receipt cached total is not a whole number: {cached_raw!r}")
+                elif cached_declared == int(recomputed["cached_input_tokens"]):
+                    add("cached-totals", "pass", f"{recomputed['cached_input_tokens']:,} cached tokens")
+                else:
+                    add("cached-totals", "fail", "receipt cached totals do not match the usage appendix")
+
+            # `assumed-prices` is advisory, not a pass/fail on the arithmetic: a fallback price is a
+            # guess, and the format's rule is not "never guess" (a session with an unlisted model
+            # still has to be priced) but "never guess silently". The Node verifier emitted a `pass`
+            # for every assumption it noticed, which reads as "the receipt is fine" when it is the
+            # receipt's *disclosure* that is in question; the registry fixes the meaning, and this is
+            # the Python side of the same rule.
+            assumed = [str(m) for m in recomputed.get("assumed_models", [])]
+            disclosed = totals.get("assumed_price_models")
+            disclosed_names = {str(m) for m in disclosed} if isinstance(disclosed, list) else set()
+            if not assumed:
+                add("assumed-prices", "pass", "every model matched a price entry")
+            elif set(assumed) <= disclosed_names:
+                add("assumed-prices", "pass", f"priced by assumption and disclosed: {', '.join(assumed)}")
+            else:
+                undisclosed = [m for m in assumed if m not in disclosed_names]
+                add(
+                    "assumed-prices",
+                    "fail",
+                    f"priced by assumption but not disclosed in totals.assumed_price_models: {', '.join(undisclosed)}",
+                )
 
     # -- 6. the latency summary ------------------------------------------- #
     # Every other number in a receipt is arithmetic that a verifier can redo from first

@@ -10,6 +10,38 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **A negative conformance corpus, and the six verifier defects it found.** The vectors could only
+  show that a conforming implementation accepts what it should; nothing tested that it refuses what it
+  must, which is what a verifier is for. `spec/vectors/invalid/` now holds 27 complete documents —
+  a doctored ledger, a totals figure that does not sum, a Merkle path with one hex digit zeroed, a
+  `NaN`, an `Infinity`, a duplicated `docket_number`, a top-level array, an undisclosed fallback
+  price — each with an `expected.json` naming the check that has to catch it and the rule it enforces.
+  `spec/vectors/invalid/build.py` derives each vector from the valid ones, mutates it in exactly one
+  stated way, then **runs the reference verifier and refuses to write the corpus** unless the first
+  failure is the check the vector claims — so a vector cannot quietly document a defect as a feature.
+  Building it, and running it against the second implementation, found six real defects: the Python
+  verifier accepted a `usage_source` outside the vocabulary spec §6.1 defines (the row's arithmetic
+  still recomputed, so every numeric check passed and the one word a consumer branches on was never
+  read); the Node verifier accepted a document that named `ledger` twice, silently keeping the last
+  value, where RFC 8259 §4 makes the meaning undefined; it also accepted the same out-of-vocabulary
+  `usage_source`; it folded "is this row the event the ledger holds at its seq" into the inclusion-proof
+  check, so a shuffled row reported a broken proof rather than a re-binding failure; the Python verifier
+  emitted `every-usage-row-recomputed` **only** for receipts with no usage rows, the one case where the
+  question cannot arise; and its `assumed-prices` row did not exist at all while the Node one reported
+  `pass` for every assumption it noticed. All six are fixed, with a test each.
+- **`spec/registry.json` and `tools/conformance.py`: the check vocabulary, in a form a machine reads.**
+  The registry names every id, what it asserts, and which ids each shipped verifier emits. The
+  capability table is **derived, not written**: `--capabilities` collects the ids each implementation
+  actually printed across the whole corpus and fails when the registry disagrees — which is how the
+  hand-written version was caught saying the Node verifier emitted twelve ids when it emitted eighteen.
+  Ids a verifier does not emit are recorded as declared gaps (`node_conditional`), with the reason
+  stated, rather than as `skip` rows: a skip claims "this verifier looked and could not judge", which
+  would be false. `tools/conformance.py` runs any verifier (`--cmd "my-verify {file} --json{ledger_flag}"`)
+  over the corpus and keeps three outcomes apart — `wrong-ok` (a document that must be refused was
+  accepted), `not-judged` (a declared gap) and `wrong-check` (refused, but by a different rule than the
+  vector names). `make conformance` runs both shipped verifiers and the capability comparison; it is
+  part of `make check`. Both implementations now report **58 correct, 0 wrong, 0 not-judged** over
+  2 positive and 27 negative vectors.
 - **The star-count sweep ships with the repository, and a test keeps the page that quotes it honest.**
   `docs/strategy.md` argues from GitHub star counts — how many repositories hold more than 100,000
   stars, and how fast ten comparable projects reached theirs. An audit of this project's own claims on

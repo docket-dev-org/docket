@@ -29,17 +29,23 @@ as data:
 
 | check | passes when | what it proves | what it does **not** prove |
 | --- | --- | --- | --- |
+| `parse` | the file is JSON this format reads at all — one object, no duplicate names, no `NaN`/`Infinity` | the verdict below is about a document that means one thing | — (it is not a verdict: a refusal here exits `1` with an empty stdout and the reason on stderr) |
 | `format` | the receipt declares a known version | the reader knows the rules it is being held to | that the producer implemented them |
+| `receipt-format` | the document is a JSON object | there is a receipt to hold to the rules at all | — |
+| `receipt-shape` | every member a check reads has the type the format gives it, and `usage_source` is `reported` or `estimated` | a malformed member is named once, instead of surfacing as a wrong answer three checks later | that the *values* are true |
 | `ledger-chain` | every event's hash recomputes and every link matches, in order | the record existed in this order and has not been altered since | that the record is *complete* |
 | `head` | the recomputed final hash matches the receipt | the receipt refers to this exact ledger state | — (reported `SKIP` when the chain is broken, because a mid-file edit can leave the tail hash intact) |
 | `event-count` | the count matches | no events were dropped or appended | —  |
 | `merkle-root` | the root recomputed over event hashes matches | the receipt's commitment covers exactly these events | — |
 | `ledger-file-digest` | the file's SHA-256 matches | the bytes you have are the bytes that were receipted | — |
 | `usage-rows-rebound` | each usage row's `event_hash` equals the **recomputed** hash of the event at its `seq` (only when a ledger is supplied) | the rows belong to *this* ledger, not merely to some ledger with the same claimed root | that the recomputed ledger is the whole story (see `limits-disclosure`) |
-| `usage-inclusion-proofs` | each usage row's Merkle path verifies against the receipt's claimed root | the cost you are looking at came from a call that is in the record the receipt commits to | that the record is the one you were handed — see the next row |
+| `usage-inclusion-proofs` | each usage row's Merkle path verifies against the receipt's claimed root — or the session states plainly that a large run shipped a summary without proofs | the cost you are looking at came from a call that is in the record the receipt commits to | that the record is the one you were handed — see the next row |
 | `cost-recomputation` | every row's cost equals `f(input, cached_input, output)` under the embedded price table | the arithmetic is transparent and reproducible | that the *prices* are right — compare `price_table.digest` against a copy you trust |
 | `totals` | the receipt's totals equal the sum of recomputed rows | internal consistency | — |
 | `token-totals` | token sums match the appendix | nothing was quietly excluded from the sums | that the provider's counts are honest |
+| `cached-totals` | `totals.cached_input_tokens` matches the appendix, when the receipt states one | the cached subtotal — the number a saving is computed from — was not restated | that a cache hit was worth making |
+| `assumed-prices` | a model priced by the price table's fallback entry is named in `totals.assumed_price_models`; passes when nothing was assumed | a guessed tariff is disclosed wherever its cost appears | that the fallback price is the right one for that model |
+| `evidence-completeness` | the receipt's `evidence` member accounts for every metered call and every event written to disk | no event that mattered was lost between the ledger and the receipt | that nothing happened outside the run |
 | `latency-summary` | the stated `latency` (§6.2) is recomputed from the `latency_ms` values of the rows it summarises, by the method it names | the percentiles in the receipt describe *these* calls, not a memory of them | that the clock is accurate, that the recorder was the only thing in the request path, or that the provider's own timing is visible — latency is a wall-clock observation and the member says so |
 | `seal` | HMAC-SHA256 verifies with the supplied key | integrity to whoever holds the key | third-party verifiability (a seal is not a signature, and receipts say so) |
 | `signature` | Ed25519 verifies against the embedded (or supplied-out-of-band) public key | the holder of the signing key attested to this record | *when* they attested it: there is no trusted timestamp |
@@ -47,6 +53,7 @@ as data:
 | `cache-hit-origins` | every group's origin is a metered call in the same receipt, recorded as stored under the same key, with the same model and usage — and, when the ledger is supplied, every `model.cache_hit` event cites an event that exists, is a `model.response` recorded as stored under that key, and whose hash and usage match what the hit claims | a hit is tied to the response it replays rather than to a plausible-looking story about it | that the response was still the right answer when it was replayed: there is no freshness check beyond the TTL the policy set |
 | `cache-hit-proofs` | each group's `merkle_path` proves its first hit against `ledger.merkle_root` | the hit count is bound to the recorded ledger, not merely asserted | — (reported `SKIP` when a large session ships the summary without proofs, and the detail line says so) |
 | `limits-disclosure` | the receipt states its own scope and trust assumptions | the reader cannot be misled by omission | — |
+| `chaos-run` | *advisory, never pass/fail*: a game-day receipt says fault injection was active | a test run cannot be read as production behaviour | anything about the faults themselves |
 
 `SKIP` is a first-class outcome with a printed reason ("no ledger supplied", "receipt is not
 sealed", "chain broken, head not checked"). A verifier that reports coverage it does not have
@@ -58,6 +65,41 @@ one name, so a doctored ledger produced `FAIL usage-inclusion-proofs` and
 `PASS usage-inclusion-proofs` a few lines apart. A reader skimming that sees whichever verdict
 they expected, which is precisely the failure mode a verifier exists to prevent — hence two
 names, and a test (`test_no_check_reports_two_verdicts`) that keeps it that way.
+
+## Holding an implementation to the vocabulary
+
+The table above is a promise; `spec/registry.json` is the same promise in a form a machine can read,
+and `tools/conformance.py` is how you check whether an implementation keeps it — yours included:
+
+```bash
+make conformance                            # both verifiers shipped here, over the whole corpus
+python3 tools/conformance.py --cmd "my-verify {file} --json{ledger_flag}"   # yours
+python3 tools/conformance.py --list         # every id, and what it asserts
+python3 tools/conformance.py --capabilities --python --node   # which ids each one actually emits
+```
+
+The corpus has two halves. `spec/vectors/` holds valid documents a conforming verifier must accept;
+`spec/vectors/invalid/` holds **27** documents it must refuse, each with an `expected.json` naming
+the check that has to catch it and the rule it enforces. `python3 spec/vectors/invalid/build.py
+--check` rebuilds the corpus and re-derives every expectation: each vector is run through the
+reference verifier, and the build fails unless the first failure is the check the vector names. A
+vector that is refused for the *wrong* reason is a vector that documents a defect as a feature.
+
+Three outcomes are kept apart, because conflating them is how a verifier looks better than it is:
+
+* **wrong-ok** — a document that must be refused was accepted. Nothing compensates for this.
+* **not-judged** — the implementation reports `skip`, or does not emit the id at all. A declared gap.
+  `--allow-gaps` reports it and still exits 0; without it, an unjudged vector fails the run.
+* **wrong-check** — refused, but by a different rule than the vector names. Usually a real finding:
+  the verifier is reporting the symptom rather than the cause.
+
+`--capabilities` is the part worth stealing if you build this for another format. It derives the set
+of ids a verifier emits from its *output* over the whole corpus and compares that with the registry.
+It exists because the hand-written version of that table said the Node verifier emitted twelve ids
+when it emitted eighteen, and because an id can be emitted only on a receipt shape nobody tests —
+`every-usage-row-recomputed` was emitted only when a receipt had no usage rows, which is the one
+case where the question cannot arise. That check no longer exists; its assertion is part of
+`usage-inclusion-proofs`.
 
 ## Worked example: one byte
 

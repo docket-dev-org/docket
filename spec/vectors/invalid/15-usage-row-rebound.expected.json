@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "15-usage-row-rebound.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "usage-rows-rebound",
+ "reject": null,
+ "rule": "spec \u00a78 item 4: a row must be the event the ledger has at its seq",
+ "mutation": "two rows exchanged their event hash and proof"
+}

@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "27-assumed-price-undisclosed.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "assumed-prices",
+ "reject": null,
+ "rule": "spec \u00a79.3: a fallback price must be visible wherever the cost is",
+ "mutation": "totals.assumed_price_models was removed from a receipt that priced an unlisted model"
+}

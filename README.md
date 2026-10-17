@@ -231,6 +231,30 @@ from the ledger; `docket diff <a> <b>` shows what changed between two runs (cost
 models, tools, files) — useful as a regression check for agents, the way a golden test is for
 code.
 
+### Checking a verifier, not just a receipt
+
+Agreeing on the happy path proves very little: a verifier that accepts everything passes every
+valid vector. `spec/vectors/invalid/` holds 27 documents that a conforming implementation **must
+refuse** — a doctored ledger, a totals figure that does not sum, a Merkle path with one hex digit
+zeroed, a `NaN` in a JSON document, a duplicated `ledger` member, a fallback price left undisclosed
+— each with a machine-readable expectation naming the check that has to catch it.
+
+```console
+$ make conformance
+58 correct, 0 wrong, 0 not judged (2 positive, 27 negative vectors)
+
+$ python3 tools/conformance.py --capabilities --python --node
+python: 23 ids
+node: 22 ids
+```
+
+`tools/conformance.py` runs *your* verifier too (`--cmd "my-verify {file} --json{ledger_flag}"`),
+and keeps three outcomes apart: **wrong-ok** (a document that must be refused was accepted),
+**not-judged** (a declared gap — a skip, or an id the implementation does not emit), and
+**wrong-check** (refused, but by a different rule than the vector names). Writing this corpus found
+six defects in the implementations beside it, including a Node verifier that silently kept the last
+of two identical JSON names.
+
 ## Undoing what a run did
 
 Every other feature here observes. `--snapshot` and `--rollback-on-breach` are the two that
@@ -313,7 +337,7 @@ pipx install docket         # or keep it out of your project venvs
 uvx docket demo             # or run it without installing anything
 ```
 
-From source: `git clone … && cd docket && make check` (1116 tests, fully offline — no API keys,
+From source: `git clone … && cd docket && make check` (1151 tests, fully offline — no API keys,
 no network, ~90 s).
 
 ## Documentation

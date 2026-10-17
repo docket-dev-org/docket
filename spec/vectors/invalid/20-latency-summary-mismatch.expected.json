@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "20-latency-summary-mismatch.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "latency-summary",
+ "reject": null,
+ "rule": "spec \u00a76.2 + \u00a78 item 6",
+ "mutation": "latency.p50_ms was changed by one millisecond"
+}

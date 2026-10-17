@@ -1,0 +1,67 @@
+{
+  "schema": "docket/conformance-registry/v1",
+  "note": "The check ids a conforming verifier reports, and which ids each shipped verifier actually emits. The ids are the reference implementation's own names, adopted rather than renamed so that no existing report changes meaning. 'parse' is not a check a verifier emits: it names the class of rejection that happens before any check runs (a document that is not JSON, is JSON this format refuses to read, or is not an object at all).",
+  "rules": [
+    "One id means one assertion. A receipt may carry two facts under one name only if a consumer branching on the name gets the right answer either way; `usage-inclusion-proofs` and `usage-rows-rebound` are separate for exactly this reason.",
+    "A status is one of pass, fail, skip. `skip` means the verifier looked and could not judge (no ledger, no key, no data) and must say why; an id a verifier never emits is a gap in that verifier, not a skip.",
+    "An advisory id (marked below) carries information rather than a verdict. Its status is still meaningful: `assumed-prices` fails when a price was guessed and the receipt does not say so.",
+    "The capability lists below are checked against observed output by `tools/conformance.py --capabilities`, over the whole corpus. They are not maintained by reading the source."
+  ],
+  "ids": [
+    {"id": "parse", "assertion": "the file is JSON this format reads at all: one object, no duplicate names, no NaN/Infinity, valid UTF-8", "emitted": false},
+    {"id": "format", "assertion": "the receipt's format tag is docket/receipt/v1", "emitted": true},
+    {"id": "receipt-format", "assertion": "the document is a JSON object, so a format can be read from it at all", "emitted": true},
+    {"id": "receipt-shape", "assertion": "every member the checks read has the type the format gives it, and enum-valued members (usage_source) carry a value from their vocabulary", "emitted": true},
+    {"id": "ledger-chain", "assertion": "every event hash recomputes, every prev links, sequence numbers are dense from zero, and no hashed structure carries a float", "emitted": true},
+    {"id": "head", "assertion": "the last recomputed event hash equals ledger.head", "emitted": true},
+    {"id": "event-count", "assertion": "the number of events equals ledger.events", "emitted": true},
+    {"id": "merkle-root", "assertion": "the Merkle root of the recomputed event hashes equals ledger.merkle_root", "emitted": true},
+    {"id": "ledger-file-digest", "assertion": "sha256 of the supplied ledger file equals ledger.file_sha256", "emitted": true},
+    {"id": "usage-inclusion-proofs", "assertion": "every appendix usage row is accounted for: it is proven present by its merkle_path against ledger.merkle_root, or the session states that proofs were omitted", "emitted": true},
+    {"id": "usage-rows-rebound", "assertion": "each usage row is the event the recomputed ledger has at its seq (only when a ledger is supplied)", "emitted": true},
+    {"id": "cost-recomputation", "assertion": "every usage row's cost_usd equals tokens x the embedded price table", "emitted": true},
+    {"id": "totals", "assertion": "totals.cost_usd equals the sum of the recomputed usage rows", "emitted": true},
+    {"id": "token-totals", "assertion": "totals.total_tokens equals the sum of the usage rows' input and output tokens", "emitted": true},
+    {"id": "cached-totals", "assertion": "totals.cached_input_tokens equals the sum of the usage rows' cached input tokens, when the receipt states one", "emitted": true},
+    {"id": "assumed-prices", "assertion": "a model priced by the fallback entry is named in totals.assumed_price_models; pass when nothing was assumed", "emitted": true, "advisory": true},
+    {"id": "latency-summary", "assertion": "the latency summary equals the summary of exactly the rows that carry latency_ms", "emitted": true},
+    {"id": "cache-savings", "assertion": "cache.saved_usd and cache.avoided_tokens equal the sum over by_origin of the per-hit amount recomputed from each origin's usage", "emitted": true},
+    {"id": "cache-hit-origins", "assertion": "every cache group's origin is a usage row recorded as stored under the same key", "emitted": true},
+    {"id": "cache-hit-proofs", "assertion": "every cache group's inclusion proof verifies against the receipt's Merkle root", "emitted": true},
+    {"id": "limits-disclosure", "assertion": "the receipt carries the §9 statement of what it does and does not establish", "emitted": true},
+    {"id": "evidence-completeness", "assertion": "the evidence member accounts for every metered call and every event written to disk", "emitted": true},
+    {"id": "chaos-run", "assertion": "a game-day receipt says plainly that fault injection was active, so a test run is never read as production behaviour", "emitted": true, "advisory": true},
+    {"id": "seal", "assertion": "an HMAC-SHA256 seal verifies with the operator's key", "emitted": true},
+    {"id": "signature", "assertion": "an Ed25519 signature verifies with the embedded or supplied public key", "emitted": true}
+  ],
+  "capabilities": {
+    "note": "Derived from observed output over the conformance corpus, not from reading source. A verifier that does not emit an id does not judge it, and a consumer must be able to tell that apart from a pass: that is the difference between `not_judged` and `skip`. `conditional` ids are emitted only for receipt shapes the corpus does not contain, with the reason stated.",
+    "python": ["assumed-prices", "cache-hit-origins", "cache-hit-proofs", "cache-savings", "cached-totals", "cost-recomputation", "event-count", "evidence-completeness", "format", "head", "latency-summary", "ledger-chain", "ledger-file-digest", "limits-disclosure", "merkle-root", "receipt-format", "receipt-shape", "seal", "signature", "token-totals", "totals", "usage-inclusion-proofs", "usage-rows-rebound"],
+    "python_conditional": {
+      "chaos-run": "emitted only when ops.chaos_run is true; the corpus carries no game-day receipt, and tests/test_chaos.py is what covers it"
+    },
+    "node": ["assumed-prices", "cache-hit-origins", "cache-hit-proofs", "cache-savings", "cached-totals", "cost-recomputation", "event-count", "format", "head", "latency-summary", "ledger-chain", "ledger-file-digest", "limits-disclosure", "merkle-root", "receipt-format", "receipt-shape", "seal", "signature", "token-totals", "totals", "usage-inclusion-proofs", "usage-rows-rebound"],
+    "node_conditional": {
+      "chaos-run": "not implemented in the Node verifier: a game-day receipt verifies there without being labelled a test",
+      "evidence-completeness": "not implemented in the Node verifier: a JS-only consumer cannot check that the ledger is complete"
+    }
+  },
+  "history": [
+    {
+      "change": "`every-usage-row-recomputed` removed",
+      "why": "It was emitted only when a receipt had no usage rows at all — the one case where the question cannot arise — so the id a consumer would reach for was absent in every case where it mattered. Its assertion is now `usage-inclusion-proofs`, which covers both halves. Removing an id is a vocabulary change; it is made now, before publication, rather than carried as a duplicate forever."
+    },
+    {
+      "change": "`cached-totals` added",
+      "why": "The Node verifier had always emitted it and the Python one never did; found by asking each implementation which ids it emits rather than by reading either. A receipt can carry a correct total and a wrong cached subtotal, and the cached subtotal is what a saving is computed from."
+    },
+    {
+      "change": "`assumed-prices` given a meaning and both implementations aligned to it",
+      "why": "The Node verifier emitted `pass` whenever it noticed an assumption, which reads as 'the receipt is fine' when the receipt's disclosure is what is in question; the Python verifier did not emit the id at all. It is now advisory with a real failure mode: assumed and undisclosed."
+    },
+    {
+      "change": "`usage-rows-rebound` split out of `usage-inclusion-proofs` in the Node verifier",
+      "why": "The two are different facts with different evidence requirements (one needs only the receipt, the other needs the ledger). Folding them meant a receipt whose proofs were intact but whose rows had been shuffled reported a broken proof — the symptom, not the cause."
+    }
+  ]
+}

@@ -1,0 +1,517 @@
+[
+ {
+  "format": "docket/receipt/v1",
+  "docket_number": "DKT-20260102-VECT01",
+  "label": null,
+  "created_at": "2026-01-02T03:04:05Z",
+  "tool": {
+   "name": "docket",
+   "version": "0.1.0",
+   "format": "docket/receipt/v1"
+  },
+  "session": {
+   "id": "vectorsession",
+   "argv": [
+    "agent",
+    "--task",
+    "vector"
+   ],
+   "cwd": "/srv/vectors",
+   "exit_code": 0,
+   "duration_seconds": "2.500",
+   "breached": null,
+   "interrupted": false,
+   "host": {
+    "platform": "vector",
+    "python": "3.13.0",
+    "machine": "x86_64"
+   }
+  },
+  "policy": {
+   "name": "vector",
+   "digest": "4bf46ae751e5d7a9c3f29f2fd054a5e6626b6672b8c4fd0f2c399b4d834b3b7c",
+   "document": {
+    "name": "vector",
+    "caps": {
+     "max_usd": "5.00",
+     "max_tokens": null,
+     "max_model_calls": null,
+     "max_wall_seconds": null,
+     "warn_at": "0.8",
+     "on_breach": "kill",
+     "grace_seconds": 5
+    },
+    "models": {
+     "allow": [],
+     "deny": []
+    },
+    "egress": {
+     "mode": "deny",
+     "allow": [
+      "api.anthropic.com",
+      "api.openai.com",
+      "generativelanguage.googleapis.com",
+      "api.deepseek.com",
+      "api.mistral.ai",
+      "openrouter.ai",
+      "api.groq.com",
+      "localhost",
+      "127.0.0.1"
+     ]
+    },
+    "files": {
+     "watch": [
+      "."
+     ],
+     "ignore": [],
+     "deny_write": []
+    },
+    "budget": {
+     "mode": "usd"
+    },
+    "resilience": {
+     "breaker_threshold": 5,
+     "breaker_cooldown_seconds": 30,
+     "breaker_max_cooldown_seconds": 300,
+     "max_calls_per_minute": null,
+     "max_calls_per_second": null,
+     "max_events": null,
+     "max_ledger_bytes": 268435456,
+     "fail_fast_evidence": false,
+     "min_free_bytes": 16777216
+    }
+   },
+   "source": null
+  },
+  "totals": {
+   "calls": 4,
+   "input_tokens": 9000,
+   "cached_input_tokens": 1000,
+   "output_tokens": 900,
+   "total_tokens": 9900,
+   "cost_usd": "0.013500",
+   "cost_basis": "mixed: reported and estimated usage",
+   "usage_reported_calls": 3,
+   "usage_estimated_calls": 1,
+   "asserted_calls": 0,
+   "assumed_price_models": [
+    "unlisted-model-1"
+   ],
+   "by_model": [
+    {
+     "model": "claude-sonnet-5",
+     "calls": 2,
+     "input_tokens": 2000,
+     "cached_input_tokens": 1000,
+     "output_tokens": 400,
+     "cost_usd": "0.009300"
+    },
+    {
+     "model": "unlisted-model-1",
+     "calls": 1,
+     "input_tokens": 2000,
+     "cached_input_tokens": 0,
+     "output_tokens": 100,
+     "cost_usd": "0.003500"
+    },
+    {
+     "model": "gpt-6-luna",
+     "calls": 1,
+     "input_tokens": 5000,
+     "cached_input_tokens": 0,
+     "output_tokens": 400,
+     "cost_usd": "0.000700"
+    }
+   ]
+  },
+  "model_calls": {
+   "count": 4,
+   "by_provider": {
+    "vector": 4
+   },
+   "denied": 0,
+   "errors": 0
+  },
+  "tools": {
+   "calls": 1,
+   "names": [
+    "read_file"
+   ],
+   "failures": 0
+  },
+  "files": {
+   "changed": 0,
+   "added": 0,
+   "modified": 0,
+   "removed": 0,
+   "violations": 0,
+   "top_paths": []
+  },
+  "network": {
+   "tunnels_allowed": 0,
+   "tunnels_denied": 0
+  },
+  "caps": {
+   "exceeded": 0,
+   "warnings": 0
+  },
+  "event_counts": {
+   "session.start": 1,
+   "policy.applied": 1,
+   "model.request": 4,
+   "model.response": 4,
+   "tool.call": 1,
+   "session.end": 1
+  },
+  "ledger": {
+   "format": "docket/ledger/v1",
+   "events": 12,
+   "head": "2e3750114a9bf2dcb5584024648c1af639b81b12350043236406c97be7e3e7eb",
+   "genesis": "adf41ffdf0fd9128f8f4fe88fa09fba359e27453b02be87886b621a2c2b0f7dc",
+   "merkle_root": "1539f98b9a9187be1c23ba905d5a7c25977c66c631b0ec6003c5533d3b81d52d",
+   "file_sha256": "b1e77cb8825476d25652da952515b16dd340b164f47ebf114cd3a813b8162fd9",
+   "chain": "sha256(prev + canonical_json(event))"
+  },
+  "price_table": {
+   "schema": "docket/prices/v1",
+   "as_of": "2026-10-13",
+   "digest": "61cd61c7fe295ef1e93b41907c0d73c5075aa63c6d730c325c4e9def95cc53f0",
+   "document": {
+    "_meta": {
+     "schema": "docket/prices/v1",
+     "as_of": "2026-10-13",
+     "currency": "USD",
+     "unit": "per_million_tokens",
+     "note": "List prices for public APIs, used to ESTIMATE cost from token counts reported by the provider. Docket never bills anyone and never claims these are the prices you pay: negotiated, regional, batch, flex, priority and subscription pricing all differ. Amounts are strings to keep verification reproducible across languages.",
+     "sources": [
+      "https://developers.openai.com/api/docs/pricing",
+      "https://www.anthropic.com/pricing",
+      "https://ai.google.dev/gemini-api/docs/pricing",
+      "https://api-docs.deepseek.com/quick_start/pricing"
+     ],
+     "matched_by": "fnmatch-style glob, case-insensitive, FIRST MATCH IN FILE ORDER WINS, so narrower families must be listed before wider ones (see gpt-6-luna* before gpt-6*)"
+    },
+    "families": [
+     {
+      "pattern": "gpt-6-luna*",
+      "input": "0.10",
+      "cached_input": "0.01",
+      "output": "0.50",
+      "source": "OpenAI, standard tier, smallest of the gpt-6 family (must precede gpt-6*)"
+     },
+     {
+      "pattern": "gpt-6.1*",
+      "input": "2.00",
+      "cached_input": "0.10",
+      "output": "10.00",
+      "source": "OpenAI, standard tier, short context"
+     },
+     {
+      "pattern": "gpt-6*",
+      "input": "10.00",
+      "cached_input": "1.00",
+      "output": "50.00",
+      "source": "OpenAI, standard tier, short context (flagship tier)"
+     },
+     {
+      "pattern": "gpt-5.6*",
+      "input": "4.00",
+      "cached_input": "0.40",
+      "output": "20.00",
+      "source": "OpenAI, standard tier, short context"
+     },
+     {
+      "pattern": "gpt-5*",
+      "input": "1.25",
+      "cached_input": "0.125",
+      "output": "10.00",
+      "source": "OpenAI, standard tier, short context"
+     },
+     {
+      "pattern": "gpt-4.1*",
+      "input": "2.00",
+      "cached_input": "0.50",
+      "output": "8.00",
+      "source": "OpenAI, standard tier"
+     },
+     {
+      "pattern": "o4* / o3*",
+      "input": "2.00",
+      "cached_input": "0.50",
+      "output": "8.00",
+      "source": "OpenAI, standard tier (reasoning)"
+     },
+     {
+      "pattern": "*opus*",
+      "input": "5.00",
+      "cached_input": "0.50",
+      "output": "25.00",
+      "source": "Anthropic listed API pricing, Claude Opus tier"
+     },
+     {
+      "pattern": "*sonnet*",
+      "input": "3.00",
+      "cached_input": "0.30",
+      "output": "15.00",
+      "source": "Anthropic listed API pricing, Claude Sonnet tier"
+     },
+     {
+      "pattern": "*haiku*",
+      "input": "1.00",
+      "cached_input": "0.10",
+      "output": "5.00",
+      "source": "Anthropic listed API pricing, Claude Haiku tier"
+     },
+     {
+      "pattern": "gemini-*-pro*",
+      "input": "2.00",
+      "cached_input": "0.20",
+      "output": "12.00",
+      "source": "Google Gemini API pricing"
+     },
+     {
+      "pattern": "gemini-*-flash*",
+      "input": "0.30",
+      "cached_input": "0.03",
+      "output": "2.50",
+      "source": "Google Gemini API pricing"
+     },
+     {
+      "pattern": "deepseek-*pro*",
+      "input": "0.44",
+      "cached_input": "0.004",
+      "output": "0.87",
+      "source": "DeepSeek API pricing"
+     },
+     {
+      "pattern": "deepseek-*",
+      "input": "0.14",
+      "cached_input": "0.003",
+      "output": "0.28",
+      "source": "DeepSeek API pricing"
+     },
+     {
+      "pattern": "*mini*",
+      "input": "0.25",
+      "cached_input": "0.025",
+      "output": "2.00",
+      "source": "OpenAI, standard tier (small model)"
+     },
+     {
+      "pattern": "*nano*",
+      "input": "0.05",
+      "cached_input": "0.005",
+      "output": "0.40",
+      "source": "OpenAI, standard tier (smallest model)"
+     },
+     {
+      "pattern": "llama-*",
+      "input": "0.00",
+      "cached_input": "0.00",
+      "output": "0.00",
+      "source": "self-hosted/open-weight: zero marginal list price"
+     },
+     {
+      "pattern": "*",
+      "input": "1.25",
+      "cached_input": "0.125",
+      "output": "10.00",
+      "source": "fallback: mid-tier assumption, flagged as 'assumed' in the receipt"
+     }
+    ],
+    "fallback_marker": "assumed"
+   }
+  },
+  "appendix": {
+   "usage": [
+    {
+     "seq": 3,
+     "model": "claude-sonnet-5",
+     "provider": "vector",
+     "input_tokens": 1000,
+     "cached_input_tokens": 0,
+     "output_tokens": 200,
+     "usage_source": "reported",
+     "cost_usd": "0.006000",
+     "event_hash": "5d555ba9e8852a118d2eaeca8b5bbf315cced81b939f7db8f05b0d03ceec6bef",
+     "latency_ms": 100,
+     "merkle_path": [
+      {
+       "side": "left",
+       "hash": "ed1ae655bb9bf2c0ad16868fa3b355fb5b2da3feb21d8b2beb890da373f04ad7"
+      },
+      {
+       "side": "left",
+       "hash": "6b30914881d7f129e779c36cafca40c914191edf284cd2ec0b316d6d853d4f33"
+      },
+      {
+       "side": "right",
+       "hash": "9da9b9078b6f4c77f557556036231ce2357ad8129a533395c279ea482fb5212d"
+      },
+      {
+       "side": "right",
+       "hash": "b5967a7d59e68f6ed4d3da38f7fac04f6515e16b60c116ea3385ebc3cb561c1c"
+      }
+     ]
+    },
+    {
+     "seq": 5,
+     "model": "claude-sonnet-5",
+     "provider": "vector",
+     "input_tokens": 1000,
+     "cached_input_tokens": 1000,
+     "output_tokens": 200,
+     "usage_source": "reported",
+     "cost_usd": "0.003300",
+     "event_hash": "58b972d528f9743bf97b1c19c91b88e8878770307a14397d1491da1f14784a3e",
+     "latency_ms": 101,
+     "merkle_path": [
+      {
+       "side": "left",
+       "hash": "dad3f6be6335e9b952c051a6c68abdaeef4fbe3681e1955576d99f074ace9e5f"
+      },
+      {
+       "side": "right",
+       "hash": "b881c1ea6d250a99ad20dfc4f5ba389917ffb6243be85af18ad654fa197f1493"
+      },
+      {
+       "side": "left",
+       "hash": "233af49c80385a11b4cbf6480c708715781896f5a2e458478feb952be6b45275"
+      },
+      {
+       "side": "right",
+       "hash": "b5967a7d59e68f6ed4d3da38f7fac04f6515e16b60c116ea3385ebc3cb561c1c"
+      }
+     ]
+    },
+    {
+     "seq": 7,
+     "model": "gpt-6-luna",
+     "provider": "vector",
+     "input_tokens": 5000,
+     "cached_input_tokens": 0,
+     "output_tokens": 400,
+     "usage_source": "reported",
+     "cost_usd": "0.000700",
+     "event_hash": "226f14969563f84e2aa2148e5ccba5442ff3939ae83b3194afde22dd59ac10d4",
+     "latency_ms": 102,
+     "merkle_path": [
+      {
+       "side": "left",
+       "hash": "3ecf6f7a726c5dbe30652a0bba42a2e628dd705f5d7fa5c6214610f1cb04b6d9"
+      },
+      {
+       "side": "left",
+       "hash": "7f2e5cd9dd379e2c9a41394b9e3f2ce35cc9f13b3ceeac527d7f34b5b874d746"
+      },
+      {
+       "side": "left",
+       "hash": "233af49c80385a11b4cbf6480c708715781896f5a2e458478feb952be6b45275"
+      },
+      {
+       "side": "right",
+       "hash": "b5967a7d59e68f6ed4d3da38f7fac04f6515e16b60c116ea3385ebc3cb561c1c"
+      }
+     ]
+    },
+    {
+     "seq": 9,
+     "model": "unlisted-model-1",
+     "provider": "vector",
+     "input_tokens": 2000,
+     "cached_input_tokens": 0,
+     "output_tokens": 100,
+     "usage_source": "estimated",
+     "cost_usd": "0.003500",
+     "event_hash": "4f08e6e5c56bf255d49a11da51f9cf6b6cd85a339df94aa5e0764f41150e1696",
+     "latency_ms": 103,
+     "merkle_path": [
+      {
+       "side": "left",
+       "hash": "09f838dd057111586fafd6939e147f13ff27706abaa1710be508c93973058901"
+      },
+      {
+       "side": "right",
+       "hash": "1110ae764fc734bff1d392066d4318d61d6eb510bc8efc46ca22125ff6fcf5a1"
+      },
+      {
+       "side": "left",
+       "hash": "76c6fd369b3fafe7989f526b449cd766d5a0da8c10ad310de241219a408afa53"
+      }
+     ]
+    }
+   ],
+   "proof_included": true,
+   "note": "Each usage row carries the hash of its ledger event and a Merkle inclusion proof against ledger.merkle_root. Recompute cost from these rows using the embedded price_table to check this receipt without trusting docket."
+  },
+  "evidence": {
+   "ledger_complete": true,
+   "unwritten_events": 0,
+   "first_failing_seq": null,
+   "write_failures": 0,
+   "fail_fast": false,
+   "policy_limits": {
+    "max_events": null,
+    "max_ledger_bytes": 268435456
+   },
+   "note": "every event reached the ledger file"
+  },
+  "ops": {
+   "circuit_breaker": null,
+   "rate_limiter": null,
+   "health": null,
+   "proxy": null,
+   "fault_injection": null,
+   "chaos_run": false,
+   "snapshot": null,
+   "rollback": null
+  },
+  "findings": [],
+  "limits_disclosure": {
+   "enforced_before_send": [
+    "per-session USD ceiling (where usage is reported or estimated)",
+    "per-session token ceiling",
+    "per-session model-call ceiling",
+    "model allow/deny rules",
+    "wall-clock ceiling (by terminating the supervised process)",
+    "call-rate ceiling, when resilience.max_calls_per_minute or max_calls_per_second is set",
+    "requests to an upstream whose circuit breaker is open",
+    "any further model call once the ledger has reached its configured limit"
+   ],
+   "cache_behaviour": [
+    "no response cache is configured: every request is forwarded"
+   ],
+   "recorded_not_enforced": [
+    "filesystem changes under watched paths (detected by snapshot diffing)",
+    "writes to deny_write paths (proven after the fact, flagged as violations)",
+    "process spawn/exit of the supervised child only, not its descendants' syscalls"
+   ],
+   "not_observed": [
+    "traffic that does not pass through the Docket boundary (e.g. an agent configured with a direct provider URL, or HTTPS tunnels when egress.mode = tunnel)",
+    "prompts, completions or file contents unless --record-bodies is enabled",
+    "actions taken by processes outside the supervised process tree"
+   ],
+   "failure_behaviour": [
+    "upstream failures are counted per provider; a circuit breaker stops sending after the configured threshold and records every state change",
+    "when the ledger cannot be written, the run continues by default and the receipt declares the gap (resilience.fail_fast_evidence = true stops it instead)",
+    "a torn final line in a ledger is reported, never silently repaired; `docket doctor --quarantine-torn-tail` moves the bytes aside and keeps them"
+   ],
+   "trust_assumptions": [
+    "the operator ran Docket honestly; the chain proves what was written, not that nothing else happened",
+    "reported token usage is the provider's own count; estimated usage is marked as estimated"
+   ]
+  },
+  "latency": {
+   "method": "nearest-rank",
+   "measured_calls": 4,
+   "total_rows": 4,
+   "total_ms": 406,
+   "max_ms": 103,
+   "p50_ms": 101,
+   "p95_ms": 103,
+   "p99_ms": 103
+  },
+  "seal": null,
+  "signature": null
+ }
+]

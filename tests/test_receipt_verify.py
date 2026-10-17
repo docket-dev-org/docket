@@ -488,8 +488,8 @@ def test_an_empty_usage_appendix_says_there_were_no_calls(make_receipt):
     receipt["appendix"]["usage"] = []
     result = verify_receipt(receipt, ledger_path=ledger_path)
     checks = {check.name: check for check in result.checks}
-    assert checks["every-usage-row-recomputed"].status == "pass"
-    assert "no metered calls" in checks["every-usage-row-recomputed"].detail
+    assert checks["usage-inclusion-proofs"].status == "pass"
+    assert "no metered calls" in checks["usage-inclusion-proofs"].detail
     # With nothing to re-bind, nothing is claimed about re-binding.
     assert "usage-rows-rebound" not in checks
 

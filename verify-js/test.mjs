@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import {
   canonical,
   canonicalDigest,
+  findDuplicateName,
   formatMicros,
   latencySummary,
   merkleRoot,
@@ -221,6 +222,44 @@ check(
   "a receipt with no latency skips rather than passing",
   (noLatency.checks.find((check) => check.name === "latency-summary") ?? {}).status === "skip",
   JSON.stringify((noLatency.checks.find((check) => check.name === "latency-summary") ?? {}).detail),
+);
+
+console.log("the negative corpus found three defects; these hold the fixes");
+// 1. `JSON.parse` keeps the last of two identical names. A receipt that names `ledger` twice means
+// two different things to two readers, and the one that computed it is usually not the one reading it.
+check("duplicate name is found", findDuplicateName('{"a": 1, "a": 2}') === "a");
+check("nested objects are separate namespaces", findDuplicateName('{"a": {"b": 1}, "c": {"b": 2}}') === null);
+check("a brace inside a string is not a brace", findDuplicateName('{"a": "{\"b\": 1}", "b": 2}') === null);
+check("an escaped quote does not end a string", findDuplicateName('{"a": "x\\"y", "b": 2}') === null);
+check("arrays of objects are scanned", findDuplicateName('[{"a": 1, "a": 2}]') === "a");
+check("valid receipts have none", findDuplicateName(JSON.stringify(load("receipt.json"))) === null);
+
+// 2. `usage_source` is an enum (spec §6.1), and a consumer is required not to present estimated
+// usage as metered. A word outside the vocabulary used to verify, because only the arithmetic of the
+// row was examined.
+const guessedSource = JSON.parse(JSON.stringify(load("receipt.json")));
+guessedSource.appendix.usage[0].usage_source = "guessed";
+const guessed = verifyReceipt(guessedSource);
+check(
+  "an out-of-vocabulary usage_source is a shape failure",
+  guessed.ok === false && guessed.checks.some((item) => item.name === "receipt-shape" && item.status === "fail" && item.detail.includes("guessed")),
+);
+
+// 3. The inclusion proof and the re-binding are two facts, and they are now two checks: a receipt
+// whose proofs are intact but whose rows are not the ledger's events has to say so, rather than
+// reporting a broken proof.
+const base = load("receipt.json");
+const reboundReceipt = JSON.parse(JSON.stringify(base));
+const reboundLedger = JSON.parse(JSON.stringify(load("ledger.json")));
+const withLedger = verifyReceipt(reboundReceipt, { ledgerEvents: reboundLedger.events });
+check(
+  "a clean receipt proves and re-binds",
+  withLedger.checks.find((item) => item.name === "usage-inclusion-proofs").status === "pass" &&
+    withLedger.checks.find((item) => item.name === "usage-rows-rebound").status === "pass",
+);
+check(
+  "re-binding is a skip without a ledger, never a pass",
+  verifyReceipt(reboundReceipt).checks.find((item) => item.name === "usage-rows-rebound").status === "skip",
 );
 
 console.log("money");

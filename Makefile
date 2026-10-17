@@ -1,15 +1,16 @@
-.PHONY: help game-day selftest helm-fidelity test demo lint fmt audit mutation verify-js vectors wheel clean check site site-check a11y deploy-check load soak cache-load
+.PHONY: help game-day selftest helm-fidelity test demo lint fmt audit mutation verify-js vectors conformance wheel clean check site site-check a11y deploy-check load soak cache-load
 
 help:
 	@echo "make test       run the full test suite (offline, no API keys)"
 	@echo "make demo       run the runaway-agent demo with the tamper demonstration"
 	@echo "make verify-js  run the independent Node verifier against the vectors"
 	@echo "make vectors    regenerate spec/vectors (only for a deliberate format change)"
+	@echo "make conformance run the negative corpus against both verifiers, and hold the registry to what they emit"
 	@echo "make wheel      build sdist + wheel into dist/"
 	@echo "make lint fmt   ruff check / ruff format"
 	@echo "make audit      bandit static analysis (suppressions documented in pyproject.toml)"
 	@echo "make mutation   mutate the source, run the tests, report every survivor (slow)"
-	@echo "make check      lint + audit + tests + verify-js + deploy-check"
+	@echo "make check      lint + audit + tests + verify-js + conformance + deploy-check"
 	@echo "make selftest   19 probes: the boundary, exercised in this process (6 s)"
 	@echo "make game-day   every failure phase, end to end, with a post-mortem (~20 s)"
 	@echo "make site       build the docs site (needs mkdocs-material)"
@@ -33,6 +34,14 @@ demo:
 
 verify-js:
 	node verify-js/test.mjs
+
+# The corpus is the format's contract, and this target is the only place both halves are run against
+# it. `--capabilities` is not decoration: it compares the registry's promise about which ids each
+# verifier emits with the ids they actually emitted, so a check that quietly disappears (or one that
+# only ever fires on an empty receipt) fails here rather than at a stranger's desk.
+conformance:
+	PYTHONPATH=src python3 tools/conformance.py --python --node
+	PYTHONPATH=src python3 tools/conformance.py --capabilities --python --node
 
 vectors:
 	PYTHONPATH=src python3 spec/vectors/generate.py
@@ -97,7 +106,7 @@ game-day:
 selftest:
 	PYTHONPATH=src python3 -m docket selftest
 
-check: lint audit test verify-js deploy-check
+check: lint audit test verify-js conformance deploy-check
 
 clean:
 	rm -rf dist build *.egg-info .pytest_cache .ruff_cache

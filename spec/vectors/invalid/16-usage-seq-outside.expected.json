@@ -1,0 +1,9 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "16-usage-seq-outside.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "usage-rows-rebound",
+ "reject": null,
+ "rule": "spec \u00a76.1: seq names an event in the ledger",
+ "mutation": "one row cites seq 9999"
+}
