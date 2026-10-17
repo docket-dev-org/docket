@@ -1,0 +1,10 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "42-quota-mode-basis-is-accepted.json",
+ "ledger": "base.ledger.jsonl",
+ "check": null,
+ "reject": null,
+ "accept": true,
+ "rule": "spec \u00a78 item 5b: quota mode is reported as not checked, never as a contradiction",
+ "mutation": "a subscription run states a quota-mode basis, which the receipt states nowhere else"
+}

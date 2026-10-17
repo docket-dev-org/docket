@@ -234,14 +234,15 @@ code.
 ### Checking a verifier, not just a receipt
 
 Agreeing on the happy path proves very little: a verifier that accepts everything passes every
-valid vector. `spec/vectors/invalid/` holds 32 documents that a conforming implementation **must
-refuse** (and 3 that it must accept) — a doctored ledger, a totals figure that does not sum, a Merkle path with one hex digit
-zeroed, a `NaN` in a JSON document, a duplicated `ledger` member, a fallback price left undisclosed
-— each with a machine-readable expectation naming the check that has to catch it.
+valid vector. `spec/vectors/invalid/` holds 42 documents, 38 of which a conforming implementation **must
+refuse** (and 4 that it must accept) — a doctored ledger, a totals figure that does not sum, a
+Merkle path with one hex digit zeroed, a `NaN` in a JSON document, a duplicated `ledger` member, a
+fallback price left undisclosed, a per-model breakdown that names a model nobody called — each with
+a machine-readable expectation naming the check that has to catch it.
 
 ```console
 $ make conformance
-80 correct, 0 wrong, 0 not judged (2 positive, 38 negative vectors)
+88 correct, 0 wrong, 0 not judged (2 positive, 42 negative vectors)
 
 $ python3 tools/conformance.py --capabilities --python --node
 python: 23 ids
@@ -337,7 +338,7 @@ pipx install docket         # or keep it out of your project venvs
 uvx docket demo             # or run it without installing anything
 ```
 
-From source: `git clone … && cd docket && make check` (1172 tests, fully offline — no API keys,
+From source: `git clone … && cd docket && make check` (1190 tests, fully offline — no API keys,
 no network, ~90 s).
 
 ## Documentation

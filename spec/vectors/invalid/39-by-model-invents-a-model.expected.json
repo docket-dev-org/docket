@@ -1,0 +1,10 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "39-by-model-invents-a-model.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "by-model-totals",
+ "reject": null,
+ "accept": null,
+ "rule": "spec \u00a78 item 5a: by_model partitions the usage rows, no model appears that no row used",
+ "mutation": "totals.by_model names a model that no usage row used, with the total unchanged"
+}

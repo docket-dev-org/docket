@@ -629,6 +629,194 @@ def verify_receipt(
                     f"priced by assumption but not disclosed in totals.assumed_price_models: {', '.join(undisclosed)}",
                 )
 
+            # `totals.by_model`, `totals.usage_reported_calls` / `usage_estimated_calls` /
+            # `asserted_calls` and `totals.cost_basis` are *derived*: the receipt states them so a
+            # reader can see where the money went without re-deriving it. None of them was checked,
+            # so all of them could be rewritten freely on a receipt that still verified — a receipt
+            # that names a model that was never called, or claims every row was reported when half
+            # were estimated, which §6.1 says a consumer MUST NOT present as metered. They are
+            # recomputable from the same rows item 5 already recomputes the total from.
+            def quiet_whole(value: Any) -> int | None:
+                """The same acceptance as `whole`, without emitting a second id.
+
+                `whole` speaks for itself under `receipt-shape`. Here a value that is not a whole
+                number is a problem with *this* breakdown, and saying so twice — once under a shape
+                id and once under `by-model-totals` — is what "one id, one verdict" forbids.
+                """
+                if isinstance(value, bool) or value is None:
+                    return None
+                if isinstance(value, float):
+                    return int(value) if value.is_integer() else None
+                try:
+                    return int(str(value).strip())
+                except (TypeError, ValueError):
+                    return None
+
+            model_sums: dict[str, dict[str, Any]] = {}
+            source_counts = {"reported": 0, "estimated": 0, "asserted": 0}
+            try:
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    name = str(row.get("model") or "unknown")
+                    slot = model_sums.setdefault(
+                        name,
+                        {
+                            "calls": 0,
+                            "input_tokens": 0,
+                            "cached_input_tokens": 0,
+                            "output_tokens": 0,
+                            "cost": Decimal("0"),
+                        },
+                    )
+                    slot["calls"] += 1
+                    for member in ("input_tokens", "cached_input_tokens", "output_tokens"):
+                        slot[member] += int(row.get(member) or 0)
+                    slot["cost"] += Decimal(str(row.get("cost_usd") or "0"))
+                    if row.get("usage_source") == "reported":
+                        source_counts["reported"] += 1
+                    elif row.get("usage_source") == "estimated":
+                        source_counts["estimated"] += 1
+                    if row.get("asserted_by") == "agent":
+                        source_counts["asserted"] += 1
+            except (TypeError, ValueError, ArithmeticError) as exc:
+                add("by-model-totals", "fail", f"cannot recompute the per-model breakdown: {exc}")
+                add("usage-source-counts", "fail", f"cannot recount the usage sources: {exc}")
+                model_sums = {}
+
+            if model_sums:
+                declared_models = totals.get("by_model")
+                if not isinstance(declared_models, list):
+                    add(
+                        "by-model-totals",
+                        "fail",
+                        f"the receipt states no per-model breakdown: totals.by_model is {type(declared_models).__name__}",
+                    )
+                else:
+                    stated: dict[str, dict[str, Any]] = {}
+                    problems: list[str] = []
+                    for index, entry in enumerate(declared_models):
+                        if not isinstance(entry, dict):
+                            problems.append(f"by_model[{index}] is not an object")
+                            continue
+                        name = str(entry.get("model") or "unknown")
+                        if name in stated:
+                            # Two rows for one model: a reader summing them gets a number no row
+                            # claimed, and a reader taking the first gets a number the receipt does
+                            # not mean. The same rule as the cache's `by_origin` groups.
+                            problems.append(f"by_model names {name!r} twice")
+                        stated[name] = entry
+                    for name in sorted(set(stated) - set(model_sums)):
+                        problems.append(f"by_model names {name!r}, which no usage row used")
+                    for name in sorted(set(model_sums) - set(stated)):
+                        problems.append(f"by_model omits {name!r}, which {model_sums[name]['calls']} usage row(s) used")
+                    for name in sorted(set(stated) & set(model_sums)):
+                        entry = stated[name]
+                        expected = model_sums[name]
+                        for member, want in (
+                            ("calls", expected["calls"]),
+                            ("input_tokens", expected["input_tokens"]),
+                            ("cached_input_tokens", expected["cached_input_tokens"]),
+                            ("output_tokens", expected["output_tokens"]),
+                        ):
+                            if member not in entry:
+                                problems.append(f"by_model[{name!r}] omits {member}")
+                                continue
+                            got = quiet_whole(entry.get(member))
+                            if got is None:
+                                problems.append(f"by_model[{name!r}].{member} is not a whole number")
+                            elif got != want:
+                                problems.append(f"by_model[{name!r}].{member} says {got}, the rows sum to {want}")
+                        if "cost_usd" not in entry:
+                            problems.append(f"by_model[{name!r}] omits cost_usd")
+                        else:
+                            try:
+                                if _amount(entry.get("cost_usd")) != expected["cost"]:
+                                    problems.append(
+                                        f"by_model[{name!r}].cost_usd says {entry.get('cost_usd')}, "
+                                        f"the rows sum to {usd(expected['cost'])}"
+                                    )
+                            except (InvalidOperation, ValueError, TypeError):
+                                problems.append(f"by_model[{name!r}].cost_usd is not a decimal amount")
+                    if problems:
+                        add("by-model-totals", "fail", "; ".join(problems[:4]))
+                    else:
+                        add(
+                            "by-model-totals",
+                            "pass",
+                            f"{len(model_sums)} model(s), every count and amount summing to the usage rows",
+                        )
+
+            declared_counts = {
+                "usage_reported_calls": (totals.get("usage_reported_calls", -1), source_counts["reported"]),
+                "usage_estimated_calls": (totals.get("usage_estimated_calls", -1), source_counts["estimated"]),
+                "asserted_calls": (totals.get("asserted_calls", -1), source_counts["asserted"]),
+            }
+            count_problems: list[str] = []
+            for name, (raw, want) in declared_counts.items():
+                got = quiet_whole(raw)
+                if got is None:
+                    count_problems.append(f"totals.{name} is not a whole number")
+                elif got != want:
+                    count_problems.append(f"totals.{name} says {got}; the rows hold {want}")
+            if count_problems:
+                add("usage-source-counts", "fail", "; ".join(count_problems))
+            else:
+                add(
+                    "usage-source-counts",
+                    "pass",
+                    f"{source_counts['reported']} reported, {source_counts['estimated']} estimated, "
+                    f"{source_counts['asserted']} asserted by the agent",
+                )
+
+            # `cost_basis` is a human summary of exactly those counts, so the only thing worth
+            # checking is that it does not contradict them. The leading word names the class;
+            # a receipt that says "reported" while rows are estimated is claiming metered usage
+            # for numbers the provider never reported (§6.1), and that is a contradiction however
+            # the rest of the sentence reads. `quota mode` cannot be checked at all: the meter's
+            # mode is a fact about the run that the receipt does not state anywhere else, so a
+            # verifier that accepted it would be accepting an assertion, and one that rejected it
+            # would reject every subscription run. It is reported as not checked, which is what it
+            # is. Not a prose match: any wording is accepted as long as the class agrees.
+            basis_text = totals.get("cost_basis")
+            if not isinstance(basis_text, str) or not basis_text.strip():
+                add("cost-basis", "fail", f"totals.cost_basis is not a sentence: {basis_text!r}")
+            else:
+                head = basis_text.strip().split(":", 1)[0].strip().lower()
+                reported_n, estimated_n = source_counts["reported"], source_counts["estimated"]
+                if head == "quota mode":
+                    add(
+                        "cost-basis",
+                        "skip",
+                        "the run claims subscription (quota) pricing, which the receipt states nowhere else",
+                    )
+                elif head == "mixed" and not (reported_n and estimated_n):
+                    add(
+                        "cost-basis",
+                        "fail",
+                        f"cost_basis says mixed, but the rows hold {reported_n} reported and {estimated_n} estimated call(s)",
+                    )
+                elif head == "reported" and estimated_n:
+                    add(
+                        "cost-basis",
+                        "fail",
+                        f"cost_basis says reported, but {estimated_n} row(s) are estimated — usage the provider never reported",
+                    )
+                elif head == "estimated" and reported_n:
+                    add(
+                        "cost-basis",
+                        "fail",
+                        f"cost_basis says estimated, but {reported_n} row(s) were reported by the provider",
+                    )
+                elif head not in {"mixed", "reported", "estimated"}:
+                    add(
+                        "cost-basis",
+                        "fail",
+                        f"cost_basis names no usage class this format defines: {basis_text[:60]!r}",
+                    )
+                else:
+                    add("cost-basis", "pass", f"{head} basis agrees with the usage rows")
+
     # -- 6. the latency summary ------------------------------------------- #
     # Every other number in a receipt is arithmetic that a verifier can redo from first
     # principles. Latency is the exception: it is a *measurement* taken around a call, so the

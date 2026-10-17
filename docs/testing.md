@@ -12,7 +12,7 @@ and can be told to fail on cue.
 ## The suite
 
 ```console
-$ make test          # 1172 tests, no network (2-4 min on a 2-vCPU box)
+$ make test          # 1190 tests, no network (2-4 min on a 2-vCPU box)
 $ make check         # + ruff, + bandit, + the independent Node verifier
 ```
 
@@ -20,7 +20,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | --- | --- | --- |
 | `test_canon.py` | 44 | canonical JSON, Merkle trees and proofs, the no-floats rule |
 | `test_vectors.py` | 11 | the committed conformance vectors, including that regenerating them changes nothing — and that the *generator actually wrote where the test is looking*, which it did not for as long as that check existed |
-| `test_conformance.py` | 53 | the negative corpus is a claim about the format, and this holds the claim: it rebuilds every vector, runs it, and fails if any is accepted or refused by a rule the vector does not name — plus the three verifier defects writing the corpus found (an enum read as free text, a duplicate JSON name, a re-binding folded into a proof) — plus two canaries proving the runner can fail: a rewritten expectation must produce `wrong-check`, and a vector with no expectation must be reported rather than silently skipped |
+| `test_conformance.py` | 57 | the negative corpus is a claim about the format, and this holds the claim: it rebuilds every vector, runs it, and fails if any is accepted or refused by a rule the vector does not name — plus the three verifier defects writing the corpus found (an enum read as free text, a duplicate JSON name, a re-binding folded into a proof) — plus two canaries proving the runner can fail: a rewritten expectation must produce `wrong-check`, and a vector with no expectation must be reported rather than silently skipped |
 | `test_policy.py` | 14 | accept and reject paths for every policy key |
 | `test_pricing.py` | 19 | price table, cost arithmetic, the missing-model path, ceilings |
 | `test_ledger.py` | 18 | append/read, chain resumes, ceilings, `unwritten` bookkeeping |
@@ -28,7 +28,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | `test_ledger_faults.py` | 29 | a ledger on a failing filesystem: ENOSPC, EIO, a closed handle, an OS error while opening |
 | `test_ledger_concurrency.py` | 4 | one ledger, eight writer threads: order, chain, agreement, file digest |
 | `test_latency.py` | 21 | the percentile rule, hostile row values, the verifier's recomputation, the report's tail line |
-| `test_receipt_verify.py` | 99 | the receipt and every verification check, plus one name to one verdict |
+| `test_receipt_verify.py` | 113 | the receipt and every verification check, plus one name to one verdict |
 | `test_proxy.py` | 16 | pass-through, streaming, policy enforcement, what is never recorded |
 | `test_cache.py` | 74 | the response cache: what may be stored and what may never be, hit/miss/TTL/LRU/ceiling behaviour, the key covering the request as sent, an open breaker not blocking a hit, concurrency, every receipt-level attack on a saving, and twenty-five tests written to kill survivors of a mutation sweep — nine for the cache itself and sixteen for the verifier that recomputes a stated saving |
 | `test_proxy_concurrency.py` | 6 | parallel calls through the real boundary: chain, totals, limiter, breaker, cap |
@@ -498,10 +498,10 @@ miss.
 
 | site | what the test asserted | what the second mutant did behind it |
 | --- | --- | --- |
-| `verify.py:662` | `… count: 'seven'` — the value, and not the type suffix beside it | `type(malformed[1]).__name__`: with two malformed rows of the *same* type the sentence reads identically either way, so the assertion could not see whose type was quoted |
-| `verify.py:675` | `p50 12 ms · p99 12 ms over 1 measured call(s)` | the fixture measured **one** call, where p50 and p99 are the same number: looking up the wrong percentile printed the same sentence, character for character |
-| `verify.py:869` | `not [failure for failure in result.failures if "further origin problems" in failure]` | the stop condition counts a list, and its two spellings (`> 3` and `>= 3`) print the *same* sentence for every length except one: at exactly three the mutant adds "further origin problems: 0 more" where the original says nothing. The test holds exactly three now — a group naming the wrong model, a token count that does not match the call it cites, and the appendix key that both takes the call out of the cached-response record and stops the tally containing it — and asserts the four sentences that follow, plus the absence of a fifth |
-| `verify.py:975` | that a group whose `hits` is not a positive count is refused | the guard refuses it, and the *tally* loop is a second pass over the same groups that does not skip them: with `int(group.get("hits") or 0)` mutated to `or 1`, the falsy count becomes the ledger's own count, the comparison agrees, and the second sentence about the same group is never written |
+| `verify.py:850` | `… count: 'seven'` — the value, and not the type suffix beside it | `type(malformed[1]).__name__`: with two malformed rows of the *same* type the sentence reads identically either way, so the assertion could not see whose type was quoted |
+| `verify.py:863` | `p50 12 ms · p99 12 ms over 1 measured call(s)` | the fixture measured **one** call, where p50 and p99 are the same number: looking up the wrong percentile printed the same sentence, character for character |
+| `verify.py:1057` | `not [failure for failure in result.failures if "further origin problems" in failure]` | the stop condition counts a list, and its two spellings (`> 3` and `>= 3`) print the *same* sentence for every length except one: at exactly three the mutant adds "further origin problems: 0 more" where the original says nothing. The test holds exactly three now — a group naming the wrong model, a token count that does not match the call it cites, and the appendix key that both takes the call out of the cached-response record and stops the tally containing it — and asserts the four sentences that follow, plus the absence of a fifth |
+| `verify.py:1163` | that a group whose `hits` is not a positive count is refused | the guard refuses it, and the *tally* loop is a second pass over the same groups that does not skip them: with `int(group.get("hits") or 0)` mutated to `or 1`, the falsy count becomes the ledger's own count, the comparison agrees, and the second sentence about the same group is never written |
 
 All four repairs are in `tests/test_cache.py` and marked in place: the assertion extended to include
 `(str)`; a second metered call with a different latency (`extra_latency=40`) so that the two

@@ -1,0 +1,10 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "40-usage-counts-say-reported.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "usage-source-counts",
+ "reject": null,
+ "accept": null,
+ "rule": "spec \u00a76.1: estimated usage must not be presented as metered; \u00a78 item 5a counts the rows",
+ "mutation": "every row is estimated and the receipt says every call was reported"
+}

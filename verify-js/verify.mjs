@@ -586,6 +586,152 @@ function verifyReceipt(receipt, options = {}) {
         const hidden = assumedModels.filter((model) => !disclosed.includes(model));
         add("assumed-prices", "fail", `priced by assumption but not disclosed in totals.assumed_price_models: ${hidden.join(", ")}`);
       }
+
+      // `totals.by_model`, the usage-source counts and `cost_basis` are derived members: the
+      // receipt states them so a reader can see where the money went without re-deriving it.
+      // None of them was checked, so each could be rewritten on a receipt that still verified —
+      // including "every row was reported" on rows that were estimated, which §6.1 says a
+      // consumer must not present as metered. All three are recomputable from the same rows.
+      const modelSums = new Map();
+      const sourceCounts = { reported: 0, estimated: 0, asserted: 0 };
+      for (const row of rows) {
+        if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+        const name = String(row.model ?? "unknown");
+        const slot = modelSums.get(name) ?? {
+          calls: 0,
+          input_tokens: 0,
+          cached_input_tokens: 0,
+          output_tokens: 0,
+          cost: 0n,
+        };
+        slot.calls += 1;
+        slot.input_tokens += Number(row.input_tokens ?? 0);
+        slot.cached_input_tokens += Number(row.cached_input_tokens ?? 0);
+        slot.output_tokens += Number(row.output_tokens ?? 0);
+        slot.cost += row.cost_usd ? micros(row.cost_usd) : 0n;
+        if (row.usage_source === "reported") sourceCounts.reported += 1;
+        else if (row.usage_source === "estimated") sourceCounts.estimated += 1;
+        if (row.asserted_by === "agent") sourceCounts.asserted += 1;
+        modelSums.set(name, slot);
+      }
+
+      const stated = receipt.totals?.by_model;
+      if (!Array.isArray(stated)) {
+        add(
+          "by-model-totals",
+          "fail",
+          `the receipt states no per-model breakdown: totals.by_model is ${stated === null ? "null" : typeof stated}`,
+        );
+      } else {
+        const byName = new Map();
+        const problems = [];
+        stated.forEach((entry, index) => {
+          if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+            problems.push(`by_model[${index}] is not an object`);
+            return;
+          }
+          const name = String(entry.model ?? "unknown");
+          if (byName.has(name)) problems.push(`by_model names ${JSON.stringify(name)} twice`);
+          byName.set(name, entry);
+        });
+        for (const name of [...byName.keys()].filter((n) => !modelSums.has(n)).sort()) {
+          problems.push(`by_model names ${JSON.stringify(name)}, which no usage row used`);
+        }
+        for (const name of [...modelSums.keys()].filter((n) => !byName.has(n)).sort()) {
+          problems.push(`by_model omits ${JSON.stringify(name)}, which ${modelSums.get(name).calls} usage row(s) used`);
+        }
+        for (const name of [...byName.keys()].filter((n) => modelSums.has(n)).sort()) {
+          const entry = byName.get(name);
+          const expected = modelSums.get(name);
+          for (const member of ["calls", "input_tokens", "cached_input_tokens", "output_tokens"]) {
+            if (!(member in entry)) {
+              problems.push(`by_model[${JSON.stringify(name)}] omits ${member}`);
+              continue;
+            }
+            const got = Number(entry[member]);
+            if (!Number.isInteger(got)) problems.push(`by_model[${JSON.stringify(name)}].${member} is not a whole number`);
+            else if (got !== expected[member]) {
+              problems.push(`by_model[${JSON.stringify(name)}].${member} says ${got}, the rows sum to ${expected[member]}`);
+            }
+          }
+          if (!("cost_usd" in entry)) {
+            problems.push(`by_model[${JSON.stringify(name)}] omits cost_usd`);
+          } else {
+            let got;
+            try {
+              got = micros(entry.cost_usd);
+            } catch {
+              got = null;
+            }
+            if (got === null) problems.push(`by_model[${JSON.stringify(name)}].cost_usd is not a decimal amount`);
+            else if (got !== expected.cost) {
+              problems.push(
+                `by_model[${JSON.stringify(name)}].cost_usd says ${entry.cost_usd}, the rows sum to ${formatMicros(expected.cost)}`,
+              );
+            }
+          }
+        }
+        add(
+          "by-model-totals",
+          problems.length === 0 ? "pass" : "fail",
+          problems.length === 0
+            ? `${modelSums.size} model(s), every count and amount summing to the usage rows`
+            : problems.slice(0, 4).join("; "),
+        );
+      }
+
+      const countProblems = [];
+      for (const [name, want] of [
+        ["usage_reported_calls", sourceCounts.reported],
+        ["usage_estimated_calls", sourceCounts.estimated],
+        ["asserted_calls", sourceCounts.asserted],
+      ]) {
+        const got = Number(receipt.totals?.[name] ?? -1);
+        if (!Number.isInteger(got)) countProblems.push(`totals.${name} is not a whole number`);
+        else if (got !== want) countProblems.push(`totals.${name} says ${got}; the rows hold ${want}`);
+      }
+      add(
+        "usage-source-counts",
+        countProblems.length === 0 ? "pass" : "fail",
+        countProblems.length === 0
+          ? `${sourceCounts.reported} reported, ${sourceCounts.estimated} estimated, ${sourceCounts.asserted} asserted by the agent`
+          : countProblems.join("; "),
+      );
+
+      // The only thing worth checking in `cost_basis` is that it does not contradict the counts
+      // above. Its leading word names the class; the rest is free text, because a verifier has no
+      // business demanding one implementation's sentence. `quota mode` cannot be checked at all —
+      // the meter's mode is a fact about the run the receipt states nowhere else — so it is
+      // reported as not checked rather than believed.
+      const basis = receipt.totals?.cost_basis;
+      if (typeof basis !== "string" || basis.trim() === "") {
+        add("cost-basis", "fail", `totals.cost_basis is not a sentence: ${JSON.stringify(basis)}`);
+      } else {
+        const head = basis.trim().split(":")[0].trim().toLowerCase();
+        const reportedN = sourceCounts.reported;
+        const estimatedN = sourceCounts.estimated;
+        if (head === "quota mode") {
+          add("cost-basis", "skip", "the run claims subscription (quota) pricing, which the receipt states nowhere else");
+        } else if (head === "mixed" && !(reportedN && estimatedN)) {
+          add(
+            "cost-basis",
+            "fail",
+            `cost_basis says mixed, but the rows hold ${reportedN} reported and ${estimatedN} estimated call(s)`,
+          );
+        } else if (head === "reported" && estimatedN) {
+          add(
+            "cost-basis",
+            "fail",
+            `cost_basis says reported, but ${estimatedN} row(s) are estimated — usage the provider never reported`,
+          );
+        } else if (head === "estimated" && reportedN) {
+          add("cost-basis", "fail", `cost_basis says estimated, but ${reportedN} row(s) were reported by the provider`);
+        } else if (!["mixed", "reported", "estimated"].includes(head)) {
+          add("cost-basis", "fail", `cost_basis names no usage class this format defines: ${JSON.stringify(basis.slice(0, 60))}`);
+        } else {
+          add("cost-basis", "pass", `${head} basis agrees with the usage rows`);
+        }
+      }
     }
   }
 

@@ -114,6 +114,7 @@ nav:
           - 0004 Content snapshots and confinement: docs/adr/0004-content-snapshots-and-confinement.md
           - 0005 One writer at a time: docs/adr/0005-concurrency-and-one-writer-at-a-time.md
           - 0006 The shape of the conformance corpus: docs/adr/0006-the-shape-of-the-conformance-corpus.md
+          - 0007 Members a receipt states about its own rows: docs/adr/0007-the-members-a-receipt-states-about-itself.md
   - Examples:
       - Examples index: examples/README.md
       - Quickstart example: examples/quickstart/README.md

@@ -194,7 +194,7 @@ A receipt is a JSON object with these members:
 | `tool` | `{name, version, format}` |
 | `session` | `{id, argv, cwd, exit_code, duration_seconds, breached, interrupted, host}` |
 | `policy` | `{name, digest, document, source}` — `digest` = §3.4 of `document` |
-| `totals` | token and cost totals, `cost_basis`, usage-source counts, `by_model[]` |
+| `totals` | token and cost totals, `cost_basis`, usage-source counts, `by_model[]` — all derived from `appendix.usage` and all checked against it (§8 items 5–5b) |
 | `model_calls` | `{count, by_provider, denied, errors}` |
 | `tools` | `{calls, names, failures}` |
 | `files` | `{changed, added, modified, removed, violations, top_paths}` |
@@ -336,6 +336,16 @@ checked:
 5. the cost of every usage row is recomputed from `input_tokens`, `cached_input_tokens`,
    `output_tokens` and the embedded `price_table`, and compared with `cost_usd`; the sum is
    compared with `totals.cost_usd`; token totals likewise;
+5a. `totals.by_model[]` partitions those same rows: every model named by a row appears exactly
+   once, no model appears that no row used, and each entry's `calls`, `input_tokens`,
+   `cached_input_tokens`, `output_tokens` and `cost_usd` are the sums over that model's rows.
+   `totals.usage_reported_calls`, `totals.usage_estimated_calls` and `totals.asserted_calls` are
+   the number of rows with that `usage_source`, and with `asserted_by == "agent"`;
+5b. `totals.cost_basis` does not contradict those counts. Only the leading word is checked: it
+   names the class — `reported`, `estimated`, `mixed` or `quota mode` — and the rest of the
+   sentence is free text. `quota mode` is reported as *not checked*, because the meter's mode is
+   a fact about the run that the receipt records nowhere else; a verifier that accepted it would
+   be accepting an assertion, and one that rejected it would reject every subscription run;
 6. `latency`, when present, is recomputed from the `latency_ms` values of the rows it summarises
    (§6.2) and must agree with them in every member; a row whose `latency_ms` is not a whole,
    non-negative number is a failure;

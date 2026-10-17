@@ -10,6 +10,17 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **Three more members of a receipt were stated and never checked, and now are.**
+  `totals.by_model[]`, the usage-source counts and `totals.cost_basis` are derived from
+  `appendix.usage`, so they can be recomputed — but §8 only ever named the total, the token
+  totals and the per-row costs. A sweep that rewrote each of them left `ok: true` every time: a
+  breakdown could name a model nobody called (with the total still reconciling), or present four
+  estimated calls as reported. `by-model-totals` and `usage-source-counts` are new checks;
+  `cost-basis` is a contradiction check that compares only the class word and reports `quota
+  mode` as `SKIP`, because the meter's mode is stated nowhere else in the receipt and believing
+  it is not checking it. Four new corpus vectors (`39`–`42`), eleven new tests in the Python
+  suite, eleven in the Node one, and ADR 0007 records why the other designs were rejected.
+
 - **`ledger_reject`: the corpus can now say "this ledger must be refused".** Every vector was a
   *receipt* that must fail; a malformed ledger — the file an interrupted append or a hand edit
   actually damages — had no way to be expressed, so the two implementations' refusal to repair one

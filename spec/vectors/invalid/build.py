@@ -304,6 +304,47 @@ def _non_nfc(r, e, t):
     return r, e, t, text.replace("\u00e9", "e\u0301")
 
 
+def _quota_mode_basis_that_cannot_be_checked(r, e, t):
+    """A subscription run: spend is counted in tokens, so the basis is a claim nothing can test.
+
+    Refusing it would refuse every run on a metered-nothing plan; accepting it as *checked* would
+    be believing an assertion. The format's answer is the third state, and this vector is what
+    holds both implementations to it.
+    """
+    r["totals"]["cost_basis"] = "quota mode: subscription usage is counted in tokens, not dollars"
+    return r, e, t, None
+
+
+def _by_model_invents_a_model(r, e, t):
+    """A per-model row for a model that was never called, priced to keep the total correct.
+
+    This is the shape of a padded invoice: the total still reconciles, so every check that only
+    sums the rows stays green, and the reader who wants to know *what* the money was spent on is
+    the one who is misled.
+    """
+    r["totals"]["by_model"][0]["model"] = "model-that-was-never-called"
+    return r, e, t, None
+
+
+def _usage_counts_call_estimated_rows_reported(r, e, t):
+    """Every row is estimated, and the receipt calls all four of them reported."""
+    for row in r["appendix"]["usage"]:
+        row["usage_source"] = "estimated"
+    r["totals"]["usage_reported_calls"] = len(r["appendix"]["usage"])
+    r["totals"]["usage_estimated_calls"] = 0
+    return r, e, t, None
+
+
+def _cost_basis_contradicts_its_rows(r, e, t):
+    """`mixed` with one row, `reported` with three of four estimated — here, the second."""
+    for row in r["appendix"]["usage"]:
+        row["usage_source"] = "estimated"
+    r["totals"]["usage_reported_calls"] = 0
+    r["totals"]["usage_estimated_calls"] = len(r["appendix"]["usage"])
+    r["totals"]["cost_basis"] = "reported: provider usage fields"
+    return r, e, t, None
+
+
 def _ledger_duplicate_name(r, e, t):
     """The *ledger* is the malformed file: one event names a key twice.
 
@@ -669,6 +710,47 @@ VECTORS: list[tuple[str, str, object, str | None, str | None, str, str]] = [
         OWN,
         "spec §3.1: object names are unique; RFC 8259 §4 makes a repeat undefined",
         "the ledger's first event names `seq` twice, so which value was hashed is unknowable",
+    ),
+    # -- members the receipt states but does not prove --------------------------------------
+    # Each of these leaves every arithmetic check that only sums the rows correct: the total
+    # still reconciles with the appendix, so a verifier that stops at the sum believes the
+    # receipt. What is wrong is the *breakdown* — where the money went, and whether the numbers
+    # were reported or guessed — which is the part a human reads.
+    (
+        "42-quota-mode-basis-is-accepted",
+        BASE,
+        _quota_mode_basis_that_cannot_be_checked,
+        ACCEPT,
+        BASE,
+        "spec §8 item 5b: quota mode is reported as not checked, never as a contradiction",
+        "a subscription run states a quota-mode basis, which the receipt states nowhere else",
+    ),
+    (
+        "39-by-model-invents-a-model",
+        BASE,
+        _by_model_invents_a_model,
+        "by-model-totals",
+        BASE,
+        "spec §8 item 5a: by_model partitions the usage rows, no model appears that no row used",
+        "totals.by_model names a model that no usage row used, with the total unchanged",
+    ),
+    (
+        "40-usage-counts-say-reported",
+        BASE,
+        _usage_counts_call_estimated_rows_reported,
+        "usage-source-counts",
+        BASE,
+        "spec §6.1: estimated usage must not be presented as metered; §8 item 5a counts the rows",
+        "every row is estimated and the receipt says every call was reported",
+    ),
+    (
+        "41-cost-basis-is-a-contradiction",
+        BASE,
+        _cost_basis_contradicts_its_rows,
+        "cost-basis",
+        BASE,
+        "spec §8 item 5b: cost_basis may not contradict the usage-source counts it summarises",
+        "cost_basis says reported while every row is estimated, and the counts beside it say so",
     ),
     (
         "38-ledger-truncated-line",

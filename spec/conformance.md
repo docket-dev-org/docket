@@ -145,7 +145,7 @@ intermediate state of an implementation that declares its gaps; it is never a fu
   altered; §9 of the format spec is the receipt's own statement about what it cannot see, and
   `limits-disclosure` only checks that the statement is present.
 * **Not agreement between implementations on documents outside the corpus.** The corpus is 7 valid and
-  32 refusals and 3 required acceptances across 38 vectors; it is a floor on behaviour, not a census. Differential fuzzing is the tool for
+  38 refusals and 4 required acceptances across 42 vectors; it is a floor on behaviour, not a census. Differential fuzzing is the tool for
   the space between the vectors.
 * **Not a certificate.** A conformance run is evidence about one implementation, at one commit, on one
   corpus revision. Print the commit and the corpus digest beside the result, as the release record does.

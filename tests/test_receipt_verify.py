@@ -767,6 +767,9 @@ def test_an_omitted_total_is_absent_not_zero():
             "usage_reported_calls": 0,
             "usage_estimated_calls": 0,
             "by_model": [],
+            # Zero rows cannot be "mixed"; the builder's own fallback for a session with no
+            # calls is the reported class, and the new `cost-basis` check holds the receipt to it.
+            "cost_basis": "reported: provider usage fields",
         }
     )
     baseline = verify_receipt(receipt)
@@ -811,3 +814,53 @@ def test_the_empty_appendix_case_is_decided_by_the_appendix_being_readable():
     unreadable["appendix"]["usage"] = "the rows were lost"
     statuses = [c.status for c in verify_receipt(unreadable).checks if c.name == "usage-inclusion-proofs"]
     assert statuses and all(status == "fail" for status in statuses), statuses
+
+
+@pytest.mark.parametrize(
+    ("label", "wound", "check_name", "status"),
+    [
+        ("a model nobody called is in the breakdown", ("by_model_model", 0, "ghost"), "by-model-totals", "fail"),
+        ("a per-model cost is too small", ("by_model_cost", 0, "0.000001"), "by-model-totals", "fail"),
+        ("a per-model call count is inflated", ("by_model_calls", 0, 9), "by-model-totals", "fail"),
+        ("a per-model token count is wrong", ("by_model_tokens", 1, 1), "by-model-totals", "fail"),
+        ("the breakdown is missing", ("by_model_absent", None, None), "by-model-totals", "fail"),
+        ("the reported count is inflated", ("count", "usage_reported_calls", 4), "usage-source-counts", "fail"),
+        ("the estimated count is erased", ("count", "usage_estimated_calls", 0), "usage-source-counts", "fail"),
+        ("asserted calls are invented", ("count", "asserted_calls", 3), "usage-source-counts", "fail"),
+        ("a mixed run is called reported", ("basis", "reported: provider usage fields", None), "cost-basis", "fail"),
+        ("a mixed run is called estimated", ("basis", "estimated: no usage", None), "cost-basis", "fail"),
+        ("the basis is empty", ("basis", "", None), "cost-basis", "fail"),
+        ("the basis names no class", ("basis", "because I said so", None), "cost-basis", "fail"),
+        ("a subscription run is not checkable, not wrong", ("basis", "quota mode: x", None), "cost-basis", "skip"),
+        ("the untouched receipt agrees with its rows", ("none", None, None), "by-model-totals", "pass"),
+    ],
+)
+def test_the_members_a_receipt_states_about_its_own_rows_are_recomputed(label, wound, check_name, status):
+    """Everything in `totals` except the total was unverified, so all of it could be rewritten.
+
+    `by_model` is the part a human reads — where the money went — and the usage-source counts are
+    what says whether a number was reported by the provider or guessed by the tool. A receipt could
+    name a model that was never called, with the total still reconciling, and verify.
+    """
+    receipt = json.loads((SPEC_VECTORS / "receipt.json").read_text(encoding="utf-8"))
+    kind, first, second = wound
+    if kind == "by_model_model":
+        receipt["totals"]["by_model"][first]["model"] = second
+    elif kind == "by_model_cost":
+        receipt["totals"]["by_model"][first]["cost_usd"] = second
+    elif kind == "by_model_calls":
+        receipt["totals"]["by_model"][first]["calls"] = second
+    elif kind == "by_model_tokens":
+        receipt["totals"]["by_model"][first]["input_tokens"] = second
+    elif kind == "by_model_absent":
+        receipt["totals"].pop("by_model")
+    elif kind == "count":
+        receipt["totals"][first] = second
+    elif kind == "basis":
+        receipt["totals"]["cost_basis"] = first
+    result = verify_receipt(receipt)
+    named = [c for c in result.checks if c.name == check_name]
+    assert len(named) == 1, f"{label}: {len(named)} verdicts under {check_name}"
+    assert named[0].status == status, f"{label}: {named[0].status} — {named[0].detail}"
+    if status == "fail":
+        assert result.ok is False, label

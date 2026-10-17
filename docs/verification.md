@@ -45,6 +45,9 @@ as data:
 | `token-totals` | token sums match the appendix | nothing was quietly excluded from the sums | that the provider's counts are honest |
 | `cached-totals` | `totals.cached_input_tokens` matches the appendix, when the receipt states one | the cached subtotal — the number a saving is computed from — was not restated | that a cache hit was worth making |
 | `assumed-prices` | a model priced by the price table's fallback entry is named in `totals.assumed_price_models`; passes when nothing was assumed | a guessed tariff is disclosed wherever its cost appears | that the fallback price is the right one for that model |
+| `by-model-totals` | `totals.by_model[]` names exactly the models the usage rows used, once each, and every count and amount in an entry is the sum over that model's rows | the part of the receipt a human reads to see *where* the money went is arithmetic too, not testimony | anything about a model that was never called, or about prices: a breakdown can only be as right as the rows it sums |
+| `usage-source-counts` | `totals.usage_reported_calls`, `usage_estimated_calls` and `asserted_calls` equal the number of usage rows with that `usage_source` and `asserted_by` | the count a reader uses to decide whether the numbers were metered or guessed is itself checked | that an individual row's source is honest — that is the provider's word or the tool's, recorded per row |
+| `cost-basis` | `totals.cost_basis` does not contradict those counts: the leading word names the class (`reported`, `estimated`, `mixed`) and agrees with them | a receipt cannot label estimated usage as reported, which §6.1 forbids a consumer to present as metered | the class `quota mode`, which is reported as `SKIP`: the meter's mode is a fact about the run the receipt states nowhere else, so believing it would be trusting an assertion. The rest of the sentence is free text and is not compared |
 | `evidence-completeness` | the receipt's `evidence` member accounts for every metered call and every event written to disk | no event that mattered was lost between the ledger and the receipt | that nothing happened outside the run |
 | `latency-summary` | the stated `latency` (§6.2) is recomputed from the `latency_ms` values of the rows it summarises, by the method it names | the percentiles in the receipt describe *these* calls, not a memory of them | that the clock is accurate, that the recorder was the only thing in the request path, or that the provider's own timing is visible — latency is a wall-clock observation and the member says so |
 | `seal` | HMAC-SHA256 verifies with the supplied key | integrity to whoever holds the key | third-party verifiability (a seal is not a signature, and receipts say so) |
@@ -79,7 +82,7 @@ python3 tools/conformance.py --capabilities --python --node   # which ids each o
 ```
 
 The corpus has two halves. `spec/vectors/` holds valid documents a conforming verifier must accept;
-`spec/vectors/invalid/` holds **32** documents it must refuse and **3** it must accept, each with an `expected.json` naming
+`spec/vectors/invalid/` holds **38** documents it must refuse and **4** it must accept, each with an `expected.json` naming
 the check that has to catch it and the rule it enforces. `python3 spec/vectors/invalid/build.py
 --check` rebuilds the corpus and re-derives every expectation: each vector is run through the
 reference verifier, and the build fails unless the first failure is the check the vector names. A

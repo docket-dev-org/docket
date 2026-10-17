@@ -1,0 +1,10 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "41-cost-basis-is-a-contradiction.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "cost-basis",
+ "reject": null,
+ "accept": null,
+ "rule": "spec \u00a78 item 5b: cost_basis may not contradict the usage-source counts it summarises",
+ "mutation": "cost_basis says reported while every row is estimated, and the counts beside it say so"
+}

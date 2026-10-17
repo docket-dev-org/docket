@@ -282,6 +282,57 @@ console.log("the totals are three statements, not one number");
   );
 }
 
+console.log("derived totals");
+{
+  const verdict = (receipt, name) => {
+    const rows = verifyReceipt(receipt).checks.filter((item) => item.name === name);
+    return rows.length === 1 ? rows[0].status : `(${rows.length} rows)`;
+  };
+  const base = () => JSON.parse(JSON.stringify(load("receipt.json")));
+
+  const ghost = base();
+  ghost.totals.by_model[0].model = "model-that-was-never-called";
+  check("a model nobody called fails by-model-totals", verdict(ghost, "by-model-totals") === "fail");
+
+  const cheap = base();
+  cheap.totals.by_model[0].cost_usd = "0.000001";
+  check("a per-model cost that does not sum fails by-model-totals", verdict(cheap, "by-model-totals") === "fail");
+
+  const doubled = base();
+  doubled.totals.by_model.push(JSON.parse(JSON.stringify(doubled.totals.by_model[0])));
+  check("two rows for one model fail by-model-totals", verdict(doubled, "by-model-totals") === "fail");
+
+  const absent = base();
+  delete absent.totals.by_model;
+  check("a missing breakdown fails by-model-totals", verdict(absent, "by-model-totals") === "fail");
+
+  const padded = base();
+  padded.totals.usage_reported_calls = 4;
+  check("an inflated reported count fails usage-source-counts", verdict(padded, "usage-source-counts") === "fail");
+
+  const erased = base();
+  erased.totals.usage_estimated_calls = 0;
+  check("an erased estimated count fails usage-source-counts", verdict(erased, "usage-source-counts") === "fail");
+
+  const invented = base();
+  invented.totals.asserted_calls = 3;
+  check("invented asserted calls fail usage-source-counts", verdict(invented, "usage-source-counts") === "fail");
+
+  const labelled = base();
+  labelled.totals.cost_basis = "reported: provider usage fields";
+  check("a basis that contradicts the rows fails cost-basis", verdict(labelled, "cost-basis") === "fail");
+
+  const nonsense = base();
+  nonsense.totals.cost_basis = "because I said so";
+  check("a basis that names no class fails cost-basis", verdict(nonsense, "cost-basis") === "fail");
+
+  const quota = base();
+  quota.totals.cost_basis = "quota mode: subscription usage is counted in tokens, not dollars";
+  check("a subscription basis is not checked, not rejected", verdict(quota, "cost-basis") === "skip");
+
+  check("the untouched receipt agrees with its own rows", verdict(base(), "by-model-totals") === "pass");
+}
+
 console.log("money");
 check("2-decimal canonical form", formatMicros(micros("0.018000")) === "0.018000");
 check("whole cents collapse to 2 decimals", formatMicros(micros("1.50")) === "1.50");

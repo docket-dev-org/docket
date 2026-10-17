@@ -1,6 +1,6 @@
 {
  "schema": "docket/conformance-registry/v1",
- "note": "The check ids a conforming verifier reports, and which ids each shipped verifier actually emits. The ids are the reference implementation's own names, adopted rather than renamed so that no existing report changes meaning. 'parse' is not a check a verifier emits: it names the class of rejection that happens before any check runs (a document that is not JSON, is JSON this format refuses to read, or is not an object at all). The corpus also contains vectors that must be ACCEPTED (an integral float, -0, a decomposed Unicode form): see spec/conformance.md \u00a74.",
+ "note": "The check ids a conforming verifier reports, and which ids each shipped verifier actually emits. The ids are the reference implementation's own names, adopted rather than renamed so that no existing report changes meaning. 'parse' is not a check a verifier emits: it names the class of rejection that happens before any check runs (a document that is not JSON, is JSON this format refuses to read, or is not an object at all). The corpus also contains vectors that must be ACCEPTED (an integral float, -0, a decomposed Unicode form): see spec/conformance.md §4.",
  "rules": [
   "One id means one assertion. A receipt may carry two facts under one name only if a consumer branching on the name gets the right answer either way; `usage-inclusion-proofs` and `usage-rows-rebound` are separate for exactly this reason.",
   "A status is one of pass, fail, skip. `skip` means the verifier looked and could not judge (no ledger, no key, no data) and must say why; an id a verifier never emits is a gap in that verifier, not a skip.",
@@ -111,7 +111,7 @@
   },
   {
    "id": "limits-disclosure",
-   "assertion": "the receipt carries the \u00a79 statement of what it does and does not establish",
+   "assertion": "the receipt carries the §9 statement of what it does and does not establish",
    "emitted": true
   },
   {
@@ -134,16 +134,33 @@
    "id": "signature",
    "assertion": "an Ed25519 signature verifies with the embedded or supplied public key",
    "emitted": true
+  },
+  {
+   "id": "by-model-totals",
+   "assertion": "totals.by_model[] partitions the usage rows: one row per model that was called, and each count and amount the sum over that model's rows",
+   "emitted": true
+  },
+  {
+   "id": "usage-source-counts",
+   "assertion": "totals.usage_reported_calls, usage_estimated_calls and asserted_calls are the number of usage rows with that usage_source or asserted_by",
+   "emitted": true
+  },
+  {
+   "id": "cost-basis",
+   "assertion": "totals.cost_basis does not contradict the usage-source counts it summarises; the leading word names the class, the rest is free text, and 'quota mode' is reported as not checked",
+   "emitted": true
   }
  ],
  "capabilities": {
   "note": "Derived from observed output over the conformance corpus, not from reading source. A verifier that does not emit an id does not judge it, and a consumer must be able to tell that apart from a pass: that is the difference between `not_judged` and `skip`. `conditional` ids are emitted only for receipt shapes the corpus does not contain, with the reason stated.",
   "python": [
    "assumed-prices",
+   "by-model-totals",
    "cache-hit-origins",
    "cache-hit-proofs",
    "cache-savings",
    "cached-totals",
+   "cost-basis",
    "cost-recomputation",
    "event-count",
    "evidence-completeness",
@@ -161,17 +178,20 @@
    "token-totals",
    "totals",
    "usage-inclusion-proofs",
-   "usage-rows-rebound"
+   "usage-rows-rebound",
+   "usage-source-counts"
   ],
   "python_conditional": {
    "chaos-run": "emitted only when ops.chaos_run is true; the corpus carries no game-day receipt, and tests/test_chaos.py is what covers it"
   },
   "node": [
    "assumed-prices",
+   "by-model-totals",
    "cache-hit-origins",
    "cache-hit-proofs",
    "cache-savings",
    "cached-totals",
+   "cost-basis",
    "cost-recomputation",
    "event-count",
    "format",
@@ -188,7 +208,8 @@
    "token-totals",
    "totals",
    "usage-inclusion-proofs",
-   "usage-rows-rebound"
+   "usage-rows-rebound",
+   "usage-source-counts"
   ],
   "node_conditional": {
    "chaos-run": "not implemented in the Node verifier: a game-day receipt verifies there without being labelled a test",
@@ -198,7 +219,7 @@
  "history": [
   {
    "change": "`every-usage-row-recomputed` removed",
-   "why": "It was emitted only when a receipt had no usage rows at all \u2014 the one case where the question cannot arise \u2014 so the id a consumer would reach for was absent in every case where it mattered. Its assertion is now `usage-inclusion-proofs`, which covers both halves. Removing an id is a vocabulary change; it is made now, before publication, rather than carried as a duplicate forever."
+   "why": "It was emitted only when a receipt had no usage rows at all — the one case where the question cannot arise — so the id a consumer would reach for was absent in every case where it mattered. Its assertion is now `usage-inclusion-proofs`, which covers both halves. Removing an id is a vocabulary change; it is made now, before publication, rather than carried as a duplicate forever."
   },
   {
    "change": "`cached-totals` added",
@@ -210,11 +231,11 @@
   },
   {
    "change": "`usage-rows-rebound` split out of `usage-inclusion-proofs` in the Node verifier",
-   "why": "The two are different facts with different evidence requirements (one needs only the receipt, the other needs the ledger). Folding them meant a receipt whose proofs were intact but whose rows had been shuffled reported a broken proof \u2014 the symptom, not the cause."
+   "why": "The two are different facts with different evidence requirements (one needs only the receipt, the other needs the ledger). Folding them meant a receipt whose proofs were intact but whose rows had been shuffled reported a broken proof — the symptom, not the cause."
   },
   {
    "change": "the meaning of `totals` and `token-totals` widened",
-   "why": "Neither id was emitted twice and no name changed, but both compared less than their assertion said. Probing the vectors member by member \u2014 `totals.calls` set to 0 beside four usage rows, 100 tokens moved from input to output \u2014 changed nothing in any verdict. The assertion text is now the assertion the code implements, and three vectors hold it."
+   "why": "Neither id was emitted twice and no name changed, but both compared less than their assertion said. Probing the vectors member by member — `totals.calls` set to 0 beside four usage rows, 100 tokens moved from input to output — changed nothing in any verdict. The assertion text is now the assertion the code implements, and three vectors hold it."
   }
  ]
 }
