@@ -1,0 +1,10 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "28-totals-call-count.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "totals",
+ "reject": null,
+ "accept": null,
+ "rule": "spec \u00a76: totals.calls is the number of metered calls the appendix holds",
+ "mutation": "totals.calls is 0 while four usage rows are present"
+}

@@ -4,6 +4,7 @@
  "ledger": null,
  "check": "cache-savings",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a78 item 10",
  "mutation": "cache.saved_usd is 9.99"
 }

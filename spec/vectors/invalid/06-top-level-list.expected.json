@@ -4,6 +4,7 @@
  "ledger": "base.ledger.jsonl",
  "check": "receipt-format",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a76: a receipt is a JSON object",
  "mutation": "the document is a JSON array"
 }

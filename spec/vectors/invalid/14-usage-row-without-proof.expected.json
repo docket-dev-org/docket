@@ -4,6 +4,7 @@
  "ledger": "base.ledger.jsonl",
  "check": "usage-inclusion-proofs",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a78 item 4 + \u00a76.1",
  "mutation": "one usage row was stripped of its merkle_path"
 }

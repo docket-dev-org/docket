@@ -1,0 +1,13 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "31-utf8-bom.json",
+ "ledger": "base.ledger.jsonl",
+ "check": null,
+ "reject": {
+  "kind": "parse",
+  "reason_any_of": []
+ },
+ "accept": null,
+ "rule": "spec \u00a73.1: a document is UTF-8 JSON, and a BOM is not part of it",
+ "mutation": "the file begins with a UTF-8 BOM"
+}

@@ -1,0 +1,10 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "34-integral-float-accepted.json",
+ "ledger": "base.ledger.jsonl",
+ "check": null,
+ "reject": null,
+ "accept": true,
+ "rule": "spec \u00a73.2: a float with an integral value MUST be normalised to an integer",
+ "mutation": "totals.calls is written `4e0`; the value is 4 and the receipt must still verify"
+}

@@ -4,6 +4,7 @@
  "ledger": "ledgers/12-event-with-float.jsonl",
  "check": "ledger-chain",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a73.2: a hashed structure MUST NOT contain a float",
  "mutation": "event #3 gained a float in its data"
 }

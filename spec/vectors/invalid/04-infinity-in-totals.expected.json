@@ -5,8 +5,11 @@
  "check": null,
  "reject": {
   "kind": "parse",
-  "reason_contains": "Infinity"
+  "reason_any_of": [
+   "Infinity"
+  ]
  },
+ "accept": null,
  "rule": "spec \u00a73.2: Infinity is not JSON and MUST be rejected",
  "mutation": "an Infinity token appears in the document"
 }

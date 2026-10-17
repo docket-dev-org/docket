@@ -5,8 +5,11 @@
  "check": null,
  "reject": {
   "kind": "parse",
-  "reason_contains": "twice"
+  "reason_any_of": [
+   "docket_number"
+  ]
  },
+ "accept": null,
  "rule": "RFC 8259 \u00a74 + spec \u00a73.1: object names are unique",
  "mutation": "docket_number appears twice in one object"
 }

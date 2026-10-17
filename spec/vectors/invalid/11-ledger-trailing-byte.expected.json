@@ -4,6 +4,7 @@
  "ledger": "ledgers/11-ledger-trailing-byte.jsonl",
  "check": "ledger-file-digest",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a78 item 7",
  "mutation": "the ledger file gained a trailing newline"
 }

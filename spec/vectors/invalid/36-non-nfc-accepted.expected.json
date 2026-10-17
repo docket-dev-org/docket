@@ -1,0 +1,10 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "36-non-nfc-accepted.json",
+ "ledger": "base.ledger.jsonl",
+ "check": null,
+ "reject": null,
+ "accept": true,
+ "rule": "spec \u00a73.1: non-ASCII is emitted literally; normalisation is never required",
+ "mutation": "a string carries a decomposed form; the bytes must not be rewritten"
+}

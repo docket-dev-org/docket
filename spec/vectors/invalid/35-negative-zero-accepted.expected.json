@@ -1,0 +1,10 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "35-negative-zero-accepted.json",
+ "ledger": "base.ledger.jsonl",
+ "check": null,
+ "reject": null,
+ "accept": true,
+ "rule": "RFC 8259 \u00a76: `-0` is a JSON number and equals zero",
+ "mutation": "totals.asserted_calls is written `-0`"
+}

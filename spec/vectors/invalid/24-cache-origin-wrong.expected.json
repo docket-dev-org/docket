@@ -4,6 +4,7 @@
  "ledger": null,
  "check": "cache-hit-origins",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a78 item 10",
  "mutation": "a cache group cites seq 0, which is not a metered call"
 }

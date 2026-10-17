@@ -182,10 +182,23 @@ def verify_receipt(
         return {}
 
     def whole(value: Any, where: str) -> int | None:
-        """An integer from untrusted input, or ``None`` after stating why it is not one."""
+        """An integer from untrusted input, or ``None`` after stating why it is not one.
+
+        An integral float is accepted and normalised, because spec §3.2 says exactly that: "A float
+        with an integral value MUST be normalised to an integer (5.0 → 5)", and the sentence that
+        follows it rejects only *non-integral* floats. This function used to refuse every float
+        token, which made the Python verifier stricter than the format and put it at odds with the
+        Node one on a document the spec says to read: the negative corpus's `34-integral-float-accepted`
+        vector caught the disagreement, and the corpus refused to be written until it was settled.
+        """
         if isinstance(value, bool) or value is None:
             add("receipt-shape", "fail", f"{where} is not a whole number: {value!r}")
             return None
+        if isinstance(value, float):
+            if not value.is_integer():
+                add("receipt-shape", "fail", f"{where} is a fractional number: {value!r}")
+                return None
+            return int(value)
         try:
             return int(str(value).strip())
         except (TypeError, ValueError):
@@ -514,30 +527,72 @@ def verify_receipt(
                 add("cost-recomputation", "pass", f"{recomputed['calls']} calls recomputed from token counts")
 
             totals = section("totals")
+            # One id, one verdict: the cost, the call count and the decimal amount are three
+            # statements about the same claim — "this is what the rows add up to" — so they are
+            # computed together and reported once. Emitting a second `totals` row with its own
+            # status is what an earlier draft did, and `test_no_check_reports_two_verdicts` exists
+            # because a report holding `FAIL totals` and `PASS totals` lets a reader see whichever
+            # one they expected.
+            totals_problems: list[str] = []
             declared_raw = totals.get("cost_usd", "0.00")
+            declared_amount = None
             try:
-                declared = _amount(declared_raw)
+                declared_amount = _amount(declared_raw)
             except (InvalidOperation, ValueError, TypeError):
+                totals_problems.append(
+                    f"receipt total is not a decimal amount: {declared_raw!r} ({type(declared_raw).__name__})"
+                )
+            calls_raw = totals.get("calls", -1)
+            calls_declared = whole(calls_raw, "the receipt's totals.calls")
+            if calls_declared is None:
+                totals_problems.append(f"receipt call count is not a whole number: {calls_raw!r}")
+            elif calls_declared != int(recomputed["calls"]):
+                totals_problems.append(
+                    f"receipt says {calls_declared} call(s); the usage appendix holds {recomputed['calls']}"
+                )
+            if declared_amount is not None and declared_amount != Decimal(recomputed["cost_usd"]):
+                totals_problems.append(f"receipt total {declared_raw} != recomputed {recomputed['cost_usd']}")
+            if totals_problems:
+                add("totals", "fail", "; ".join(totals_problems))
+            else:
                 add(
                     "totals",
-                    "fail",
-                    f"receipt total is not a decimal amount: {declared_raw!r} ({type(declared_raw).__name__})",
+                    "pass",
+                    f"{recomputed['calls']} call(s), total {declared_raw} agrees with recomputation",
                 )
-            else:
-                if declared == Decimal(recomputed["cost_usd"]):
-                    add("totals", "pass", f"total {declared_raw} agrees with recomputation")
-                else:
-                    add("totals", "fail", f"receipt total {declared_raw} != recomputed {recomputed['cost_usd']}")
 
-            tokens_raw = totals.get("total_tokens", -1)
-            tokens_declared = whole(tokens_raw, "the receipt's totals.total_tokens")
-            if tokens_declared is None:
-                add("token-totals", "fail", f"receipt token total is not a whole number: {tokens_raw!r}")
+            # Three counts, one assertion: the halves and the sum. Comparing only the sum lets a
+            # receipt move 1,000 tokens from input to output and still verify, which is a claim about
+            # what the model was asked and what it said — exactly the shape of a fabricated usage
+            # record. Found by probing the member field by field rather than by reading the check.
+            declared_counts = {
+                "input_tokens": totals.get("input_tokens", -1),
+                "output_tokens": totals.get("output_tokens", -1),
+                "total_tokens": totals.get("total_tokens", -1),
+            }
+            declared_whole: dict[str, int] = {}
+            for name, raw in declared_counts.items():
+                value = whole(raw, f"the receipt's totals.{name}")
+                if value is not None:
+                    declared_whole[name] = value
+            if len(declared_whole) != len(declared_counts):
+                add("token-totals", "fail", "a receipt token total is not a whole number")
             else:
-                if tokens_declared == int(recomputed["total_tokens"]):
-                    add("token-totals", "pass", f"{recomputed['total_tokens']:,} tokens")
+                wrong = [name for name, value in declared_whole.items() if value != int(recomputed[name])]
+                if not wrong:
+                    add(
+                        "token-totals",
+                        "pass",
+                        f"{recomputed['input_tokens']:,} in + {recomputed['output_tokens']:,} out "
+                        f"= {recomputed['total_tokens']:,} tokens",
+                    )
                 else:
-                    add("token-totals", "fail", "receipt token totals do not match the usage appendix")
+                    add(
+                        "token-totals",
+                        "fail",
+                        "receipt token totals do not match the usage appendix: "
+                        + ", ".join(f"{name} {declared_whole[name]:,} vs {int(recomputed[name]):,}" for name in wrong),
+                    )
 
             # The Node verifier has always checked the cached half of the token total and the Python
             # one never did: found by asking each implementation which ids it emits across the whole

@@ -526,20 +526,44 @@ function verifyReceipt(receipt, options = {}) {
     }
     if (mismatches === 0) {
       add("cost-recomputation", "pass", `${rows.length} calls recomputed from token counts`);
+      // Three statements about one claim — "this is what the rows add up to" — reported once, under
+      // one id. The corpus found this block comparing only the cost and only the token *sum*: a
+      // receipt could say `"calls": 0` beside four usage rows, or move a thousand tokens from input
+      // to output, and verify. Both halves of the token total are checked because each is a
+      // separate claim about what the model was asked and what it said.
       const declared = micros(String(receipt.totals?.cost_usd ?? "0"));
+      const totalsProblems = [];
+      if (declared !== total) {
+        totalsProblems.push(`receipt total ${formatMicros(declared)} != recomputed ${formatMicros(total)}`);
+      }
+      const declaredCalls = Number(receipt.totals?.calls ?? -1);
+      if (!Number.isInteger(declaredCalls) || declaredCalls !== rows.length) {
+        totalsProblems.push(`receipt says ${receipt.totals?.calls} call(s); the usage appendix holds ${rows.length}`);
+      }
       add(
         "totals",
-        declared === total ? "pass" : "fail",
-        declared === total
-          ? `total ${formatMicros(total)} agrees with recomputation`
-          : `receipt total ${formatMicros(declared)} != recomputed ${formatMicros(total)}`,
+        totalsProblems.length === 0 ? "pass" : "fail",
+        totalsProblems.length === 0
+          ? `${rows.length} call(s), total ${formatMicros(total)} agrees with recomputation`
+          : totalsProblems.join("; "),
       );
-      const declaredTokens = Number(receipt.totals?.total_tokens ?? -1);
-      const recomputedTokens = inputTokens + outputTokens;
+      const tokenProblems = [];
+      for (const [name, recomputed] of [
+        ["input_tokens", inputTokens],
+        ["output_tokens", outputTokens],
+        ["total_tokens", inputTokens + outputTokens],
+      ]) {
+        const stated = Number(receipt.totals?.[name] ?? -1);
+        if (!Number.isInteger(stated) || stated !== recomputed) {
+          tokenProblems.push(`${name} ${receipt.totals?.[name]} vs ${recomputed}`);
+        }
+      }
       add(
         "token-totals",
-        declaredTokens === recomputedTokens ? "pass" : "fail",
-        `${recomputedTokens.toLocaleString("en-US")} tokens recomputed`,
+        tokenProblems.length === 0 ? "pass" : "fail",
+        tokenProblems.length === 0
+          ? `${inputTokens.toLocaleString("en-US")} in + ${outputTokens.toLocaleString("en-US")} out = ${(inputTokens + outputTokens).toLocaleString("en-US")} tokens`
+          : `receipt token totals do not match the usage appendix: ${tokenProblems.join(", ")}`,
       );
       add(
         "cached-totals",
@@ -954,10 +978,27 @@ function main(argv) {
   }
   let receiptText;
   let receipt;
+  let receiptBytes;
   try {
-    receiptText = readFileSync(options.file, "utf8");
+    receiptBytes = readFileSync(options.file);
   } catch (error) {
     process.stderr.write(`verify-js: cannot read receipt: ${error.message}\n`);
+    return 2;
+  }
+  try {
+    // `readFileSync(path, "utf8")` replaces every invalid byte with U+FFFD and hands the caller a
+    // *valid* document that is not the one on disk: a receipt with one corrupted byte then verifies,
+    // because the corruption was silently rewritten into a plausible character. The negative
+    // corpus's `33-invalid-utf8` vector caught it. Fatal decoding is the only honest reading of
+    // "the document is UTF-8" (spec §3.1).
+    // `ignoreBOM: true` is the option that does *not* strip a leading BOM — the name reads
+    // backwards, but the alternative (the default) silently removes it, so a document that begins
+    // with U+FEFF would be accepted here and refused by the Python verifier. A BOM is not part of a
+    // JSON text (RFC 8259 §8.1 permits producers to *not* add one and says implementations may
+    // ignore it; this format chooses to refuse it, and spec §3.1 says so).
+    receiptText = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(receiptBytes);
+  } catch (error) {
+    process.stderr.write(`verify-js: the receipt is not valid UTF-8: ${error.message}\n`);
     return 2;
   }
   const repeated = findDuplicateName(receiptText);

@@ -47,6 +47,30 @@ BASE = "base"
 OWN = "own"
 NONE = None
 
+#: A vector that must be **accepted**: the document is unusual but the format requires reading it.
+#: Refusals are the corpus's main business, but a corpus that only says what to refuse lets two
+#: implementations disagree about what to *read* — and that is the first ambiguity a second
+#: implementer meets. Each such vector cites the normative sentence that requires acceptance.
+ACCEPT = "accept"
+
+#: What the refusal on stderr must mention, per vector — **any one of**, and only tokens that appear
+#: in the document itself.
+#:
+#: This started as a single required word per vector and immediately over-fitted: the BOM vector
+#: demanded "BOM", which is Python's wording, and Node's parser said "Unexpected token '\ufeff'"
+#: and was scored `wrong-reason` for refusing correctly. A corpus is a contract with third parties,
+#: so it may not require *my* prose. What it may require is that the reason names the construct the
+#: document actually contains (`NaN`, `Infinity`, `ledger`) — and, for byte-level damage with no
+#: nameable token, nothing at all: an empty list means "refused, with some reason stated".
+REJECT_WORDS = {
+    "03-nan-in-totals": ["NaN"],
+    "04-infinity-in-totals": ["Infinity"],
+    "05-duplicate-member": ["docket_number"],
+    "31-utf8-bom": [],
+    "32-trailing-bytes": [],
+    "33-invalid-utf8": [],
+}
+
 
 def ledger_text(events: list[dict]) -> str:
     """The JSONL a `docket run` writes: one canonical-compact event per line, trailing newline."""
@@ -210,6 +234,65 @@ def _cache_origin(r, e, t):
 def _cache_proof(r, e, t):
     r["cache"]["by_origin"][0]["merkle_path"][0]["hash"] = "0" * 64
     return r, e, t, None
+
+
+def _totals_calls(r, e, t):
+    r["totals"]["calls"] = 0
+    return r, e, t, None
+
+
+def _totals_input_tokens(r, e, t):
+    r["totals"]["input_tokens"] = 1
+    return r, e, t, None
+
+
+def _totals_token_split(r, e, t):
+    """The sum stays right while the halves move: the shape a fabricated usage record has."""
+    moved = 100
+    r["totals"]["input_tokens"] -= moved
+    r["totals"]["output_tokens"] += moved
+    return r, e, t, None
+
+
+def _bom(r, e, t):
+    return r, e, t, "\ufeff" + json.dumps(r)
+
+
+def _trailing_bytes(r, e, t):
+    return r, e, t, json.dumps(r) + "\nnull\n"
+
+
+def _invalid_utf8(r, e, t):
+    """A byte that cannot appear in UTF-8, inside the document's own text.
+
+    The first attempt at this vector was wrong in a way worth keeping written down: it built a
+    *string* containing U+00FF and encoded it, which is valid UTF-8 (C3 BF) and verified cleanly.
+    An invalid-byte vector has to be bytes, so the payload path accepts `bytes` and this returns
+    one with a lone 0xFF where a name should be.
+    """
+    forged = json.dumps(r).replace('"docket_number"', '"docket_number\u00ff"', 1).encode("utf-8")
+    return r, e, t, forged.replace(b'"docket_number\xc3\xbf"', b'"docket_number\xff"', 1)
+
+
+def _integral_float(r, e, t):
+    """`calls` written as `4e0`: a float with an integral value (spec §3.2, second bullet)."""
+    return r, e, t, json.dumps(r).replace('"calls": 4', '"calls": 4e0', 1)
+
+
+def _negative_zero(r, e, t):
+    """`-0` is a JSON integer and equals zero; a reader that refuses it is refusing arithmetic."""
+    return r, e, t, json.dumps(r).replace('"asserted_calls": 0', '"asserted_calls": -0', 1)
+
+
+def _non_nfc(r, e, t):
+    """A decomposed é where the composed form is the one a writer would emit.
+
+    Spec §3.1 emits non-ASCII literally and sorts by code point; it never requires normalisation, so
+    a reader MUST accept either form and MUST hash the bytes it was given (not a re-composed copy).
+    The vectors that follow a receipt's digest would drift if an implementation normalised silently.
+    """
+    text = json.dumps(r).replace('"docket_number": "DKT-20260102-VECT01"', '"docket_number": "DKT-2026-\u00e9"', 1)
+    return r, e, t, text.replace("\u00e9", "e\u0301")
 
 
 def _assumed_undisclosed(r, e, t):
@@ -459,6 +542,94 @@ VECTORS: list[tuple[str, str, object, str | None, str | None, str, str]] = [
         "spec §9.3: a fallback price must be visible wherever the cost is",
         "totals.assumed_price_models was removed from a receipt that priced an unlisted model",
     ),
+    (
+        "28-totals-call-count",
+        BASE,
+        _totals_calls,
+        "totals",
+        BASE,
+        "spec §6: totals.calls is the number of metered calls the appendix holds",
+        "totals.calls is 0 while four usage rows are present",
+    ),
+    (
+        "29-totals-input-tokens",
+        BASE,
+        _totals_input_tokens,
+        "token-totals",
+        BASE,
+        "spec §6: totals.input_tokens is the sum over the usage rows",
+        "totals.input_tokens is 1 while the rows sum to 9,000",
+    ),
+    (
+        "30-totals-token-split",
+        BASE,
+        _totals_token_split,
+        "token-totals",
+        BASE,
+        "spec §6: each token total is the sum of its own column",
+        "100 tokens moved from input to output, so the sum is unchanged and the halves are wrong",
+    ),
+    # -- the parsing family: refusals that happen before any check runs ----------------------
+    (
+        "31-utf8-bom",
+        BASE,
+        _bom,
+        None,
+        BASE,
+        "spec §3.1: a document is UTF-8 JSON, and a BOM is not part of it",
+        "the file begins with a UTF-8 BOM",
+    ),
+    (
+        "32-trailing-bytes",
+        BASE,
+        _trailing_bytes,
+        None,
+        BASE,
+        "RFC 8259 §2: a JSON text is one value and nothing follows it",
+        "a second JSON value follows the receipt",
+    ),
+    (
+        "33-invalid-utf8",
+        BASE,
+        _invalid_utf8,
+        None,
+        BASE,
+        "spec §3.1: the document is UTF-8",
+        "a byte that is not valid UTF-8 appears inside a string",
+    ),
+    # -- the parsing family: documents that MUST be accepted ---------------------------------
+    # These carry `accept` rather than `check`. They are here because a corpus that only says what
+    # to refuse lets two implementations disagree about what to *read*, which is the ambiguity a
+    # second implementer hits first. Spec §3.2 requires an integral float to be normalised, so
+    # `4e0` is 4; `-0` is the integer zero; §3.1 never requires Unicode normalisation, so a
+    # decomposed form is the same string written differently and MUST NOT be re-encoded.
+    (
+        "34-integral-float-accepted",
+        BASE,
+        _integral_float,
+        ACCEPT,
+        BASE,
+        "spec §3.2: a float with an integral value MUST be normalised to an integer",
+        "totals.calls is written `4e0`; the value is 4 and the receipt must still verify",
+    ),
+    (
+        "35-negative-zero-accepted",
+        BASE,
+        _negative_zero,
+        ACCEPT,
+        BASE,
+        "RFC 8259 §6: `-0` is a JSON number and equals zero",
+        "totals.asserted_calls is written `-0`",
+    ),
+    (
+        "36-non-nfc-accepted",
+        BASE,
+        _non_nfc,
+        ACCEPT,
+        BASE,
+        "spec §3.1: non-ASCII is emitted literally; normalisation is never required",
+        "a string carries a decomposed form; the bytes must not be rewritten",
+    ),
 ]
 
 
@@ -481,23 +652,42 @@ def build() -> dict[pathlib.Path, bytes]:
         else:
             receipt, events, text, raw = mutate(receipt, None, None)
         payload = raw if raw is not None else json.dumps(receipt, indent=1, ensure_ascii=False) + "\n"
-        files[HERE / f"{name}.json"] = payload.encode("utf-8")
+        files[HERE / f"{name}.json"] = payload if isinstance(payload, bytes) else payload.encode("utf-8")
         if ledger == OWN:
             files[HERE / "ledgers" / f"{name}.jsonl"] = text.encode("utf-8")
-        expectation = {
-            "schema": "docket/conformance-expectation/v1",
-            "vector": f"{name}.json",
-            "ledger": None if ledger is None else (LEDGER_NAME if ledger == BASE else f"ledgers/{name}.jsonl"),
-            "check": check,
-            "reject": None
-            if check is not None
-            else {
-                "kind": "parse",
-                "reason_contains": "NaN" if "nan" in name else "Infinity" if "infinity" in name else "twice",
-            },
-            "rule": rule,
-            "mutation": mutation,
-        }
+        if check == ACCEPT:
+            expectation = {
+                "schema": "docket/conformance-expectation/v1",
+                "vector": f"{name}.json",
+                "ledger": None if ledger is None else (LEDGER_NAME if ledger == BASE else f"ledgers/{name}.jsonl"),
+                "check": None,
+                "reject": None,
+                "accept": True,
+                "rule": rule,
+                "mutation": mutation,
+            }
+        elif check is None:
+            expectation = {
+                "schema": "docket/conformance-expectation/v1",
+                "vector": f"{name}.json",
+                "ledger": None if ledger is None else (LEDGER_NAME if ledger == BASE else f"ledgers/{name}.jsonl"),
+                "check": None,
+                "reject": {"kind": "parse", "reason_any_of": REJECT_WORDS[name]},
+                "accept": None,
+                "rule": rule,
+                "mutation": mutation,
+            }
+        else:
+            expectation = {
+                "schema": "docket/conformance-expectation/v1",
+                "vector": f"{name}.json",
+                "ledger": None if ledger is None else (LEDGER_NAME if ledger == BASE else f"ledgers/{name}.jsonl"),
+                "check": check,
+                "reject": None,
+                "accept": None,
+                "rule": rule,
+                "mutation": mutation,
+            }
         files[HERE / f"{name}.expected.json"] = (json.dumps(expectation, indent=1) + "\n").encode("utf-8")
     return files
 
@@ -541,15 +731,20 @@ def verify(files: dict[pathlib.Path, bytes]) -> list[str]:
                 None if ledger is None else root / (LEDGER_NAME if ledger == BASE else f"ledgers/{name}.jsonl")
             )
             kind, detail = _first_failure(receipt, ledger_path)
+            if check == ACCEPT:
+                if kind != "pass":
+                    problems.append(f"{name}: expected acceptance, got {kind} {detail}")
+                continue
             if check is None:
                 if not kind.startswith("reject:"):
                     problems.append(f"{name}: expected a parse rejection, got {kind}")
                     continue
-                # The reason lives in the stderr the verifier printed; the vector's expectation names
-                # the word it must contain, so a rejection for some *other* parse defect does not count.
-                expected_word = "NaN" if "nan" in name else "Infinity" if "infinity" in name else "twice"
-                if expected_word.lower() not in kind.lower():
-                    problems.append(f"{name}: rejected, but not for {expected_word!r}: {kind.strip()[:140]}")
+                reason = kind[len("reject:") :].strip()
+                words = REJECT_WORDS[name]
+                if not reason:
+                    problems.append(f"{name}: refused with no reason on stderr")
+                elif words and not any(word.lower() in reason.lower() for word in words):
+                    problems.append(f"{name}: rejected, but the reason names none of {words}: {reason[:140]}")
             elif kind != f"fail:{check}":
                 problems.append(f"{name}: expected first failure {check!r}, got {kind} {detail}")
     return problems

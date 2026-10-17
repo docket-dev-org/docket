@@ -262,6 +262,26 @@ check(
   verifyReceipt(reboundReceipt).checks.find((item) => item.name === "usage-rows-rebound").status === "skip",
 );
 
+console.log("the totals are three statements, not one number");
+{
+  const miscounted = JSON.parse(JSON.stringify(load("receipt.json")));
+  miscounted.totals.calls = 0;
+  const result = verifyReceipt(miscounted);
+  const row = result.checks.filter((item) => item.name === "totals");
+  check("a call count that disagrees with the appendix fails totals", row.length === 1 && row[0].status === "fail", JSON.stringify(row[0]?.detail));
+
+  const moved = JSON.parse(JSON.stringify(load("receipt.json")));
+  moved.totals.input_tokens -= 100;
+  moved.totals.output_tokens += 100;
+  const movedResult = verifyReceipt(moved);
+  const tokenRow = movedResult.checks.filter((item) => item.name === "token-totals");
+  check(
+    "tokens moved between the halves fail token-totals",
+    tokenRow.length === 1 && tokenRow[0].status === "fail" && tokenRow[0].detail.includes("input_tokens"),
+    JSON.stringify(tokenRow[0]?.detail),
+  );
+}
+
 console.log("money");
 check("2-decimal canonical form", formatMicros(micros("0.018000")) === "0.018000");
 check("whole cents collapse to 2 decimals", formatMicros(micros("1.50")) === "1.50");

@@ -4,6 +4,7 @@
  "ledger": "base.ledger.jsonl",
  "check": "format",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a76: format is docket/receipt/v1",
  "mutation": "the format tag names a version that does not exist"
 }

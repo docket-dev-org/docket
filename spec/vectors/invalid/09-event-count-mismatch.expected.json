@@ -4,6 +4,7 @@
  "ledger": "base.ledger.jsonl",
  "check": "event-count",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a78 item 3",
  "mutation": "ledger.events is one short of the ledger"
 }

@@ -159,13 +159,21 @@ def classify(result: dict, expectation: dict) -> tuple[str, str]:
     if reject is not None:
         # A parse-level rejection: the verifier exits non-zero without a JSON verdict, and says why.
         if result["returncode"] != 0 and payload is None:
-            needle = reject.get("reason_contains", "")
-            if needle.lower() in (result.get("stderr") or "").lower():
-                return "pass", f"rejected: {needle}"
-            return (
-                "wrong-reason",
-                f"rejected without mentioning {needle!r}: {(result.get('stderr') or '').strip()[:120]}",
-            )
+            # A refusal has to say why; what words it uses are its own business, unless the vector
+            # names a construct that is in the document (`NaN`, `ledger`) and the reason should say
+            # which one it choked on. The corpus may not require one implementation's prose.
+            reason = (result.get("stderr") or "").strip()
+            alternatives = reject.get("reason_any_of")
+            if alternatives is None:  # expectations written before `reason_any_of` existed
+                alternatives = [reject["reason_contains"]] if reject.get("reason_contains") else []
+            if not reason:
+                return "wrong-reason", "refused with no reason on stderr: a refusal has to say why"
+            if not alternatives:
+                return "pass", "rejected, with a reason"
+            hit = next((word for word in alternatives if word.lower() in reason.lower()), None)
+            if hit:
+                return "pass", f"rejected, naming {hit!r}"
+            return "wrong-reason", f"rejected without naming any of {alternatives}: {reason[:120]}"
         return "wrong-ok", "the document was read and judged; it must be rejected before any check runs"
     if payload is None:
         return (

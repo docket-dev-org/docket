@@ -38,7 +38,7 @@ reason, and a conformance run reports them as `not-judged`.
 | path | contains | rule |
 | --- | --- | --- |
 | `spec/vectors/*.json` | valid documents and their digests | a conforming implementation **MUST** accept every one (exit 0, `ok: true`) |
-| `spec/vectors/invalid/NN-name.json` | a document that **MUST** be refused | refusal is either a failing check or a parse-level rejection (§3) |
+| `spec/vectors/invalid/NN-name.json` | a document that **MUST** be refused, or **MUST** be accepted | a refusal is a failing check or a parse-level rejection (§3); an acceptance is marked `"accept": true` |
 | `spec/vectors/invalid/NN-name.expected.json` | the expectation | names the id that must fail, the rule it enforces and the mutation applied |
 | `spec/vectors/invalid/base.ledger.jsonl`, `ledgers/*.jsonl` | ledgers the vectors are verified against | an expectation names its ledger, or `null` |
 
@@ -76,15 +76,27 @@ vectors.
   "ledger": "base.ledger.jsonl",
   "check": "totals",
   "reject": null,
+  "accept": null,
   "rule": "spec §8 item 5",
   "mutation": "totals.cost_usd does not equal the sum of the rows"
 }
 ```
 
-`check` names the id that **must** be the first failing check. `reject` is set instead when the document
-must be refused before any check runs, and carries the word the reason on stderr must contain. `rule`
-cites the normative sentence the vector enforces; `mutation` says what was changed. An expectation
-without a rule is a fixture, not an argument, and `tests/test_conformance.py` refuses one.
+Exactly one of three outcomes is named:
+
+* **`check`** — the id that **must** be the first failing check;
+* **`reject`** — the document must be refused before any check runs (§3). Its `reason_any_of` is a
+  list of tokens the reason on stderr may name, and every token must appear **in the document**.
+  For damage with no nameable token (a BOM, trailing bytes, invalid UTF-8) the list is empty: the
+  requirement is that a reason is stated, not that it is phrased the way this repository phrases it.
+  A corpus written before a third implementation exists must not encode the first two's vocabulary;
+* **`accept`** — `true` when the document is unusual but the format requires reading it (`4e0` where
+  an integer is expected, `-0`, a decomposed Unicode form). These exist because a corpus that only
+  says what to refuse lets two implementations disagree about what to **read**, which is the first
+  ambiguity a second implementer meets.
+
+`rule` cites the normative sentence the vector enforces; `mutation` says what was changed. An
+expectation without a rule is a fixture, not an argument, and `tests/test_conformance.py` refuses one.
 
 Why "first failing check" and not "any failing check": almost any corruption breaks several assertions
 (a doctored ledger breaks the chain, the root and every inclusion proof). Naming the first is what makes
@@ -113,6 +125,11 @@ Four outcomes are reported, and the first is the only one that is fatal to a con
 | `not-judged` | the implementation skips the id, or does not emit it at all |
 | `pass` | accepted when it must be, or refused by the named id |
 
+An implementation that **reads** a byte sequence which is not UTF-8, or silently replaces an invalid
+byte, has not verified the document on disk — it has verified a repaired copy of it. The Node
+verifier did exactly that (`readFileSync(path, "utf8")` substitutes U+FFFD) until `33-invalid-utf8`
+caught it; decoding is now fatal.
+
 `--allow-gaps` exits 0 when nothing is *wrong* and some vectors were `not-judged`. That is the honest
 intermediate state of an implementation that declares its gaps; it is never a full conformance claim.
 
@@ -124,7 +141,7 @@ intermediate state of an implementation that declares its gaps; it is never a fu
   altered; §9 of the format spec is the receipt's own statement about what it cannot see, and
   `limits-disclosure` only checks that the statement is present.
 * **Not agreement between implementations on documents outside the corpus.** The corpus is 7 valid and
-  27 invalid documents; it is a floor on behaviour, not a census. Differential fuzzing is the tool for
+  30 refusals and 3 required acceptances; it is a floor on behaviour, not a census. Differential fuzzing is the tool for
   the space between the vectors.
 * **Not a certificate.** A conformance run is evidence about one implementation, at one commit, on one
   corpus revision. Print the commit and the corpus digest beside the result, as the release record does.

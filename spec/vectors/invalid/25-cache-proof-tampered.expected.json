@@ -4,6 +4,7 @@
  "ledger": null,
  "check": "cache-hit-proofs",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a78 item 10",
  "mutation": "one hex digit of one cache proof is zeroed"
 }

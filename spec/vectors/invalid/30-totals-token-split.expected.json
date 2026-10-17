@@ -1,0 +1,10 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "30-totals-token-split.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "token-totals",
+ "reject": null,
+ "accept": null,
+ "rule": "spec \u00a76: each token total is the sum of its own column",
+ "mutation": "100 tokens moved from input to output, so the sum is unchanged and the halves are wrong"
+}

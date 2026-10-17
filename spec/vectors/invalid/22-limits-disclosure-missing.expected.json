@@ -4,6 +4,7 @@
  "ledger": "base.ledger.jsonl",
  "check": "limits-disclosure",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a78 item 9",
  "mutation": "the limits_disclosure member was removed"
 }

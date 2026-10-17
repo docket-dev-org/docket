@@ -4,6 +4,7 @@
  "ledger": "ledgers/07-chain-edited-event.jsonl",
  "check": "ledger-chain",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a74.3: every event hash recomputes",
  "mutation": "event #3 gained a field after its hash was computed"
 }

@@ -1,0 +1,13 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "33-invalid-utf8.json",
+ "ledger": "base.ledger.jsonl",
+ "check": null,
+ "reject": {
+  "kind": "parse",
+  "reason_any_of": []
+ },
+ "accept": null,
+ "rule": "spec \u00a73.1: the document is UTF-8",
+ "mutation": "a byte that is not valid UTF-8 appears inside a string"
+}

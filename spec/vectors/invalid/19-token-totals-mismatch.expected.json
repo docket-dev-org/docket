@@ -4,6 +4,7 @@
  "ledger": "base.ledger.jsonl",
  "check": "token-totals",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a78 item 5",
  "mutation": "totals.total_tokens is one higher than the rows"
 }

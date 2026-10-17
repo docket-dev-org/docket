@@ -4,6 +4,7 @@
  "ledger": "base.ledger.jsonl",
  "check": "receipt-shape",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a76: every listed member is an object",
  "mutation": "totals is a string"
 }

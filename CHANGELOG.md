@@ -10,6 +10,29 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **The corpus grew to 36 vectors and found four more defects — including one in the same file twice.**
+  `spec/vectors/invalid/` now covers the parsing family (a UTF-8 BOM, trailing bytes, invalid UTF-8 —
+  all refused before any check runs) and, for the first time, **documents that must be accepted**:
+  `4e0` where an integer is expected, `-0`, and a decomposed Unicode form. Those three exist because a
+  corpus that only says what to refuse lets two implementations disagree about what to *read*, and the
+  first one settled a real disagreement: spec §3.2 says an integral float MUST be normalised, Python
+  refused every float token and Node accepted every one. The spec's sentence decided it; both now
+  normalise an integral float and refuse a fractional one. Probing the totals member by member also
+  found that `totals.calls`, `totals.input_tokens` and `totals.output_tokens` were never compared with
+  the appendix in either implementation — a receipt could say `"calls": 0` beside four usage rows and
+  verify — and that Node's `readFileSync(path, "utf8")` silently replaced invalid bytes with U+FFFD, so
+  it verified a *repaired* copy of a corrupted document. All four are fixed, with vectors and tests.
+- **`reason_any_of`, because a corpus may not demand one implementation's prose.** The first version
+  of the BOM vector required the word `BOM`; Node said `Unexpected token '\ufeff'`, refused correctly,
+  and was scored `wrong-reason`. An expectation now names tokens that must appear **in the document**
+  (`NaN`, `Infinity`, a member name), or nothing at all when the damage has no nameable token. Writing
+  a corpus before the third implementation exists is an exercise in not encoding the first two's
+  vocabulary.
+- **`docs/adr/0006-the-shape-of-the-conformance-corpus.md`** records the five design decisions with
+  the alternative rejected in each case: the document-plus-expectation layout, the `parse` class,
+  deriving the capability table from output, declaring gaps instead of manufacturing skips, and the
+  limits of what a corpus may demand.
+
 - **A negative conformance corpus, and the six verifier defects it found.** The vectors could only
   show that a conforming implementation accepts what it should; nothing tested that it refuses what it
   must, which is what a verifier is for. `spec/vectors/invalid/` now holds 27 complete documents —

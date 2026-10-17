@@ -4,6 +4,7 @@
  "ledger": "base.ledger.jsonl",
  "check": "head",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a78 item 3",
  "mutation": "ledger.head is 64 zeros"
 }

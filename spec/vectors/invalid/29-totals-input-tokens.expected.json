@@ -1,0 +1,10 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "29-totals-input-tokens.json",
+ "ledger": "base.ledger.jsonl",
+ "check": "token-totals",
+ "reject": null,
+ "accept": null,
+ "rule": "spec \u00a76: totals.input_tokens is the sum over the usage rows",
+ "mutation": "totals.input_tokens is 1 while the rows sum to 9,000"
+}

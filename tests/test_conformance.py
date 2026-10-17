@@ -75,14 +75,23 @@ def test_both_shipped_verifiers_agree_with_the_corpus(tmp_path):
 
 @pytest.mark.parametrize("vector", sorted(path.name for path in INVALID.glob("*.expected.json")))
 def test_every_vector_carries_a_rule_and_a_mutation(vector):
-    """An expectation without a stated rule is a fixture; with one, it is an argument."""
+    """An expectation without a stated rule is a fixture; with one, it is an argument.
+
+    Three kinds exist and each must be complete:
+      * a check id — the vector must be refused *by that check*;
+      * `reject` — a parse-level refusal, with the words its reason may name (possibly none: the
+        corpus cannot require one implementation's prose);
+      * `accept` — a document the format requires reading (an integral float, `-0`, a decomposed
+        form), which is where two implementations most often disagree without either being broken.
+    """
     expectation = json.loads((INVALID / vector).read_text(encoding="utf-8"))
     assert expectation["rule"].startswith(("spec §", "RFC ")), expectation["rule"]
     assert expectation["mutation"].strip()
-    if expectation["check"] is None:
+    kinds = [expectation["check"] is not None, expectation["reject"] is not None, expectation.get("accept") is True]
+    assert sum(kinds) == 1, f"{vector} must name exactly one outcome, found {kinds}"
+    if expectation["reject"] is not None:
         assert expectation["reject"]["kind"] == "parse"
-    else:
-        assert expectation["check"]
+        assert isinstance(expectation["reject"]["reason_any_of"], list)
 
 
 def test_usage_source_outside_the_vocabulary_is_a_shape_failure():
@@ -221,3 +230,74 @@ def test_a_vector_without_an_expectation_is_not_silently_ignored(tmp_path):
     )
     assert completed.returncode != 0, "an orphan vector was accepted silently"
     assert "99-orphan.json" in completed.stdout + completed.stderr
+
+
+def test_a_call_count_that_disagrees_with_the_appendix_is_a_totals_failure():
+    """Probing found `totals.calls` was never compared with the appendix.
+
+    A receipt could say `"calls": 0` beside four usage rows and verify: the total cost was right,
+    the token sum was right, and the number a cap counts and a reader quotes was never read. It is
+    the same claim as the cost — "this is what the rows add up to" — so it is the same id, reported
+    once (two rows under one id is the failure `test_no_check_reports_two_verdicts` exists for).
+    """
+    receipt = json.loads(json.dumps(BASE))
+    receipt["totals"]["calls"] = 0
+    result = verify_receipt(receipt)
+    assert result.ok is False
+    rows = [check for check in result.checks if check.name == "totals"]
+    assert len(rows) == 1, "one id, one verdict"
+    assert rows[0].status == "fail"
+    assert "0 call(s)" in rows[0].detail and "4" in rows[0].detail
+
+
+def test_tokens_moved_between_the_halves_are_a_token_totals_failure():
+    """The sum can be right while both halves are wrong — the shape of a fabricated usage record."""
+    receipt = json.loads(json.dumps(BASE))
+    receipt["totals"]["input_tokens"] -= 100
+    receipt["totals"]["output_tokens"] += 100
+    assert receipt["totals"]["total_tokens"] == receipt["totals"]["input_tokens"] + receipt["totals"]["output_tokens"]
+    result = verify_receipt(receipt)
+    rows = [check for check in result.checks if check.name == "token-totals"]
+    assert len(rows) == 1
+    assert rows[0].status == "fail"
+    assert "input_tokens" in rows[0].detail and "output_tokens" in rows[0].detail
+
+
+def test_an_integral_float_is_read_and_a_fractional_one_is_refused():
+    """The corpus settled a disagreement rather than documenting one.
+
+    Spec §3.2 says a float with an integral value MUST be normalised to an integer and implementations
+    MUST reject a *non-integral* float. The Python verifier refused both, the Node one accepted both,
+    and neither had ever been asked. The ambiguity is now decided by the sentence that exists, in
+    both implementations, and `34-integral-float-accepted` holds them to it.
+    """
+    integral = json.loads(json.dumps(BASE))
+    integral["totals"]["calls"] = 4.0  # what `4e0` and `4.0` both parse to
+    assert verify_receipt(integral).ok is True
+
+    fractional = json.loads(json.dumps(BASE))
+    fractional["totals"]["calls"] = 4.5
+    result = verify_receipt(fractional)
+    assert result.ok is False
+    shape = [check for check in result.checks if check.name == "receipt-shape"]
+    assert shape and "fractional" in shape[0].detail
+
+
+def test_the_corpus_demands_no_implementations_prose():
+    """A refusal must state a reason; it must not be required to use my words.
+
+    The first version of the BOM vector demanded the word "BOM", which is Python's wording. Node
+    refused correctly with "Unexpected token '\ufeff'" and was scored `wrong-reason`. A corpus is a
+    contract with third parties — including the Go implementation that does not exist yet — so it may
+    require that the reason names a construct *in the document* (`NaN`, `Infinity`, a member name),
+    and for byte-level damage with no nameable token, nothing at all.
+    """
+    for path in sorted(INVALID.glob("*.expected.json")):
+        expectation = json.loads(path.read_text(encoding="utf-8"))
+        if expectation["reject"] is None:
+            continue
+        words = expectation["reject"]["reason_any_of"]
+        assert isinstance(words, list)
+        document = (INVALID / path.name.replace(".expected.json", ".json")).read_bytes().decode("utf-8", "replace")
+        for word in words:
+            assert word in document, f"{path.name} requires {word!r}, which is not in the document"

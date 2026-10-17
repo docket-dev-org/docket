@@ -4,6 +4,7 @@
  "ledger": "base.ledger.jsonl",
  "check": "assumed-prices",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a79.3: a fallback price must be visible wherever the cost is",
  "mutation": "totals.assumed_price_models was removed from a receipt that priced an unlisted model"
 }

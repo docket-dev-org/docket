@@ -4,6 +4,7 @@
  "ledger": "base.ledger.jsonl",
  "check": "cost-recomputation",
  "reject": null,
+ "accept": null,
  "rule": "spec \u00a78 item 5",
  "mutation": "one row's cost_usd is 9.99"
 }
