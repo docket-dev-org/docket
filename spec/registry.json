@@ -152,7 +152,7 @@
   }
  ],
  "capabilities": {
-  "note": "Derived from observed output over the conformance corpus, not from reading source. A verifier that does not emit an id does not judge it, and a consumer must be able to tell that apart from a pass: that is the difference between `not_judged` and `skip`. `conditional` ids are emitted only for receipt shapes the corpus does not contain, with the reason stated.",
+  "note": "Derived from observed output over the conformance corpus, not from reading source. A verifier that does not emit an id does not judge it, and a consumer must be able to tell that apart from a pass: that is the difference between `not_judged` and `skip`. `conditional` ids are emitted only for receipt shapes the corpus does not contain, with the reason stated. Three implementations are listed: the reference (python), an independent one (node), and a clean-room one written from this specification alone (go).",
   "python": [
    "assumed-prices",
    "by-model-totals",
@@ -214,7 +214,34 @@
   "node_conditional": {
    "chaos-run": "not implemented in the Node verifier: a game-day receipt verifies there without being labelled a test",
    "evidence-completeness": "not implemented in the Node verifier: a JS-only consumer cannot check that the ledger is complete"
-  }
+  },
+  "go": [
+   "assumed-prices",
+   "by-model-totals",
+   "cache-hit-origins",
+   "cache-hit-proofs",
+   "cache-savings",
+   "cached-totals",
+   "cost-basis",
+   "cost-recomputation",
+   "event-count",
+   "format",
+   "head",
+   "latency-summary",
+   "ledger-chain",
+   "ledger-file-digest",
+   "limits-disclosure",
+   "merkle-root",
+   "receipt-format",
+   "receipt-shape",
+   "seal",
+   "signature",
+   "token-totals",
+   "totals",
+   "usage-inclusion-proofs",
+   "usage-rows-rebound",
+   "usage-source-counts"
+  ]
  },
  "history": [
   {

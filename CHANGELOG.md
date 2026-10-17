@@ -10,6 +10,16 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **A third implementation, written from the specification alone.** `verify-go/` is a
+  dependency-free Go verifier built from `spec/` and the vectors without reading the Python or
+  Node one, with a `CLEANROOM.md` that declares the constraint before any code existed. It agrees
+  with the other two on the whole corpus — `132 correct, 0 wrong, 0 not judged` over 44 vectors —
+  and it produced the artifact the claim needed: **twelve questions the specification does not
+  answer**, five of which are worth amending (rounding of the sixth decimal, price-table matching,
+  the shape of `limits_disclosure`, blank lines in a ledger, and the marker for a reached cache
+  ceiling). `make verify-go` runs vet, gofmt and 32 table-driven test functions; CI has its own
+  job; `make conformance` includes it whenever the binary exists.
+
 - **Three more members of a receipt were stated and never checked, and now are.**
   `totals.by_model[]`, the usage-source counts and `totals.cost_basis` are derived from
   `appendix.usage`, so they can be recomputed — but §8 only ever named the total, the token

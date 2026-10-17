@@ -1,4 +1,4 @@
-.PHONY: help game-day selftest helm-fidelity test demo lint fmt audit mutation verify-js vectors conformance wheel clean check site site-check a11y deploy-check load soak cache-load
+.PHONY: help game-day selftest helm-fidelity test demo lint fmt audit mutation verify-js vectors conformance verify-go wheel clean check site site-check a11y deploy-check load soak cache-load
 
 help:
 	@echo "make test       run the full test suite (offline, no API keys)"
@@ -6,6 +6,7 @@ help:
 	@echo "make verify-js  run the independent Node verifier against the vectors"
 	@echo "make vectors    regenerate spec/vectors (only for a deliberate format change)"
 	@echo "make conformance run the negative corpus against both verifiers, and hold the registry to what they emit"
+	@echo "make verify-go  vet, gofmt, test and build the clean-room Go verifier (needs Go 1.27)"
 	@echo "make wheel      build sdist + wheel into dist/"
 	@echo "make lint fmt   ruff check / ruff format"
 	@echo "make audit      bandit static analysis (suppressions documented in pyproject.toml)"
@@ -41,7 +42,16 @@ verify-js:
 # only ever fires on an empty receipt) fails here rather than at a stranger's desk.
 conformance:
 	PYTHONPATH=src python3 tools/conformance.py --python --node
+	@if [ -x verify-go/docket-verify ]; then PYTHONPATH=src python3 tools/conformance.py --go; fi
 	PYTHONPATH=src python3 tools/conformance.py --capabilities --python --node
+	@if [ -x verify-go/docket-verify ]; then PYTHONPATH=src python3 tools/conformance.py --capabilities --go; fi
+
+# The third implementation is a check on the *specification*, not on the other two: it is
+# written from spec/ only, and the corpus is what holds it to the same answers.
+verify-go:
+	cd verify-go && GOFLAGS=-mod=readonly GOPROXY=off go vet ./... && test -z "$$(gofmt -l .)" && GOPROXY=off go test ./...
+	cd verify-go && GOFLAGS=-mod=readonly GOPROXY=off go build -o docket-verify .
+
 
 vectors:
 	PYTHONPATH=src python3 spec/vectors/generate.py

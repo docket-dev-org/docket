@@ -1,7 +1,7 @@
 # Docket receipt format, version 1
 
 **Status:** stable (v1, October 2026) · **Format tag:** `docket/receipt/v1` · **Ledger tag:** `docket/ledger/v1`
-**Reference implementation:** `docket` (Python, zero dependencies) · **Independent implementation:** `verify-js/verify.mjs` (Node, zero dependencies) · **Conformance vectors:** `spec/vectors/`
+**Reference implementation:** `docket` (Python, zero dependencies) · **Independent implementations:** `verify-js/verify.mjs` (Node) and `verify-go/` (Go), both dependency-free · **Conformance vectors:** `spec/vectors/`
 **Licence of this specification text:** CC BY 4.0 (copy it, implement it, quote it; attribution appreciated). The reference implementation and tooling are Apache-2.0.
 
 ---

@@ -49,3 +49,6 @@ mutation-report.md
 .vscode/
 .idea/
 .DS_Store
+
+# the Go verifier's build product
+verify-go/docket-verify

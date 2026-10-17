@@ -4,7 +4,7 @@ Verification is the half of Docket that matters most. Anyone can write logs; the
 that **a stranger can check the record without trusting the tool, the operator or the vendor** —
 offline, with whatever language they already have installed.
 
-## The three ways to verify
+## The four ways to verify
 
 ```bash
 # 1. Python reference implementation (zero dependencies)
@@ -13,9 +13,18 @@ docket verify receipt.json --ledger runs/xxxx.jsonl
 # 2. Independent Node implementation (standard library only)
 node verify-js/verify.mjs receipt.json --ledger runs/xxxx.jsonl
 
-# 3. Your own, from the spec
+# 3. Clean-room Go implementation, written from the specification alone
+cd verify-go && go build -o docket-verify . && ./docket-verify ../receipt.json --ledger ../runs/xxxx.jsonl
+
+# 4. Your own, from the spec
 spec/docket-receipt-1.md §8 + spec/vectors/*.json as the test suite
 ```
+
+The Go verifier is the one that tests the *specification*: it was written without reading either
+of the other two (`verify-go/CLEANROOM.md` lists the twelve questions the spec left open, five of
+which are worth amending). All three are held to the same 44 vectors by
+`python3 tools/conformance.py --python --node --go`, which prints `132 correct, 0 wrong, 0 not
+judged` when they agree.
 
 Exit codes: `0` verified, `1` not verified, `2` usage/IO error. `--json` gives the same result
 as data:
@@ -75,7 +84,7 @@ The table above is a promise; `spec/registry.json` is the same promise in a form
 and `tools/conformance.py` is how you check whether an implementation keeps it — yours included:
 
 ```bash
-make conformance                            # both verifiers shipped here, over the whole corpus
+make conformance                            # every verifier shipped here, over the whole corpus
 python3 tools/conformance.py --cmd "my-verify {file} --json{ledger_flag}"   # yours
 python3 tools/conformance.py --list         # every id, and what it asserts
 python3 tools/conformance.py --capabilities --python --node   # which ids each one actually emits

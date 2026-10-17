@@ -171,8 +171,9 @@ before it started, `70` internal error, `130` interrupted. `42` means the bounda
 3. **A receipt** carrying the totals, the policy, the environment, an RFC 6962 Merkle root
    over every event, and the price table used — so cost is *recomputable* by a stranger from
    raw token counts.
-4. **Offline verification** with two independent implementations (Python and Node, both
-   stdlib-only) and committed conformance vectors, so "verified" means something portable.
+4. **Offline verification** by three independent implementations — the Python reference, a
+   dependency-free Node one, and a clean-room Go one written from the specification alone — held
+   to 44 committed conformance vectors, so "verified" means something portable.
 5. **Findings** that explain the bill: runaway loops, repeat context, oversized tool output,
    retry storms, premium models on trivial calls, blocked egress — each with the rule that
    produced it, its evidence, and `deterministic` vs `heuristic` stated plainly.

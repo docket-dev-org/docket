@@ -86,6 +86,30 @@ jobs:
             exit 1
           }
 
+  verify-go:
+    name: verify-go (a third implementation, written from the spec alone)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.2"
+          cache: false
+      - name: Vet, format and test
+        # The point of this job is not that Go code compiles. It is that a verifier written from
+        # spec/ by someone who did not read the other two agrees with the corpus, byte for byte.
+        run: |
+          cd verify-go
+          GOPROXY=off GOFLAGS=-mod=readonly go vet ./...
+          test -z "$(gofmt -l .)"
+          GOPROXY=off go test ./...
+          GOPROXY=off go build -o docket-verify .
+      - name: Hold all three implementations to the corpus
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python3 tools/conformance.py --python --node --go
+          PYTHONPATH=src python3 tools/conformance.py --python --node --go --capabilities
+
   deploy:
     name: "deploy artefacts (static: no container runtime is used, and none is pretended)"
     runs-on: ubuntu-latest
