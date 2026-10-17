@@ -864,3 +864,34 @@ def test_the_members_a_receipt_states_about_its_own_rows_are_recomputed(label, w
     assert named[0].status == status, f"{label}: {named[0].status} — {named[0].detail}"
     if status == "fail":
         assert result.ok is False, label
+
+
+def test_an_empty_appendix_must_state_an_empty_breakdown():
+    """A session with no metered calls still has to account for its breakdown.
+
+    The check used to be skipped when there were no rows to compare against, so a receipt with an
+    empty appendix could carry any `by_model` it liked — and the Node verifier, which compared the
+    two regardless, disagreed with it on exactly that document. "Nothing to compare" is not a pass.
+    """
+    receipt = json.loads((SPEC_VECTORS / "receipt.json").read_text(encoding="utf-8"))
+    receipt.pop("latency", None)
+    receipt["appendix"]["usage"] = []
+    receipt["totals"].update(
+        {
+            "calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "usage_reported_calls": 0,
+            "usage_estimated_calls": 0,
+            "cost_basis": "reported: provider usage fields",
+        }
+    )
+    stale = verify_receipt(receipt)
+    assert stale.ok is False, "a breakdown for models that were never called verified"
+    assert next(c for c in stale.checks if c.name == "by-model-totals").status == "fail"
+
+    receipt["totals"]["by_model"] = []
+    emptied = verify_receipt(receipt)
+    assert next(c for c in emptied.checks if c.name == "by-model-totals").status == "pass", emptied.failures

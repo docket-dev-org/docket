@@ -245,15 +245,15 @@ $ make conformance
 88 correct, 0 wrong, 0 not judged (2 positive, 42 negative vectors)
 
 $ python3 tools/conformance.py --capabilities --python --node
-python: 23 ids
-node: 22 ids
+python: 26 ids
+node: 25 ids
 ```
 
 `tools/conformance.py` runs *your* verifier too (`--cmd "my-verify {file} --json{ledger_flag}"`),
 and keeps three outcomes apart: **wrong-ok** (a document that must be refused was accepted),
 **not-judged** (a declared gap — a skip, or an id the implementation does not emit), and
-**wrong-check** (refused, but by a different rule than the vector names). Writing this corpus found
-six defects in the implementations beside it, including a Node verifier that silently kept the last
+**wrong-check** (refused, but by a different rule than the vector names). The corpus and the probes behind it have
+found thirteen defects in the implementations beside it, including a Node verifier that silently kept the last
 of two identical JSON names.
 
 ## Undoing what a run did
@@ -338,7 +338,7 @@ pipx install docket         # or keep it out of your project venvs
 uvx docket demo             # or run it without installing anything
 ```
 
-From source: `git clone … && cd docket && make check` (1190 tests, fully offline — no API keys,
+From source: `git clone … && cd docket && make check` (1191 tests, fully offline — no API keys,
 no network, ~90 s).
 
 ## Documentation

@@ -683,8 +683,15 @@ def verify_receipt(
                 add("by-model-totals", "fail", f"cannot recompute the per-model breakdown: {exc}")
                 add("usage-source-counts", "fail", f"cannot recount the usage sources: {exc}")
                 model_sums = {}
+                breakdown_judged = True
+            else:
+                breakdown_judged = False
 
-            if model_sums:
+            # Judged even when the appendix holds no rows: a session with no metered calls must
+            # state an empty breakdown, and "nothing to compare" is not a pass. Emitting nothing
+            # here is how a receipt with no rows could carry any `by_model` it liked — the Node
+            # verifier compared it either way, which is how the two disagreed on an empty session.
+            if not breakdown_judged:
                 declared_models = totals.get("by_model")
                 if not isinstance(declared_models, list):
                     add(
