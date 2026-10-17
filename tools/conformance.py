@@ -75,11 +75,27 @@ def positive_vectors() -> list[pathlib.Path]:
     return out
 
 
-def negative_vectors() -> list[tuple[pathlib.Path, dict]]:
+def negative_vectors(directory: pathlib.Path | None = None) -> list[tuple[pathlib.Path, dict]]:
     out: list[tuple[pathlib.Path, dict]] = []
-    for expectation in sorted(INVALID.glob("*.expected.json")):
+    for expectation in sorted((directory or INVALID).glob("*.expected.json")):
         vector = expectation.with_name(expectation.name.replace(".expected.json", ".json"))
         out.append((vector, json.loads(expectation.read_text(encoding="utf-8"))))
+    return out
+
+
+def orphan_vectors(directory: pathlib.Path | None = None) -> list[pathlib.Path]:
+    """Documents in the corpus that no expectation names.
+
+    They are skipped by every other function here, which is correct — the directory also holds the
+    fixture ledgers — but a vector that nobody expects anything of is a claim that was added and never
+    checked. Reported, never run; the exit code is what makes it matter.
+    """
+    expected = {p.name.replace(".expected.json", ".json") for p in (directory or INVALID).glob("*.expected.json")}
+    out = []
+    for path in sorted((directory or INVALID).glob("*.json")):
+        if path.name in expected or path.name.endswith(".expected.json"):
+            continue
+        out.append(path)
     return out
 
 
@@ -176,14 +192,14 @@ def classify(result: dict, expectation: dict) -> tuple[str, str]:
     return "wrong-ok", "the invalid document was accepted"
 
 
-def evaluate(template: str, name: str, jobs: int) -> list[dict]:
+def evaluate(template: str, name: str, jobs: int, corpus: pathlib.Path | None = None) -> list[dict]:
     """Every vector against one verifier."""
     tasks: list[tuple[str, pathlib.Path, pathlib.Path | None, dict]] = []
     for vector in positive_vectors():
         tasks.append(("positive", vector, None, {"check": None}))
-    for vector, expectation in negative_vectors():
+    for vector, expectation in negative_vectors(corpus):
         ledger = expectation.get("ledger")
-        ledger_path = None if not ledger else INVALID / ledger
+        ledger_path = None if not ledger else (corpus or INVALID) / ledger
         tasks.append(("negative", vector, ledger_path, expectation))
 
     def work(task: tuple) -> dict:
@@ -285,6 +301,9 @@ def main() -> int:
     parser.add_argument("--python", action="store_true", help="the reference verifier in this repository")
     parser.add_argument("--node", action="store_true", help="the Node verifier in this repository")
     parser.add_argument("--go", action="store_true", help="verify-go/docket-verify, if it has been built")
+    parser.add_argument(
+        "--corpus", metavar="DIR", help="use this negative corpus instead of spec/vectors/invalid (the canary uses it)"
+    )
     parser.add_argument("--jobs", type=int, default=4)
     parser.add_argument("--json", action="store_true", help="machine-readable report")
     parser.add_argument("--list", action="store_true", help="print the check-id registry and exit")
@@ -308,6 +327,17 @@ def main() -> int:
             print(f"  {verifier:8s} {len(ids):2d} ids")
         return 0
 
+    corpus = pathlib.Path(args.corpus).resolve() if args.corpus else None
+    if corpus is not None and not corpus.is_dir():
+        parser.error(f"--corpus {corpus} is not a directory")
+
+    orphans = orphan_vectors(corpus)
+    if orphans:
+        for path in orphans:
+            print(f"  ORPHAN       {path.name:34s} no *.expected.json names it, so nothing checks it")
+        print(f"{len(orphans)} vector(s) have no expectation; add one or remove the file", file=sys.stderr)
+        return 1
+
     templates: list[tuple[str, str]] = []
     for flag, key in (("python", "python"), ("node", "node"), ("go", "go")):
         if getattr(args, flag):
@@ -328,7 +358,7 @@ def main() -> int:
 
     report: list[dict] = []
     for name, template in templates:
-        report.extend(evaluate(template, name, args.jobs))
+        report.extend(evaluate(template, name, args.jobs, corpus))
 
     bad = [r for r in report if r["verdict"] in {"wrong-ok", "wrong-check", "wrong-reason", "error"}]
     gaps = [r for r in report if r["verdict"] == "not-judged"]
@@ -357,7 +387,7 @@ def main() -> int:
             print(f"  {'NOT-JUDGED':12s} {row['verifier']:6s} {row['vector']:34s} {row['detail']}")
         print(
             f"\n{len(judged)} correct, {len(bad)} wrong, {len(gaps)} not judged "
-            f"({len(positive_vectors())} positive, {len(negative_vectors())} negative vectors)"
+            f"({len(positive_vectors())} positive, {len(negative_vectors(corpus))} negative vectors)"
         )
     if bad:
         return 1

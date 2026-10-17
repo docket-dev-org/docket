@@ -12,7 +12,7 @@ and can be told to fail on cue.
 ## The suite
 
 ```console
-$ make test          # 1151 tests, no network (2-4 min on a 2-vCPU box)
+$ make test          # 1153 tests, no network (2-4 min on a 2-vCPU box)
 $ make check         # + ruff, + bandit, + the independent Node verifier
 ```
 
@@ -20,7 +20,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | --- | --- | --- |
 | `test_canon.py` | 44 | canonical JSON, Merkle trees and proofs, the no-floats rule |
 | `test_vectors.py` | 11 | the committed conformance vectors, including that regenerating them changes nothing — and that the *generator actually wrote where the test is looking*, which it did not for as long as that check existed |
-| `test_conformance.py` | 35 | the negative corpus is a claim about the format, and this holds the claim: it rebuilds every vector, runs it, and fails if any is accepted or refused by a rule the vector does not name — plus the three verifier defects writing the corpus found (an enum read as free text, a duplicate JSON name, a re-binding folded into a proof) |
+| `test_conformance.py` | 37 | the negative corpus is a claim about the format, and this holds the claim: it rebuilds every vector, runs it, and fails if any is accepted or refused by a rule the vector does not name — plus the three verifier defects writing the corpus found (an enum read as free text, a duplicate JSON name, a re-binding folded into a proof) — plus two canaries proving the runner can fail: a rewritten expectation must produce `wrong-check`, and a vector with no expectation must be reported rather than silently skipped |
 | `test_policy.py` | 14 | accept and reject paths for every policy key |
 | `test_pricing.py` | 19 | price table, cost arithmetic, the missing-model path, ceilings |
 | `test_ledger.py` | 18 | append/read, chain resumes, ceilings, `unwritten` bookkeeping |

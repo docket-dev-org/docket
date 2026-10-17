@@ -352,6 +352,11 @@ checked:
 Failure of any item makes the receipt **not verified**. Items that cannot be checked are
 reported as such; a verifier that reports success without checking is non-conforming.
 
+The **names** these items are reported under are fixed by
+[`registry.json`](registry.json), and what it means to conform — including what must be refused
+before any item is reached — is defined by [`conformance.md`](conformance.md). An implementation
+that reports item 4 under an id of its own choosing is not conforming, however correct its answer.
+
 ## 9. What a valid receipt does and does not establish
 
 **Establishes.** That the recorded events existed in this order and have not been altered

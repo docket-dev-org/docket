@@ -167,3 +167,57 @@ def test_the_corpus_runner_needs_no_network_and_no_credential():
     for expectation in sorted(INVALID.glob("*.expected.json")):
         ledger = json.loads(expectation.read_text(encoding="utf-8"))["ledger"]
         assert ledger is None or "://" not in ledger, expectation.name
+
+
+def _corpus_copy(tmp_path: pathlib.Path) -> pathlib.Path:
+    """A writable copy of the corpus, so a canary can lie to the runner without touching the repo."""
+    import shutil
+
+    target = tmp_path / "invalid"
+    shutil.copytree(INVALID, target, ignore=shutil.ignore_patterns("__pycache__"))
+    return target
+
+
+def test_the_runner_can_fail(tmp_path):
+    """A test that only ever sees a passing run is a test that has never seen the tool work.
+
+    Every assertion in this file up to here says "the corpus and the verifiers agree". None of them
+    says the runner *notices when they do not*, and a runner with an inverted comparison would pass
+    all of them. So this one makes the corpus lie: one expectation is rewritten to name a check the
+    verifier will not emit, and the runner must exit non-zero and say `wrong-check`. The vector is
+    copied first — a canary that edits the repository is a canary that breaks the next test run.
+    """
+    corpus = _corpus_copy(tmp_path)
+    expectation = corpus / "18-totals-mismatch.expected.json"
+    payload = json.loads(expectation.read_text(encoding="utf-8"))
+    payload["check"] = "signature"  # the receipt is not signed, so this check is a skip, never a failure
+    expectation.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+    completed = subprocess.run(
+        [sys.executable, "tools/conformance.py", "--python", "--corpus", str(corpus)],
+        capture_output=True,
+        text=True,
+        timeout=600,
+        cwd=str(REPO),
+    )
+    assert completed.returncode != 0, "the runner accepted a vector whose expectation is wrong"
+    assert "WRONG-CHECK" in completed.stdout or "wrong-check" in completed.stdout.lower(), completed.stdout
+
+
+def test_a_vector_without_an_expectation_is_not_silently_ignored(tmp_path):
+    """An orphan vector is a document nobody checks, and silence is how it stays that way.
+
+    The runner iterates expectations, so a `.json` with no `*.expected.json` beside it is invisible.
+    That is the right default for a directory that also holds ledgers — but it must be *counted and
+    reported*, not merely absent, or a vector can be added and forgotten in the same commit.
+    """
+    corpus = _corpus_copy(tmp_path)
+    (corpus / "99-orphan.json").write_text('{"format": "docket/receipt/v1"}\n', encoding="utf-8")
+    completed = subprocess.run(
+        [sys.executable, "tools/conformance.py", "--python", "--corpus", str(corpus)],
+        capture_output=True,
+        text=True,
+        timeout=600,
+        cwd=str(REPO),
+    )
+    assert completed.returncode != 0, "an orphan vector was accepted silently"
+    assert "99-orphan.json" in completed.stdout + completed.stderr
