@@ -21,6 +21,13 @@ venv/
 *.receipt.json
 *.jsonl
 !spec/vectors/*.json
+# The negative corpus ships its ledgers as fixtures, deliberately: each is the evidence one or
+# more vectors are refused against, and `*.jsonl` above is a rule about ledgers a *user* produces.
+# It hid these four from the first commit of the corpus, and the release record caught it exactly
+# as designed — the suite passed in the authoring tree (where the files existed, untracked) and
+# failed in a clone of the shipped bundle.
+!spec/vectors/invalid/*.jsonl
+!spec/vectors/invalid/ledgers/*.jsonl
 
 # the mutation sweep's reports (regenerate with `make mutation`)
 mutation-report.json
