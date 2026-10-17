@@ -395,9 +395,12 @@ because the sample differs, and the candidate count changes with the source.
 | module | candidates | run | killed | survived | timed out | score | wall clock | seed |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `src/docket/verify.py` | 95 | 95 | 94 | 1 | 0 | **98.9%** ([^prefile]) | 66 s | 42 |
-| `src/docket/verify.py` (after the tests below) | 177 | 177 | 176 | 1 | 0 | **99.4%** | 2,125 s | 0 |
+| `src/docket/verify.py` (after the tests below) | 177 | 177 | 176 | 1 | 0 | **99.4%** ([^prefile]) | 2,125 s | 0 |
+| `src/docket/verify.py` (after the §8 derived-member checks) | 237 | 237 | 229 | 8 | 0 | **96.6%** | 2,988 s | 0 |
+| `src/docket/verify.py` (after the five tests the sweep above prompted) | 237 | 237 | 234 | 3 | 0 | **98.7%** | 2,864 s | 0 |
 | `src/docket/canon.py` | 63 | 63 | 58 | 1 | 4 | **98.3%** ([^timeouts]) | 209 s | 42 |
 | `src/docket/ledger.py` | 171 | 171 | 143 | 28 | 0 | **83.6%** ([^prefile]) | 276 s | 11 |
+| `src/docket/ledger.py` (after the tests below) | 172 | 172 | 144 | 28 | 0 | **83.7%** ([^prefile]) | 788 s | 0 |
 | `src/docket/ledger.py` (after the tests below) | 172 | 172 | 144 | 28 | 0 | **83.7%** | 788 s | 0 |
 | `src/docket/latency.py` | 21 | 21 | 21 | 0 | 0 | **100%** | 12 s | 0 |
 | `src/docket/loaddriver.py` (first) | 63 | 60 | 45 | 12 | 3 | **78.9%** | 822 s | 0 |
@@ -405,11 +408,14 @@ because the sample differs, and the candidate count changes with the source.
 | `src/docket/cache.py` (first) | 126 | 60 | 49 | 11 | 0 | **81.7%** | 378 s | 0 |
 | `src/docket/cache.py` (wide re-run) | 128 | 128 | 120 | 8 | 0 | **93.8%** | 618 s | 0 |
 | `src/docket/cache.py` (after the tests below) | 128 | 128 | 128 | 0 | 0 | **100%** | 432 s | 0 |
+| `src/docket/cache.py` (after the tests below) | 128 | 128 | 128 | 0 | 0 | **100%** | 432 s | 0 |
 | `src/docket/resilience.py` (first) | 166 | 60 | 46 | 14 | 0 | **76.7%** | 454 s | 0 |
 | `src/docket/resilience.py` (wide re-run) | 166 | 166 | 141 | 25 | 0 | **84.9%** | 877 s | 0 |
 | `src/docket/resilience.py` (after the tests below) | 166 | 166 | 163 | 3 | 0 | **98.2%** | 228 s | 0 |
+| `src/docket/resilience.py` (after the tests below) | 166 | 166 | 163 | 3 | 0 | **98.2%** | 228 s | 0 |
 | `tools/helm_fidelity.py` (first) | 47 | 47 | 13 | 34 | 0 | **27.7%** | 28 s | 0 |
 | `tools/helm_fidelity.py` (after the tests below) | 47 | 47 | 45 | 2 | 0 | **95.7%** | 41 s | 0 |
+| `tools/mutate.py` (after the tests below) | 144 | 144 | 144 | 0 | 0 | **100%** | 367 s | 0 |
 | `tools/mutate.py` (after the tests below) | 144 | 144 | 144 | 0 | 0 | **100%** | 367 s | 0 |
 
 `latency.py` was written *after* the harness existed, and the harness earned its keep immediately:
@@ -511,26 +517,30 @@ and an assertion for the tally sentence, which no test had ever asked for. None 
 change to `src/docket/verify.py`.
 
 The sweep was then re-run over the file as it stands after those tests **and** after the derived-member
-checks (§8 items 5a/5b), which took it from 189 mutable sites to **237**: `237 run, 229 killed,
-8 survived, 0 timed out — 96.6%`, 2,988 s at seed 0, control run 264 tests. Eight survivors is a
-worse number than the last run's one, and the reason is not that the tests got worse: 189 of those
-sites did not exist before, and a new check is written before the test that pins every branch of it.
+checks (§8 items 5a/5b), which took it from 189 mutable sites to **237**: the first run of that
+sweep left `229 killed, 8 survived, 0 timed out — 96.6%`, 2,988 s at seed 0, control run 264 tests.
+Eight survivors is a worse number than the last run's one, and the reason is not that the tests got
+worse: 189 of those sites did not exist before, and a new check is written before the test that pins
+every branch of it.
 
-Each of the eight was then classified, and the classification is what the table below records rather
-than a score. Four were gaps in the new code and were closed with tests that name the behaviour —
-`by_model` members as integral floats (§3.2 normalises them), the three usage-source counts omitted
-on a session with no metered calls (absent is not zero), and a `mixed` basis over rows that are all
-one kind (a claim that must be falsifiable). One was a false pass in `cost-basis`: `not (reported and
-estimated)` weakened to `or` makes "mixed" unfalsifiable for exactly the case it exists for. Three are
-equivalents, demonstrated rather than argued: the two bool/`None` fast paths produce the same status
-*and the same sentence* for `true` and `null` (`verify.py:194` in `whole`, `verify.py:646` in the
-`by_model` normaliser), and the `breakdown_judged` flag at `verify.py:686` sits behind
-`if recomputed is not None` — a row whose cost is not an amount fails `cost-recomputation` and the
-breakdown block is never entered, which is shown by probing both shapes and observing no
-`by-model-totals` verdict at all.
+Each of the eight was then classified, because a survivor count is not a defect list. Five were gaps
+in the new code and were closed with tests that name the behaviour — `by_model` members as integral
+floats (§3.2 normalises them), the three usage-source counts omitted on a session with no metered
+calls (absent is not zero), and a `mixed` basis over rows that are all one kind (a claim that must be
+falsifiable). The fifth was the worst of them: `not (reported and estimated)` weakened to `or` makes
+"mixed" unfalsifiable for exactly the case it exists for. Three are equivalents, demonstrated rather
+than argued: the two bool/`None` fast paths produce the same status *and the same sentence* for
+`true` and `null` (`verify.py:194` in `whole`, `verify.py:646` in the `by_model` normaliser), and the
+`breakdown_judged` flag at `verify.py:686` sits behind `if recomputed is not None` — a row whose cost
+is not an amount fails `cost-recomputation` and the breakdown block is never entered, which is shown
+by probing both shapes and observing no `by-model-totals` verdict at all.
 
-Re-running just those eight lines afterwards gives **8 killed, 3 survived** — the three equivalents,
-which no test can kill and none pretends to.
+The re-run, with those five tests in place, is the number this page quotes above:
+**`234 killed, 3 survived, 0 timed out — 98.7%`**, 2,864 s at seed 0, control run 271 tests, and the
+three survivors are the three equivalents. A score is a statement about a corpus of changes, not about
+correctness — 98.7% means "of 237 single-site changes to this file, 234 were noticed by something".
+
+
 
 The general lesson is narrower than "write more tests" and worth stating: a docstring that names a
 mutant is a claim about *that* mutant, a line can carry two of them, and an assertion that is right
@@ -539,7 +549,10 @@ about the sentence it checks can still be blind to the half of the sentence it s
 ### Every survivor, classified
 
 A survivor is either a gap or an equivalent mutant. Each one is listed here with which it is and
-why; an equivalent mutant is not a defect and no test pretends otherwise.
+why; an equivalent mutant is not a defect and no test pretends otherwise. The three `verify.py`
+rows below are that file's entire survivor list in the run this page quotes (98.7%), and the five
+survivors the same sweep found before those tests existed are listed in the next section with the
+tests that closed them. Every other file's rows come from the run that produced them.
 
 | site | mutant | verdict |
 | --- | --- | --- |
@@ -630,6 +643,16 @@ Writing the tests that kill a mutant is where the defects were:
 | a survivor in a *liveness probe* | `os.kill(pid, 0)` → `os.kill(pid, 1)`: the probe answers the same question and sends `SIGHUP` while asking it — the same defect class as the Windows `os.kill`, which *is* `TerminateProcess` there. The existing test could not see it, and the reason is a property of the measuring environment: every sweep runs under `nohup`, which ignores `SIGHUP` and passes that disposition to its children, so the signal is a no-op where the score is measured. The new test makes *delivery* observable instead of fatal — the child installs a handler and creates a marker file inside it. |
 | reading 51 survivors of `verify.py` | they were not gaps in the verifier and not equivalent mutants: `DEFAULT_TESTS` gave the file three test paths, and the block that recomputes a *stated* cache saving (`cache-savings`, `cache-hit-origins`, `cache-hit-proofs`) is exercised from `tests/test_cache.py`, which the list did not name. A subset is part of the measurement: the same 177 candidates scored 71.2% against three files, 83.6% once the fourth was named, and 97.2% after the tests those survivors asked for — and the five left after *that* are the round recorded in *The paydown* above, four of them tests that stopped one token short. The list now names `tests/test_cache.py`, first, with the reason beside it. |
 
+Five of the eight survivors the 237-site sweep first reported were gaps in code that had been
+written hours earlier, and each is closed by a test that names the behaviour: an integral float in
+`by_model` (§3.2 normalises it — `verify.py:649`), the three usage-source counts omitted on a
+session with no metered calls, where `-1` is the only thing separating "absent" from "stated as
+zero" (`verify.py:758`–`:760`), and a `mixed` basis over rows that are all one kind, weakened to
+`or` so that the claim is unfalsifiable in exactly the case the sentence exists for
+(`verify.py:800`). The worst of them is the last: it is not a crash and not a wrong sentence, but a
+**pass** where the receipt's own classification is contradicted by its rows. They were found by
+mutation after the tests were green, which is the only reason they were found at all.
+
 ### Not claimed
 
 A mutation score is a statement about the mutants a tool generated, over one subset, at one
@@ -638,9 +661,9 @@ decision, an interface nobody needed. 83.7% on `ledger.py` with every survivor e
 "the ledger is 83.7% correct"; it is "of 172 single-site changes to this file that this harness
 produced, 144 were caught by these tests, 28 are provably equivalent or unreachable here, and
 none is unaccounted for". The same sentence applies to the verifier with its own numbers:
-99.4% is not "the verifier is 99.4% correct"; it is "of 177 single-site changes to
-`verify.py` that this harness produced, 176 were caught by these tests and 1 is
-argued equivalent, with the argument written out below it".
+98.7% is not "the verifier is 98.7% correct"; it is "of 237 single-site changes to
+`verify.py` that this harness produced, 234 were caught by these tests and 3 are
+argued equivalent, with the argument written out in the table above".
 
 ## Not covered, and why
 

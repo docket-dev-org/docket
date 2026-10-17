@@ -64,7 +64,7 @@ than from reading source.
 $ cd verify-go
 $ go vet ./...                 # clean
 $ gofmt -l .                   # empty
-$ go test ./...                # 32 test functions, table-driven
+$ go test ./...                # 16 test functions, table-driven
 $ go build -o docket-verify .  # the binary the conformance runner looks for
 ```
 

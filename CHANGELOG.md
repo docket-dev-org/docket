@@ -17,7 +17,7 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   and it produced the artifact the claim needed: **twelve questions the specification does not
   answer**, five of which are worth amending (rounding of the sixth decimal, price-table matching,
   the shape of `limits_disclosure`, blank lines in a ledger, and the marker for a reached cache
-  ceiling). `make verify-go` runs vet, gofmt and 32 table-driven test functions; CI has its own
+  ceiling). `make verify-go` runs vet, gofmt and 16 table-driven test functions; CI has its own
   job; `make conformance` includes it whenever the binary exists.
 
 - **Three more members of a receipt were stated and never checked, and now are.**
