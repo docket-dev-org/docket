@@ -401,22 +401,18 @@ because the sample differs, and the candidate count changes with the source.
 | `src/docket/canon.py` | 63 | 63 | 58 | 1 | 4 | **98.3%** ([^timeouts]) | 209 s | 42 |
 | `src/docket/ledger.py` | 171 | 171 | 143 | 28 | 0 | **83.6%** ([^prefile]) | 276 s | 11 |
 | `src/docket/ledger.py` (after the tests below) | 172 | 172 | 144 | 28 | 0 | **83.7%** ([^prefile]) | 788 s | 0 |
-| `src/docket/ledger.py` (after the tests below) | 172 | 172 | 144 | 28 | 0 | **83.7%** | 788 s | 0 |
 | `src/docket/latency.py` | 21 | 21 | 21 | 0 | 0 | **100%** | 12 s | 0 |
 | `src/docket/loaddriver.py` (first) | 63 | 60 | 45 | 12 | 3 | **78.9%** | 822 s | 0 |
 | `src/docket/loaddriver.py` (after the tests below) | 61 | 61 | 56 | 2 | 3 | **96.5%** | 817 s | 0 |
 | `src/docket/cache.py` (first) | 126 | 60 | 49 | 11 | 0 | **81.7%** | 378 s | 0 |
 | `src/docket/cache.py` (wide re-run) | 128 | 128 | 120 | 8 | 0 | **93.8%** | 618 s | 0 |
 | `src/docket/cache.py` (after the tests below) | 128 | 128 | 128 | 0 | 0 | **100%** | 432 s | 0 |
-| `src/docket/cache.py` (after the tests below) | 128 | 128 | 128 | 0 | 0 | **100%** | 432 s | 0 |
 | `src/docket/resilience.py` (first) | 166 | 60 | 46 | 14 | 0 | **76.7%** | 454 s | 0 |
 | `src/docket/resilience.py` (wide re-run) | 166 | 166 | 141 | 25 | 0 | **84.9%** | 877 s | 0 |
 | `src/docket/resilience.py` (after the tests below) | 166 | 166 | 163 | 3 | 0 | **98.2%** | 228 s | 0 |
-| `src/docket/resilience.py` (after the tests below) | 166 | 166 | 163 | 3 | 0 | **98.2%** | 228 s | 0 |
 | `tools/helm_fidelity.py` (first) | 47 | 47 | 13 | 34 | 0 | **27.7%** | 28 s | 0 |
 | `tools/helm_fidelity.py` (after the tests below) | 47 | 47 | 45 | 2 | 0 | **95.7%** | 41 s | 0 |
-| `tools/mutate.py` (after the tests below) | 144 | 144 | 144 | 0 | 0 | **100%** | 367 s | 0 |
-| `tools/mutate.py` (after the tests below) | 144 | 144 | 144 | 0 | 0 | **100%** | 367 s | 0 |
+| `tools/mutate.py` (after the tests below) | 144 | 144 | 144 | 0 | 0 | **100%** | 342 s | 0 |
 
 `latency.py` was written *after* the harness existed, and the harness earned its keep immediately:
 its first run left one survivor — the `return problems` inside the "the receipt states a latency
