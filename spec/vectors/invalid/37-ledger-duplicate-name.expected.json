@@ -1,0 +1,15 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "37-ledger-duplicate-name.json",
+ "ledger": "ledgers/37-ledger-duplicate-name.jsonl",
+ "check": null,
+ "reject": null,
+ "accept": null,
+ "ledger_reject": {
+  "reason_any_of": [
+   "seq"
+  ]
+ },
+ "rule": "spec \u00a73.1: object names are unique; RFC 8259 \u00a74 makes a repeat undefined",
+ "mutation": "the ledger's first event names `seq` twice, so which value was hashed is unknowable"
+}

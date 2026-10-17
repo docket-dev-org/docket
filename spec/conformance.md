@@ -90,6 +90,10 @@ Exactly one of three outcomes is named:
   For damage with no nameable token (a BOM, trailing bytes, invalid UTF-8) the list is empty: the
   requirement is that a reason is stated, not that it is phrased the way this repository phrases it.
   A corpus written before a third implementation exists must not encode the first two's vocabulary;
+* **`ledger_reject`** — the receipt is valid and the **ledger** is malformed (a duplicated name, a
+  half-written last line): the pair must be refused with a reason, and the reason may only be
+  required to name something in the ledger. A verifier that repairs a ledger — drops the half-line,
+  keeps the last of two names — is reporting on a document nobody wrote;
 * **`accept`** — `true` when the document is unusual but the format requires reading it (`4e0` where
   an integer is expected, `-0`, a decomposed Unicode form). These exist because a corpus that only
   says what to refuse lets two implementations disagree about what to **read**, which is the first
@@ -141,7 +145,7 @@ intermediate state of an implementation that declares its gaps; it is never a fu
   altered; §9 of the format spec is the receipt's own statement about what it cannot see, and
   `limits-disclosure` only checks that the statement is present.
 * **Not agreement between implementations on documents outside the corpus.** The corpus is 7 valid and
-  30 refusals and 3 required acceptances; it is a floor on behaviour, not a census. Differential fuzzing is the tool for
+  32 refusals and 3 required acceptances across 38 vectors; it is a floor on behaviour, not a census. Differential fuzzing is the tool for
   the space between the vectors.
 * **Not a certificate.** A conformance run is evidence about one implementation, at one commit, on one
   corpus revision. Print the commit and the corpus digest beside the result, as the release record does.

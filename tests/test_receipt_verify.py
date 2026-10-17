@@ -14,6 +14,8 @@ from docket.report import diff_receipts, render_markdown
 from docket.signing import load_or_create_seal_key
 from docket.verify import verify_receipt
 
+SPEC_VECTORS = pathlib.Path(__file__).resolve().parents[1] / "spec" / "vectors"
+
 
 def test_receipt_is_complete(make_receipt):
     receipt, path, ledger_path = make_receipt()
@@ -715,3 +717,97 @@ def test_one_kind_of_bad_usage_row_cannot_flood_the_report(make_receipt):
     assert len(named) == 3, [check.detail for check in named]
     assert len(further) == 1, [check.detail for check in further]
     assert "6 of 6 usage rows are not proven" in proofs[-1].detail, proofs[-1].detail
+
+
+def test_a_price_assumption_is_named_or_the_receipt_fails():
+    """`assumed-prices` is the id a reader would reach for to ask "was anything guessed?".
+
+    It existed with nothing asserting it: a sweep that turned `if not assumed:` into `if assumed:`
+    left the whole suite green, and that mutant says "every model matched a price entry" precisely
+    when the receipt was priced by an assumption. Both directions are pinned here — the receipt
+    that names its assumption passes and names it, and the one that drops the disclosure fails.
+    """
+    vector = json.loads((SPEC_VECTORS / "receipt.json").read_text(encoding="utf-8"))
+
+    disclosed = verify_receipt(json.loads(json.dumps(vector)))
+    check = next(c for c in disclosed.checks if c.name == "assumed-prices")
+    assert check.status == "pass", check.detail
+    assert "unlisted-model-1" in check.detail, "the pass must name the model that was assumed"
+
+    silent = json.loads(json.dumps(vector))
+    silent["totals"].pop("assumed_price_models")
+    result = verify_receipt(silent)
+    named = next(c for c in result.checks if c.name == "assumed-prices")
+    assert named.status == "fail", named.detail
+    assert "unlisted-model-1" in named.detail
+    assert result.ok is False
+
+
+def test_an_omitted_total_is_absent_not_zero():
+    """A member that is not there is not a member that said zero.
+
+    Each of the four totals used a `-1` sentinel, on the reasoning that a count is never negative.
+    The suite proved it only on a receipt whose other totals were non-zero, so `-1` could become
+    `0` in any *one* of the four and the suite stayed green: the other members failed anyway and
+    each of these is a single check. A session with no metered calls separates them — every true
+    value is zero, so only the sentinel can tell "absent" from "stated as zero".
+    """
+    vector = json.loads((SPEC_VECTORS / "receipt.json").read_text(encoding="utf-8"))
+    receipt = json.loads(json.dumps(vector))
+    receipt.pop("latency", None)
+    receipt["appendix"]["usage"] = []
+    receipt["totals"].update(
+        {
+            "cost_usd": "0.000000",
+            "calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "usage_reported_calls": 0,
+            "usage_estimated_calls": 0,
+            "by_model": [],
+        }
+    )
+    baseline = verify_receipt(receipt)
+    assert baseline.ok, baseline.failures
+
+    for member, check_name in (
+        ("calls", "totals"),
+        ("input_tokens", "token-totals"),
+        ("output_tokens", "token-totals"),
+        ("total_tokens", "token-totals"),
+    ):
+        wounded = json.loads(json.dumps(receipt))
+        wounded["totals"].pop(member)
+        result = verify_receipt(wounded)
+        assert result.ok is False, f"a receipt with no totals.{member} verified"
+        states = {c.name: c.status for c in result.checks}
+        assert states[check_name] == "fail", (member, states.get(check_name))
+
+
+def test_the_empty_appendix_case_is_decided_by_the_appendix_being_readable():
+    """`if not rows and not appendix_ok` looks like two conditions with one job. It has two.
+
+    Turning either `not` off is invisible to the ordinary receipt: it has rows, so the first
+    condition is false whichever way it is read. The two cases that separate them are a session
+    with no metered calls and a receipt whose appendix cannot be read at all — and they pull in
+    opposite directions. An unreadable appendix must not also be told "no metered calls" (a pass
+    beside a fail under one id), and an empty one must still say every row was accounted for.
+    """
+    vector = json.loads((SPEC_VECTORS / "receipt.json").read_text(encoding="utf-8"))
+
+    empty = json.loads(json.dumps(vector))
+    empty.pop("latency", None)
+    empty["appendix"]["usage"] = []
+    empty["totals"].update(
+        {"calls": 0, "input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "cached_input_tokens": 0}
+    )
+    verdicts = [c for c in verify_receipt(empty).checks if c.name == "usage-inclusion-proofs"]
+    assert [c.status for c in verdicts] == ["pass"], verdicts
+    assert "no metered calls" in verdicts[0].detail
+
+    unreadable = json.loads(json.dumps(vector))
+    unreadable["appendix"]["usage"] = "the rows were lost"
+    statuses = [c.status for c in verify_receipt(unreadable).checks if c.name == "usage-inclusion-proofs"]
+    assert statuses and all(status == "fail" for status in statuses), statuses

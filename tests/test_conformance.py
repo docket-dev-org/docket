@@ -87,7 +87,12 @@ def test_every_vector_carries_a_rule_and_a_mutation(vector):
     expectation = json.loads((INVALID / vector).read_text(encoding="utf-8"))
     assert expectation["rule"].startswith(("spec §", "RFC ")), expectation["rule"]
     assert expectation["mutation"].strip()
-    kinds = [expectation["check"] is not None, expectation["reject"] is not None, expectation.get("accept") is True]
+    kinds = [
+        expectation["check"] is not None,
+        expectation["reject"] is not None,
+        expectation.get("accept") is True,
+        expectation.get("ledger_reject") is not None,
+    ]
     assert sum(kinds) == 1, f"{vector} must name exactly one outcome, found {kinds}"
     if expectation["reject"] is not None:
         assert expectation["reject"]["kind"] == "parse"
@@ -301,3 +306,24 @@ def test_the_corpus_demands_no_implementations_prose():
         document = (INVALID / path.name.replace(".expected.json", ".json")).read_bytes().decode("utf-8", "replace")
         for word in words:
             assert word in document, f"{path.name} requires {word!r}, which is not in the document"
+
+
+def test_a_malformed_ledger_is_refused_rather_than_repaired():
+    """The corpus could say "this receipt must fail"; it could not say "this *ledger* must be refused".
+
+    A ledger is where an interrupted append and a hand edit actually show up, and a verifier that
+    repairs one (drops the half-line, keeps the last of two names) reports on a document nobody
+    wrote. Both implementations refuse; vectors `37` and `38` hold them to it, and the runner scores
+    the reason on stderr the same way it scores a receipt-level parse refusal.
+    """
+    ledger = INVALID / "ledgers" / "37-ledger-duplicate-name.jsonl"
+    assert ledger.is_file()
+    receipt = INVALID / "37-ledger-duplicate-name.json"
+    completed = _run_cli(receipt, "--ledger", str(ledger))
+    assert completed.returncode != 0
+    assert completed.stdout.strip() == "", "a refused ledger must not also produce a verdict"
+    assert "seq" in completed.stderr
+
+    expectation = json.loads((INVALID / "37-ledger-duplicate-name.expected.json").read_text(encoding="utf-8"))
+    assert expectation["ledger"] == "ledgers/37-ledger-duplicate-name.jsonl"
+    assert expectation["ledger_reject"]["reason_any_of"] == ["seq"]

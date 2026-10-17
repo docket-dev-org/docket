@@ -101,6 +101,13 @@ DEFAULT_TESTS: dict[str, list[str]] = {
         "tests/test_receipt_verify.py",
         "tests/test_vectors.py",
         "tests/test_signing_and_attach.py",
+        # `test_conformance.py` runs the negative corpus through both verifiers, and the corpus is
+        # where the *spec's* edge cases live: an integral float that must be read (`34`), a BOM
+        # that must not be skipped. Without it, three mutants in `whole()` survived a sweep — the
+        # float branch, its negation, and `return int(value)` — and the report read as three gaps
+        # in the verifier rather than a file missing from its suite. Same mistake as
+        # `test_cache.py` below, caught the same way.
+        "tests/test_conformance.py",
     ],
     # The ledger's failure-handling code (torn tails, quarantine, locks) is exercised by
     # `docket doctor`, so `test_diagnostics.py` belongs to this module's suite too — without it

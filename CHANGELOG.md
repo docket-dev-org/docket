@@ -10,6 +10,14 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **`ledger_reject`: the corpus can now say "this ledger must be refused".** Every vector was a
+  *receipt* that must fail; a malformed ledger — the file an interrupted append or a hand edit
+  actually damages — had no way to be expressed, so the two implementations' refusal to repair one
+  was asserted by their tests and by nothing a stranger could run. Two vectors (`37`, `38`: a
+  duplicated key inside an event, a half-written last line) and a fourth expectation kind close it.
+  The rule is the same as for receipts: a reason must be stated, and the vector may only require a
+  token that appears in the ledger.
+
 - **The corpus grew to 36 vectors and found four more defects — including one in the same file twice.**
   `spec/vectors/invalid/` now covers the parsing family (a UTF-8 BOM, trailing bytes, invalid UTF-8 —
   all refused before any check runs) and, for the first time, **documents that must be accepted**:

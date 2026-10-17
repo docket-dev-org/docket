@@ -82,6 +82,8 @@ nav:
       - Evidence: docs/evidence.md
       - Incident corpus: docs/incident-corpus.md
       - Format specification: spec/docket-receipt-1.md
+      - Conformance (normative): spec/conformance.md
+      - Check-id registry: spec/registry.json
   - Project:
       - Architecture: docs/architecture.md
       - Testing: docs/testing.md

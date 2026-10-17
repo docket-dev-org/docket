@@ -79,7 +79,7 @@ python3 tools/conformance.py --capabilities --python --node   # which ids each o
 ```
 
 The corpus has two halves. `spec/vectors/` holds valid documents a conforming verifier must accept;
-`spec/vectors/invalid/` holds **30** documents it must refuse and **3** it must accept, each with an `expected.json` naming
+`spec/vectors/invalid/` holds **32** documents it must refuse and **3** it must accept, each with an `expected.json` naming
 the check that has to catch it and the rule it enforces. `python3 spec/vectors/invalid/build.py
 --check` rebuilds the corpus and re-derives every expectation: each vector is run through the
 reference verifier, and the build fails unless the first failure is the check the vector names. A

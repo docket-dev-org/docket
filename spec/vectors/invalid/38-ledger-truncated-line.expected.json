@@ -1,0 +1,13 @@
+{
+ "schema": "docket/conformance-expectation/v1",
+ "vector": "38-ledger-truncated-line.json",
+ "ledger": "ledgers/38-ledger-truncated-line.jsonl",
+ "check": null,
+ "reject": null,
+ "accept": null,
+ "ledger_reject": {
+  "reason_any_of": []
+ },
+ "rule": "spec \u00a74: a ledger file is JSONL, one complete event per line",
+ "mutation": "the last line is half-written, as an interrupted append leaves it"
+}

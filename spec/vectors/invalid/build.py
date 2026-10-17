@@ -53,6 +53,15 @@ NONE = None
 #: implementer meets. Each such vector cites the normative sentence that requires acceptance.
 ACCEPT = "accept"
 
+#: A vector whose **ledger** must be refused: the receipt beside it is valid, and the damage is in the
+#: file the verifier is asked to read it against. Reason tokens follow the same rule as REJECT_WORDS —
+#: only what appears in the document, or nothing at all.
+LEDGER_REJECT = "ledger-reject"
+LEDGER_REJECT_WORDS = {
+    "37-ledger-duplicate-name": ["seq"],
+    "38-ledger-truncated-line": [],
+}
+
 #: What the refusal on stderr must mention, per vector — **any one of**, and only tokens that appear
 #: in the document itself.
 #:
@@ -293,6 +302,25 @@ def _non_nfc(r, e, t):
     """
     text = json.dumps(r).replace('"docket_number": "DKT-20260102-VECT01"', '"docket_number": "DKT-2026-\u00e9"', 1)
     return r, e, t, text.replace("\u00e9", "e\u0301")
+
+
+def _ledger_duplicate_name(r, e, t):
+    """The *ledger* is the malformed file: one event names a key twice.
+
+    `raw` carries the ledger's bytes and `text` is unused, because the vector's whole point is a
+    ledger a verifier must refuse to read. Which value was hashed is unknowable — the hash is over
+    the canonical form of an object that has two of them — so reconstructing one is guessing.
+    """
+    events = [json.loads(line) for line in t.strip().splitlines()]
+    first = t.splitlines()[0]
+    forged = first[:-1] + ', "seq": 0}'
+    return r, events, t, forged
+
+
+def _ledger_truncated_line(r, e, t):
+    """The last line is half-written: an interrupted append, which is what a crash leaves behind."""
+    lines = t.strip().splitlines()
+    return r, None, t, t + lines[-1][: len(lines[-1]) // 2]
 
 
 def _assumed_undisclosed(r, e, t):
@@ -630,6 +658,27 @@ VECTORS: list[tuple[str, str, object, str | None, str | None, str, str]] = [
         "spec §3.1: non-ASCII is emitted literally; normalisation is never required",
         "a string carries a decomposed form; the bytes must not be rewritten",
     ),
+    # -- the ledger itself is malformed ------------------------------------------------------
+    # A receipt-level mutation cannot express this: the document under test is the *ledger*, and
+    # what is being asserted is that a verifier refuses to read it rather than repairing it.
+    (
+        "37-ledger-duplicate-name",
+        BASE,
+        _ledger_duplicate_name,
+        "ledger-reject",
+        OWN,
+        "spec §3.1: object names are unique; RFC 8259 §4 makes a repeat undefined",
+        "the ledger's first event names `seq` twice, so which value was hashed is unknowable",
+    ),
+    (
+        "38-ledger-truncated-line",
+        BASE,
+        _ledger_truncated_line,
+        "ledger-reject",
+        OWN,
+        "spec §4: a ledger file is JSONL, one complete event per line",
+        "the last line is half-written, as an interrupted append leaves it",
+    ),
 ]
 
 
@@ -651,11 +700,30 @@ def build() -> dict[pathlib.Path, bytes]:
             receipt, events, text, raw = mutate(receipt, events, base_ledger_text)
         else:
             receipt, events, text, raw = mutate(receipt, None, None)
-        payload = raw if raw is not None else json.dumps(receipt, indent=1, ensure_ascii=False) + "\n"
+        if check == LEDGER_REJECT:
+            # The receipt is valid; the ledger is the file under test. `raw` holds the ledger's damaged
+            # bytes, so the expectation can point at a file that exists on disk and a third party can
+            # run it without this script.
+            files[HERE / "ledgers" / f"{name}.jsonl"] = raw if isinstance(raw, bytes) else raw.encode("utf-8")
+            payload = json.dumps(receipt, indent=1, ensure_ascii=False) + "\n"
+        else:
+            payload = raw if raw is not None else json.dumps(receipt, indent=1, ensure_ascii=False) + "\n"
         files[HERE / f"{name}.json"] = payload if isinstance(payload, bytes) else payload.encode("utf-8")
-        if ledger == OWN:
+        if ledger == OWN and check != LEDGER_REJECT:
             files[HERE / "ledgers" / f"{name}.jsonl"] = text.encode("utf-8")
-        if check == ACCEPT:
+        if check == LEDGER_REJECT:
+            expectation = {
+                "schema": "docket/conformance-expectation/v1",
+                "vector": f"{name}.json",
+                "ledger": f"ledgers/{name}.jsonl",
+                "check": None,
+                "reject": None,
+                "accept": None,
+                "ledger_reject": {"reason_any_of": LEDGER_REJECT_WORDS[name]},
+                "rule": rule,
+                "mutation": mutation,
+            }
+        elif check == ACCEPT:
             expectation = {
                 "schema": "docket/conformance-expectation/v1",
                 "vector": f"{name}.json",
@@ -731,6 +799,17 @@ def verify(files: dict[pathlib.Path, bytes]) -> list[str]:
                 None if ledger is None else root / (LEDGER_NAME if ledger == BASE else f"ledgers/{name}.jsonl")
             )
             kind, detail = _first_failure(receipt, ledger_path)
+            if check == LEDGER_REJECT:
+                if not kind.startswith("reject:"):
+                    problems.append(f"{name}: the malformed ledger was read; got {kind}")
+                    continue
+                reason = kind[len("reject:") :].strip()
+                words = LEDGER_REJECT_WORDS[name]
+                if not reason:
+                    problems.append(f"{name}: the ledger was refused with no reason on stderr")
+                elif words and not any(word.lower() in reason.lower() for word in words):
+                    problems.append(f"{name}: refused, but the reason names none of {words}: {reason[:140]}")
+                continue
             if check == ACCEPT:
                 if kind != "pass":
                     problems.append(f"{name}: expected acceptance, got {kind} {detail}")

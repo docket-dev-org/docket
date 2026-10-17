@@ -155,6 +155,19 @@ def classify(result: dict, expectation: dict) -> tuple[str, str]:
     if result["kind"] == "error":
         return "error", result["detail"]
     payload = result.get("payload")
+    # A ledger-level refusal: the receipt is fine, the ledger is malformed. Same rule as `reject` —
+    # a reason must be stated, and the vector may only require a token that is in the ledger.
+    ledger_reject = expectation.get("ledger_reject")
+    if ledger_reject is not None:
+        if result["returncode"] != 0 and payload is None:
+            reason = (result.get("stderr") or "").strip()
+            alternatives = ledger_reject.get("reason_any_of") or []
+            if not reason:
+                return "wrong-reason", "the malformed ledger was refused with no reason on stderr"
+            if not alternatives or any(word.lower() in reason.lower() for word in alternatives):
+                return "pass", "the malformed ledger was refused, with a reason"
+            return "wrong-reason", f"the ledger was refused without naming any of {alternatives}: {reason[:120]}"
+        return "wrong-ok", "a malformed ledger was read and judged; it must be refused before any check runs"
     reject = expectation.get("reject")
     if reject is not None:
         # A parse-level rejection: the verifier exits non-zero without a JSON verdict, and says why.
