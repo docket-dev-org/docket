@@ -6,6 +6,20 @@ All notable changes are recorded here. The format follows
 separately by its tag (`docket/receipt/v1`) and changes only under the format process in
 [`CONTRIBUTING.md`](CONTRIBUTING.md#changing-the-format).
 
+## [0.1.1] - 2026-10-18
+
+### Fixed
+
+- **The quickstart linked a wheel filename that does not exist.** It told a reader to install
+  `docket-0.1.0-py3-none-any.whl`, which the rename to the `docket-ai` distribution had turned
+  into `docket_ai-0.1.0-py3-none-any.whl`. The quickstart now installs from PyPI like the
+  README does, keeps the clone path for a contributor, and links to `PUBLISHING.md` for why the
+  distribution name differs from the command.
+
+- **The PyPI long description quoted a stale test count.** The 0.1.0 wheel was built before the
+  supply-chain guard was added, so its rendered page said 1196 tests where the repository said
+  1197. The wheels are otherwise byte-identical.
+
 ## [Unreleased]
 
 ### Added
@@ -1212,5 +1226,6 @@ First release: a bounded, legible, provable agent run.
   they are estimates for budgeting, and every receipt states which table it used and flags
   any model priced by fallback as `assumed`.
 
-[Unreleased]: https://github.com/docket-dev-org/docket/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/docket-dev-org/docket/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/docket-dev-org/docket/releases/tag/v0.1.1
 [0.1.0]: https://github.com/docket-dev-org/docket/releases/tag/v0.1.0

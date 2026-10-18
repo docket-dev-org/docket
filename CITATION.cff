@@ -23,7 +23,7 @@ keywords:
   - audit
   - llm-cost
   - transparency-log
-version: 0.1.0
+version: 0.1.1
 date-released: "2026-10-13"
 preferred-citation:
   type: generic

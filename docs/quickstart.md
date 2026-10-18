@@ -5,9 +5,26 @@ provider is scripted and local, so this works on a plane.
 
 ## 1. Install
 
-Install from a clone, or from the wheel attached to the release:
+Install from PyPI:
 
 ```bash
+# Requires: Python 3.11+, pip, and network access to pypi.org.
+python3 -m pip install docket-ai
+docket --version
+```
+
+To keep the package out of your project virtualenv, install it into its own isolated
+environment instead:
+
+```bash
+# Requires: Python 3.11+, pipx, and network access to pypi.org.
+pipx install docket-ai
+```
+
+To install from a clone, which tracks `main` instead of a pinned version:
+
+```bash
+# Requires: Python 3.11+, pip, git, and network access to github.com.
 git clone https://github.com/docket-dev-org/docket && cd docket
 python3 -m pip install .          # or: pipx install .  (keeps it out of a project venv)
 docket --version
@@ -19,12 +36,10 @@ No install at all also works, from inside the clone:
 PYTHONPATH=src python3 -m docket demo
 ```
 
-To install without cloning, use the wheel attached to the release:
-
-```bash
-python3 -m pip install \
-  https://github.com/docket-dev-org/docket/releases/download/v0.1.0/docket-0.1.0-py3-none-any.whl
-```
+> [!NOTE]
+> The distribution is named `docket-ai` because PyPI administratively prohibits the bare name
+> `docket`. Everything else is `docket`: the import, the console script, and the command you
+> type. See [Publishing](../PUBLISHING.md) for the reason and the evidence.
 
 Nothing above needs an account, an API key, or the network after the download; the demo
 provider is scripted and local.
