@@ -10,7 +10,7 @@ A local budget-and-evidence layer for AI agents: it caps what a run can spend, r
 Docket wraps the agent you already run. It needs no account, no server, no telemetry, and no API keys of its own.
 
 > [!NOTE]
-> Docket 0.1.0 was released on 2026-10-13. The `docket/receipt/v1` format is stable and versioned: compatible additions keep the tag, and consumers ignore members they do not know. The 44 committed conformance vectors hold three independent implementations to that contract, so a receipt written today verifies under any later release. The command line follows semantic versioning, so flags and exit codes are stable across 0.1.x and may change at 1.0.
+> Docket 0.1.0 is on PyPI and installs with `pip install docket`. The `docket/receipt/v1` format is versioned and frozen: the specification in `spec/` and its 44 committed conformance vectors define it, and three implementations that share no code are held to that contract, so a receipt written by 0.1.0 verifies under any later release. The command line follows semantic versioning. Exit codes, flags, and the JSON shape of every command are part of the interface and stay stable across 0.1.x; the format tag changes only under the process in [CONTRIBUTING.md](CONTRIBUTING.md#changing-the-format), and never silently.
 
 ---
 
@@ -121,26 +121,21 @@ Docket runs on Linux and macOS. The Windows code paths exist, a separate file lo
 
 ## Quick start
 
-> [!IMPORTANT]
-> Docket is not on PyPI, so `pip install docket` does not resolve. Install the wheel attached to the release below; it is the same artefact the release gate builds and tests, and its checksum is published beside it.
-
 ### 1. Install
 
 To install Docket into your current Python environment, run:
 
 ```bash
-# Requires: Python 3.11+, pip, and network access to github.com.
-python3 -m pip install \
-  https://github.com/docket-dev-org/docket/releases/download/v0.1.0/docket-0.1.0-py3-none-any.whl
+# Requires: Python 3.11+, pip, and network access to pypi.org.
+python3 -m pip install docket
 docket --version
 ```
 
 To keep the package out of your project virtualenv, install it into its own isolated environment instead:
 
 ```bash
-# Requires: Python 3.11+, pipx, and network access to github.com.
-pipx install \
-  https://github.com/docket-dev-org/docket/releases/download/v0.1.0/docket-0.1.0-py3-none-any.whl
+# Requires: Python 3.11+, pipx, and network access to pypi.org.
+pipx install docket
 ```
 
 To install straight from the repository rather than the release, which tracks `main` instead of a pinned version, run:
@@ -158,7 +153,7 @@ To create a starter policy and run any command under it, run:
 # Requires: docket installed, and a command that exits.
 docket init --name my-agent --max-usd 1
 docket run --policy docket.toml -- python3 -c "print('hello from the agent')"
-docket verify .docket/receipts/DKT-*.receipt.json
+docket verify .docket/latest.receipt.json
 ```
 
 ```text
@@ -177,6 +172,8 @@ VERIFIED  DKT-20261018-5FB7B5
 ```
 
 One run, trimmed to the lines that matter; the docket number, the event count and the ledger name are yours. The chain, the head and the Merkle root are checked because `docket verify` finds the ledger beside the receipt, with no flag needed, and the last line names the file it used.
+
+`.docket/latest.receipt.json` is a path every run rewrites, so the command works the second time and the hundredth time. Verify one specific receipt by naming it, as `docket verify .docket/receipts/DKT-20261018-5FB7B5.receipt.json`.
 
 Point the command at your real agent and the same receipt carries its calls. Exit code `0` means the run ended normally; `42` means a cap stopped it.
 
@@ -255,10 +252,13 @@ Exit codes are part of the interface:
 | code | meaning |
 | --- | --- |
 | `0` | the command exited normally |
+| `1` | `verify`, `report`, `explain` or `diff` found a problem, or the receipt could not be read |
 | `42` | a cap was crossed and the run was stopped |
 | `43` | the policy could not be loaded: missing file, invalid TOML, or a value out of range |
 | `70` | internal error |
 | `130` | interrupted (Ctrl-C) |
+
+`docket run` hands back the exit code of the command it wrapped, so a pipeline sees what the agent saw: `docket run --policy docket.toml -- ./build.sh` exits `0` when the build passed and `1` when it failed. `42` and `43` are Docket's own codes and cannot collide with a child's, because the supervisor writes them over the child's code only when it stopped the run itself.
 
 Four workflows cover most of the work:
 

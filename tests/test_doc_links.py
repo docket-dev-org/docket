@@ -1194,20 +1194,22 @@ def test_the_scan_skips_exactly_the_directories_the_site_stager_skips():
     )
 
 
-def test_no_document_instructs_a_reader_to_install_an_unpublished_package():
-    """No document may tell a reader to run `pip install docket`, because that command fails.
+def test_no_document_tells_a_reader_to_install_an_unpublished_package() -> None:
+    """No document may apologise for an install path, and the README's first one must be PyPI.
 
-    The package is not on PyPI: `https://pypi.org/pypi/docket/json` answers 404. The first
-    command in a guide is the one a reader runs before they have any reason to trust the
-    project, so an instruction that fails there is the most expensive kind of documentation
-    defect. This guard used to allow the instruction provided it carried a "not yet" marker,
-    which institutionalised the gap instead of closing it: four documents each carried their
-    own apology, and a reader met four different explanations of the same problem.
+    This guard used to assert the opposite: that no document instructs a reader to run
+    `pip install docket`, because `https://pypi.org/pypi/docket/json` answered 404 and the
+    first command in a guide is the one a reader runs before they have any reason to trust
+    the project. It was the right guard while the package was unpublished, and it caught four
+    documents each carrying their own apology for the same gap.
 
-    It now asserts the stronger thing. An install instruction must name a path that resolves,
-    which today means the wheel attached to the release, a clone, or a `git+https` URL. When
-    the package is published, relax this by removing `pip install docket` from the
-    instruction set rather than by adding the marker back.
+    The package is published now, so the guard inverts rather than disappears. Two things are
+    asserted, and the second is the one that matters:
+
+    1. No document still carries the apology. A stale "not on PyPI" line is worse than the gap
+       it describes, because a reader who can install the package is being told they cannot.
+    2. The README's first install instruction is `python3 -m pip install docket`. That is the
+       path a reader meets first, and it has to be the one that works without a clone.
 
     Only an *instruction* is checked, not a mention: prose that says funding pays for the
     machinery which makes `pip install docket` trustworthy is a statement of intent, and a
@@ -1216,7 +1218,7 @@ def test_no_document_instructs_a_reader_to_install_an_unpublished_package():
     """
     root = Path(__file__).resolve().parents[1]
     instructions = ("- run:", "pip install docket", "pipx run docket", "pipx install docket")
-    offenders = []
+    apologies: list[str] = []
     for page in sorted(root.rglob("*.md")):
         relative = page.relative_to(root).as_posix()
         if ".git" in page.parts or _is_build_output(page):
@@ -1228,8 +1230,23 @@ def test_no_document_instructs_a_reader_to_install_an_unpublished_package():
                 continue
             if "docket" not in stripped:
                 continue
-            if "pip install docket" in stripped or "pipx run docket" in stripped:
-                offenders.append(f"{relative}:{index + 1}: {stripped}")
-    assert not offenders, "a document instructs a reader to install a package PyPI answers 404 for: " + "; ".join(
-        offenders
+            lowered = stripped.lower()
+            if "not on pypi" in lowered or "does not resolve" in lowered or "is not on pypi" in lowered:
+                apologies.append(f"{relative}:{index + 1}: {stripped}")
+    assert not apologies, (
+        "a document still apologises for an install path that works: " + "; ".join(apologies)
+    )
+
+    readme = (root / "README.md").read_text(encoding="utf-8").splitlines()
+    first_install = next(
+        (
+            line
+            for line in readme
+            if line.strip().startswith("python3 -m pip install") or line.strip() == "pipx install docket"
+        ),
+        None,
+    )
+    assert first_install is not None, "the README no longer contains a pip install instruction"
+    assert "pip install docket" in first_install, (
+        f"the README's first install instruction is not the PyPI one: {first_install!r}"
     )

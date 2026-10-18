@@ -14,8 +14,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
 
-      # docket is not on PyPI, so install the wheel attached to the release:
-      - run: pip install https://github.com/docket-dev-org/docket/releases/download/v0.1.0/docket-0.1.0-py3-none-any.whl
+      # docket is on PyPI:
+      - run: pip install docket
 
       - name: Run the agent under a policy
         run: |

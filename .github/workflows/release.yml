@@ -54,5 +54,11 @@ jobs:
             --title "Docket ${GITHUB_REF_NAME#v}" \
             --notes-file RELEASE_NOTES.md \
             dist/*
-      # PyPI publishing is intentionally manual until the project has its own token:
-      #   twine upload dist/*   (see PUBLISH.md in the maintainer runbook)
+      # PyPI upload stays a deliberate manual step rather than a `twine upload` in this job.
+      # The reason is blast radius, not missing plumbing: a PyPI token is a credential that
+      # can publish under the project's name forever and cannot be scoped to a branch, so
+      # storing one as a repository secret hands it to everyone who ever gains admin on this
+      # repository. The GitHub release is published by this workflow because `github.token`
+      # is scoped to this run and expires with it. To ship a release to PyPI:
+      #   python -m build && twine upload dist/*
+      # which is also the only way to publish from a machine whose key never touches CI.

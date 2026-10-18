@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "Every AI agent run gets a docket number: hard spending caps and a tamper-evident receipt anyone can verify offline."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [{ name = "The Docket contributors" }]
 keywords = [
   "ai-agents",
