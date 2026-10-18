@@ -1192,3 +1192,45 @@ def test_the_scan_skips_exactly_the_directories_the_site_stager_skips():
     assert set(GENERATED_DIRECTORIES) == set(module.SKIP_DIRS) - {".git"}, (
         f"this scan skips {sorted(GENERATED_DIRECTORIES)}; the stager skips " f"{sorted(module.SKIP_DIRS)}"
     )
+
+
+def test_no_document_tells_a_reader_to_install_a_package_that_is_not_published():
+    """`pip install docket` is a command that fails until 0.1.0 ships.
+
+    Four documents told a reader to run it as the first step — quickstart, the CLI recipe, the
+    integrations page, and the CI example — for a package that PyPI answers 404 for. A first
+    command that fails is the most expensive kind of documentation defect: the reader never
+    reaches the part that would have convinced them.
+
+    Only an *instruction* is checked, not a mention: prose that says funding pays for the
+    machinery which makes `pip install docket` trustworthy is a statement of intent, and a
+    reader cannot run a table cell. The marker may sit on the line above, which is where a
+    YAML comment lives, so both are considered.
+    """
+    root = Path(__file__).resolve().parents[1]
+    markers = (
+        "after the 0.1.0 release",
+        "once 0.1.0 is published",
+        "starts working",
+        "Until 0.1.0",
+        "Before the 0.1.0",
+        "Until the 0.1.0 release",
+    )
+    offenders = []
+    for page in sorted(root.rglob("*.md")):
+        relative = page.relative_to(root).as_posix()
+        if ".git" in page.parts or _is_build_output(page):
+            continue
+        lines = page.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped.startswith(("- run:", "pip install docket", "pipx run docket")):
+                continue
+            if "pip install docket" not in stripped and "pipx run docket" not in stripped:
+                continue
+            context = "\n".join(lines[max(0, index - 2) : index + 1])
+            if not any(marker in context for marker in markers):
+                offenders.append(f"{relative}:{index + 1}: {stripped}")
+    assert not offenders, "a document tells a reader to install an unpublished package without saying so: " + "; ".join(
+        offenders
+    )

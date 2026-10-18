@@ -324,6 +324,18 @@ def run_demo(
     else:
         shutil.rmtree(workspace, ignore_errors=True)
     print(file=stream)
+    # Print the command that reproduces the verdict the reader just watched, rather than a
+    # generic next step. The tamper demo used to end here, and a reader who followed up with
+    # the obvious `docket verify <receipt>` got VERIFIED — the tamper lives in the ledger,
+    # which nothing had told them to pass. Naming the ledger makes the demo repeatable.
+    receipt_file = Path(result.receipt_path)
+    ledger_file = Path(result.ledger_path)
+    print("  Check it yourself:", file=stream)
+    print(f"    docket verify {receipt_file} --ledger {ledger_file}", file=stream)
+    if tamper:
+        print(file=stream)
+        print("  (the receipt is intact; the ledger beside it is the doctored one.)", file=stream)
+    print(file=stream)
     print("  Try it on your own agent:", file=stream)
     print("    docket run --max-usd 5 -- my-agent --flag", file=stream)
     print(file=stream)

@@ -152,3 +152,45 @@ def _imported_top_level_names_of(node: ast.AST) -> set[str]:
         elif isinstance(inner, ast.ImportFrom) and inner.level == 0 and inner.module:
             names.add(inner.module.split(".")[0])
     return names
+
+
+def test_the_wheel_carries_the_independent_verifier_and_the_conformance_corpus():
+    """`verify --impl node` is a claim about an *installation*, so the installation is checked.
+
+    `force-include` in `pyproject.toml` copies `verify-js/verify.mjs` and `spec/vectors/` into
+    the wheel under `docket/_vendor/`. Nothing in the test suite builds a wheel, so a dropped
+    line there would only surface when a reader ran the command and got "not in this
+    installation" — which is the exact failure the vendoring exists to prevent. This reads the
+    packaging configuration instead, which is where the promise is made.
+    """
+    import tomllib
+
+    root = Path(__file__).resolve().parents[1]
+    config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    force_include = config["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
+    assert force_include.get("verify-js/verify.mjs") == "docket/_vendor/verify.mjs", (
+        "the wheel no longer carries the Node verifier, so `docket verify --impl node` "
+        "fails on a clean install: " + repr(force_include)
+    )
+    assert force_include.get("spec/vectors") == "docket/_vendor/vectors", (
+        "the wheel no longer carries the conformance corpus: " + repr(force_include)
+    )
+    # And the files those entries name are the ones in the tree, byte for byte.
+    assert (root / "verify-js" / "verify.mjs").is_file()
+    assert (root / "spec" / "vectors").is_dir()
+    assert any((root / "spec" / "vectors").glob("*.json")), "the positive corpus is empty"
+
+
+def test_the_node_verifier_in_the_wheel_is_the_one_in_the_repository():
+    """The vendored copy and the repository copy must be the same program.
+
+    Two implementations that agree is the claim; two *files* that differ is a different claim
+    wearing the same clothes. The build copies the repository's file, so this asserts the copy
+    that ships is derived from the file the suite tests rather than a fork of it.
+    """
+    from docket.cli import _node_verifier
+
+    root = Path(__file__).resolve().parents[1]
+    resolved = _node_verifier()
+    assert resolved is not None, "no Node verifier found from a checkout"
+    assert resolved.read_bytes() == (root / "verify-js" / "verify.mjs").read_bytes()

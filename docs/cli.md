@@ -201,6 +201,7 @@ Verifies offline. Exits `0` if it checks out, `1` if it does not, `2` on usage/I
 
 | flag | meaning |
 | --- | --- |
+| `--impl python\|node` | which implementation verifies: this one (default), or the independent Node one that ships inside the wheel |
 | `--ledger PATH` | also check the ledger file the receipt came from (chain, roots, file digest, re-binding of usage rows) |
 | `--seal-key PATH\|HEX` | the HMAC key file written by `docket run --seal` (or the hex key itself), to check a sealed receipt |
 | `--public-key HEX` | expected Ed25519 public key; without it, a signature is checked only against the key embedded in the receipt |
@@ -208,6 +209,19 @@ Verifies offline. Exits `0` if it checks out, `1` if it does not, `2` on usage/I
 
 Output contract: every check is `PASS`, `FAIL` or `SKIP` **with a reason**. `SKIP` never counts
 as a pass; a verifier that reports coverage it does not have is worse than no verifier.
+
+**The ledger is found, not requested.** Without `--ledger`, `docket verify` looks for the
+ledger beside the receipt — the same `.docket/runs/` directory, chosen by the
+`ledger.file_sha256` the receipt carries, so the file used is provably the one the receipt was
+built from — and prints the line naming the file it used. `--impl node` uses the same
+discovery, which is what makes `docket demo --tamper` repeatable by hand.
+
+**`--impl node` is a second opinion, not a translation.** It runs the Node verifier that ships
+inside the wheel (`docket/_vendor/verify.mjs`, byte-identical to `verify-js/verify.mjs` in the
+repository) against the same receipt and the same ledger, and prints that program's own
+verdict and its own exit codes: `0` verified, `1` not verified, `2` usage/IO. A pipeline that
+gates on `docket verify` needs no change when it switches `--impl`. It needs Node.js 20 or
+newer on `PATH`; `docket doctor` reports whether this installation has both.
 
 ## `docket report [receipt] [--markdown]`
 
@@ -376,7 +390,7 @@ numbers, the host they came from and the limits of the method are in
 ## Recipe: CI
 
 ```yaml
-- run: pip install docket
+- run: pip install docket   # after the 0.1.0 release; before it: pip install git+https://github.com/docket-dev/docket.git
 - run: docket run -p .docket/ci.toml --label "${{ github.run_id }}" -- python agent.py
   continue-on-error: true      # let the report step run even when the cap fires (exit 42)
 - run: docket verify .docket/latest.receipt.json --json > verification.json

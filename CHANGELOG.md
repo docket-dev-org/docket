@@ -10,6 +10,24 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **`docket verify --impl node`: a second opinion from an installation.** The claim that the
+  format is not this tool needed the other tool to be reachable without a clone, so the wheel now
+  carries `verify-js/verify.mjs` and the conformance corpus under `docket/_vendor/`, and
+  `docket verify --impl node` runs that program against the same receipt and the same ledger and
+  prints its own verdict and its own exit codes (`0`/`1`/`2`). A pipeline that already gates on
+  `docket verify` needs no change when it switches. `docket doctor` now reports whether this
+  installation has both the verifier and a `node` on `PATH`, and two tests read the packaging
+  configuration rather than a built artifact, so a dropped `force-include` line fails here
+  instead of in a reader's terminal.
+
+- **`docket verify` finds the ledger beside the receipt instead of checking less.** It used to
+  need `--ledger` or it skipped the chain, the roots, the file digest and the re-binding of the
+  usage rows. It now looks in the `.docket/runs/` directory beside the receipt it was handed and
+  selects by the `ledger.file_sha256` the receipt carries, so the file used is provably the one
+  the receipt was built from — including for a receipt that arrived in an archive with its
+  ledger alongside. The line naming the file is printed, `--ledger` still overrides, and a
+  receipt with no ledger anywhere still degrades to `SKIP` rather than to a red result.
+
 - **A third implementation, written from the specification alone.** `verify-go/` is a
   dependency-free Go verifier built from `spec/` and the vectors without reading the Python or
   Node one, with a `CLEANROOM.md` that declares the constraint before any code existed. It agrees
@@ -604,6 +622,18 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   size the page has. It caught one row on its first run: a book, named with neither a link nor a year.
 
 ### Fixed
+
+- **The tamper demo is now reproducible.** `docket demo --tamper` doctored the ledger and
+  printed `NOT VERIFIED`, then told the reader nothing about how to see that for themselves —
+  and the obvious follow-up, `docket verify <receipt>`, answered `VERIFIED`, because the receipt
+  is intact and nothing had looked for the ledger. The demo now prints the command that
+  reproduces its own verdict, receipt and ledger included, and `docket verify` finds that
+  ledger. Four documents also told a reader to run `pip install docket` as the first step for a
+  package PyPI answers 404 for; each now names the install-from-source command that works today
+  and says when the published one starts working, with a test that refuses an unmarked one.
+  The README's `--tamper` transcript is labelled as one run of a demo whose event number and
+  hashes change each time, and exit code `43` is stated as what it is: the policy could not be
+  loaded.
 
 - **`docs/strategy.md` re-based onto the sweep it names.** Every figure in its comparison table, its
   three ecosystem-threshold rows and its inline audience sentences is now the value in that file, with

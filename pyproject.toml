@@ -76,6 +76,15 @@ Sponsor = "https://github.com/sponsors/docket-dev"
 [tool.hatch.build.targets.wheel]
 packages = ["src/docket"]
 
+# The independent verifier and the conformance corpus ship inside the wheel, so the claim
+# "the format is not this tool" survives installation. A recipient who installs `docket` can
+# run `docket verify --impl node` and get a verdict from a program that shares no code with
+# this one; without this they would have to clone the repository to make that point, which is
+# exactly the friction the claim cannot afford.
+[tool.hatch.build.targets.wheel.force-include]
+"verify-js/verify.mjs" = "docket/_vendor/verify.mjs"
+"spec/vectors" = "docket/_vendor/vectors"
+
 [tool.hatch.build.targets.sdist]
 # `tools/` is in the sdist because `docs/testing.md` (also shipped) documents the mutation
 # sweep and the fuzz harness by path: a source distribution whose own docs point at files it

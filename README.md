@@ -177,14 +177,16 @@ To see tamper detection, run the same demo with one byte of the ledger flipped:
 docket demo --tamper
 ```
 
+The demo ends by printing the exact command that reproduces the verdict below, receipt and ledger included. One run of it, trimmed:
+
 ```text
-NOT VERIFIED  DKT-20261017-746EF4
-  FAIL  ledger-chain: broken at event #6: content hash mismatch (event was modified after it was written)
-  SKIP  head: not checked: the chain is broken at event #6
-  FAIL  merkle-root: recomputed 8792629ac9da7829… != receipt 6103dbfd35035efc…
+NOT VERIFIED  DKT-20261018-746EF4
+  FAIL  ledger-chain: broken at event #7: content hash mismatch (event was modified after it was written)
+  SKIP  head: not checked: the chain is broken at event #7
+  FAIL  merkle-root: recomputed ded1ee862e4a1df7… != receipt 4b3ccfcfb84a1449…
 ```
 
-The receipt does not become "unreadable". It becomes specific about exactly where the record stops being trustworthy.
+The event number, both hashes, and the date inside the docket number differ on every run; the verdict and the three failing checks do not. The receipt itself is intact — the ledger beside it is the doctored file — so `docket verify <receipt>` finds that ledger and fails the same way. The receipt does not become "unreadable". It becomes specific about exactly where the record stops being trustworthy.
 
 ### 4. Run your own command
 
@@ -216,7 +218,7 @@ Point the command at your real agent and the same receipt carries its calls. Exi
 | `docket demo` | Runs a scripted runaway agent under a real boundary | A receipt, its findings, and a verification report; `--tamper` adds the doctored run |
 | `docket init` | Writes a commented starter policy | `docket.toml` with caps, watch scope, egress allow list, and resilience defaults |
 | `docket run -- <command>` | Runs any command under the policy | A ledger and a receipt per run; exit `42` on a cap, `43` if the policy refuses to start |
-| `docket verify <receipt>` | Verifies a receipt offline | One line per check; exit `1` if any `FAIL`; `--ledger` also rebuilds the chain |
+| `docket verify <receipt>` | Verifies a receipt offline | One line per check; exit `1` if any `FAIL`; the ledger beside the receipt is used unless `--ledger` names another; `--impl node` hands it to the independent Node verifier the wheel carries |
 | `docket report <receipt>` | Renders the receipt | Terminal summary or Markdown for a change request or incident ticket |
 | `docket explain <receipt>` | Re-derives findings from the ledger | Where the money and the risk went, with the rule and evidence behind each finding |
 | `docket diff <a> <b>` | Compares two runs | Cost, calls, models, tools, and file deltas — a regression check for agents |
@@ -233,15 +235,16 @@ Exit codes are part of the interface:
 | --- | --- |
 | `0` | the command exited normally |
 | `42` | a cap was crossed and the run was stopped |
-| `43` | the policy refused the run before it started |
+| `43` | the policy could not be loaded: missing file, invalid TOML, or a value out of range |
 | `70` | internal error |
 | `130` | interrupted (Ctrl-C) |
 
 Three workflows cover most of the work:
 
 1. **Cap a coding agent.** Run `docket run --max-usd 5 -- claude` and read the receipt when the task ends. The table of agents and their flags is in [Integrations](docs/integrations.md).
-2. **Gate a pipeline on evidence.** Run `docket verify .docket/latest.receipt.json --json` in CI; a non-zero exit fails the job, and the JSON names the check that failed. See [Verification](docs/verification.md).
+2. **Gate a pipeline on evidence.** Run `docket verify .docket/latest.receipt.json --json` in CI; a non-zero exit fails the job, and the JSON names the check that failed. The ledger beside the receipt is checked too, so a chain break fails the gate. See [Verification](docs/verification.md).
 3. **Check for drift after a prompt change.** Run `docket diff old.receipt.json new.receipt.json` and compare cost, call count, and models before you ship the change.
+4. **Answer "why should I believe you?" without a clone.** Run `docket verify --impl node receipt.json` and get a verdict from a program that shares no code with this one.
 
 ## Configuration
 
@@ -320,8 +323,8 @@ cd docket
 PYTHONPATH=src python3 -m pytest tests -ra
 ```
 
-That is 1198 tests in about three minutes, fully offline: no API keys, no network, no provider account.
-The whole gate is `make check` (1198 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
+That is 1207 tests in about three minutes, fully offline: no API keys, no network, no provider account.
+The whole gate is `make check` (1207 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
 
 Two rules matter more than style:
 

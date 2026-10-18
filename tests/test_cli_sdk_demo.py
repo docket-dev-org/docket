@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import json
+import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -195,6 +197,85 @@ def test_demo_tamper_mode_is_detected(tmp_path, monkeypatch):
     assert any("ledger-chain" in failure for failure in outcome["tamper_failures"])
 
 
+def test_the_tamper_demo_is_reproducible_by_the_command_it_prints(tmp_path, monkeypatch, capsys):
+    """The demo must end with a command that produces the verdict it just showed.
+
+    `demo --tamper` doctored the ledger and printed NOT VERIFIED, then told the reader
+    nothing about how to see that for themselves. The obvious follow-up —
+    `docket verify <receipt>` — passed, because the receipt is intact and nothing looked
+    for the ledger. A tamper demonstration a reader cannot reproduce is not evidence, so
+    the demo now prints its own verification command and `verify` finds the ledger beside
+    the receipt when `--ledger` is absent.
+    """
+    monkeypatch.chdir(tmp_path)
+    out = io.StringIO()
+    run_demo(max_usd=__import__("decimal").Decimal("2.00"), tamper=True, keep=True, color=False, out=out)
+    printed = re.search(r"^    docket verify (\S+) --ledger (\S+)$", out.getvalue(), re.MULTILINE)
+    assert printed is not None, "the demo does not print the command that reproduces its verdict"
+    receipt = Path(printed.group(1))
+    ledger = Path(printed.group(2))
+    assert receipt.is_file() and ledger.is_file(), "the printed command names files that do not exist"
+
+    capsys.readouterr()
+    # The reader's own command, without the `--ledger` the demo printed: the ledger is
+    # found beside the receipt and the same verdict comes back.
+    assert main(["verify", str(receipt)]) == 1
+    text = capsys.readouterr().out
+    assert "NOT VERIFIED" in text, text
+    assert "ledger-chain" in text, text
+    assert str(ledger) in text, "the ledger that was used is not named"
+
+    # And the same receipt, with its ledger replaced by an untouched one, verifies —
+    # which is the point of the digest match rather than a recency pick.
+    assert main(["verify", str(receipt), "--ledger", str(ledger)]) == 1
+
+
+def test_verify_finds_the_ledger_beside_the_receipt(tmp_path, monkeypatch, capsys):
+    """A receipt that arrives with its ledger must be checked against it.
+
+    Copying `.docket/receipts/X.receipt.json` and `.docket/runs/Y.jsonl` somewhere else
+    is how a receipt is actually shared, so the lookup is relative to the receipt rather
+    than to the working directory.
+    """
+    monkeypatch.chdir(tmp_path)
+    assert main(["init", "--max-usd", "5"]) == 0
+    assert main(["run", "--policy", "docket.toml", "--", sys.executable, "-c", "print(1)"]) == 0
+    receipt = tmp_path / ".docket" / "receipts"
+    ledger = tmp_path / ".docket" / "runs"
+    elsewhere = tmp_path / "shared"
+    shutil.copytree(receipt, elsewhere / "receipts")
+    shutil.copytree(ledger, elsewhere / "runs")
+    capsys.readouterr()
+    shared_receipt = next((elsewhere / "receipts").glob("*.receipt.json"))
+    assert main(["verify", str(shared_receipt)]) == 0
+    text = capsys.readouterr().out
+    assert "VERIFIED" in text, text
+    assert "found beside the receipt" in text, "the ledger that was used is not named"
+    chained = verify_receipt(load_receipt(shared_receipt), ledger_path=str(next((elsewhere / "runs").glob("*.jsonl"))))
+    chain = next(c for c in chained.checks if c.name == "ledger-chain")
+    assert chain.status == "pass", chain
+
+
+def test_verify_without_a_ledger_anywhere_still_passes_on_the_receipt_alone(tmp_path, monkeypatch, capsys):
+    """No ledger beside the receipt is a SKIP, not a failure.
+
+    A receipt is designed to stand alone — that is the whole claim — so the absence of the
+    ledger must degrade to the check it cannot perform, not to a red result.
+    """
+    monkeypatch.chdir(tmp_path)
+    assert main(["init", "--max-usd", "5"]) == 0
+    assert main(["run", "--policy", "docket.toml", "--", sys.executable, "-c", "print(1)"]) == 0
+    receipt = next((tmp_path / ".docket" / "receipts").glob("*.receipt.json"))
+    alone = tmp_path / "alone"
+    alone.mkdir()
+    shutil.copy(receipt, alone / receipt.name)
+    capsys.readouterr()
+    assert main(["verify", str(alone / receipt.name)]) == 0
+    text = capsys.readouterr().out
+    assert "VERIFIED" in text, text
+    assert "found beside the receipt" not in text
+
+
 def test_demo_json_output_is_machine_readable(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     assert main(["demo", "--max-usd", "2.00", "--json"]) == 0
@@ -203,3 +284,69 @@ def test_demo_json_output_is_machine_readable(tmp_path, monkeypatch, capsys):
     payload = json.loads(captured[start:])
     assert payload["verify_ok"] is True
     assert payload["stopped_as_expected"] is True
+
+
+def test_verify_can_be_done_by_the_independent_node_implementation(tmp_path, monkeypatch, capsys):
+    """`--impl node` must hand the receipt to a program that shares no code with this one.
+
+    The trust claim is "the format is not this tool", which is only true if the other tool is
+    reachable from an installation rather than from a clone. This runs the verifier the wheel
+    carries and asserts the verdict is the Node implementation's own — including its exit code,
+    which a pipeline already gates on.
+    """
+    monkeypatch.chdir(tmp_path)
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover - Node is in CI; a machine without it gets the message
+        pytest.skip("node is not on PATH")
+    assert main(["init", "--max-usd", "5"]) == 0
+    assert main(["run", "--policy", "docket.toml", "--", sys.executable, "-c", "print(1)"]) == 0
+    receipt = next((tmp_path / ".docket" / "receipts").glob("*.receipt.json"))
+    capsys.readouterr()
+    assert main(["verify", "--impl", "node", str(receipt)]) == 0
+    text = capsys.readouterr().out
+    assert "VERIFIED" in text, text
+    assert "verified by the Node implementation" in text, text
+    assert "PASS" in text, "the Node implementation's own check lines must be shown, not a summary"
+
+
+def test_verify_impl_node_agrees_with_the_python_one_on_a_tampered_ledger(tmp_path, monkeypatch, capsys):
+    """Two implementations, one verdict: the disagreement check that matters.
+
+    A tampered ledger is the case where an implementation could quietly pass what the other
+    fails. Both must refuse it, and the Node one must find the same ledger beside the receipt.
+    """
+    monkeypatch.chdir(tmp_path)
+    if shutil.which("node") is None:  # pragma: no cover
+        pytest.skip("node is not on PATH")
+    assert main(["init", "--max-usd", "5"]) == 0
+    assert main(["run", "--policy", "docket.toml", "--", sys.executable, "-c", "print(1)"]) == 0
+    receipt = next((tmp_path / ".docket" / "receipts").glob("*.receipt.json"))
+    ledger = next((tmp_path / ".docket" / "runs").glob("*.jsonl"))
+    # One byte of the ledger, the way `demo --tamper` does it: a field inside one event.
+    document = json.loads(ledger.read_text(encoding="utf-8").splitlines()[0])
+    document["data"] = dict(document.get("data") or {})
+    document["data"]["forged"] = True
+    ledger.write_text(
+        json.dumps(document) + "\n" + "\n".join(ledger.read_text(encoding="utf-8").splitlines()[1:]) + "\n",
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+    assert main(["verify", "--impl", "node", str(receipt)]) == 1
+    assert "NOT VERIFIED" in capsys.readouterr().out
+
+
+def test_verify_impl_node_without_node_on_path_says_so(tmp_path, monkeypatch, capsys):
+    """A missing interpreter is a message, not a traceback.
+
+    The receipt exists and the verifier exists, so the only thing wrong is the machine: that
+    has to be reported as a requirement, and `docket doctor` is what tells the reader so.
+    """
+    monkeypatch.chdir(tmp_path)
+    assert main(["init", "--max-usd", "5"]) == 0
+    assert main(["run", "--policy", "docket.toml", "--", sys.executable, "-c", "print(1)"]) == 0
+    receipt = next((tmp_path / ".docket" / "receipts").glob("*.receipt.json"))
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    capsys.readouterr()
+    assert main(["verify", "--impl", "node", str(receipt)]) == 70
+    text = capsys.readouterr().err
+    assert "node" in text and "PATH" in text and "doctor" in text, text

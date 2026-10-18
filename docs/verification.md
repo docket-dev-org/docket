@@ -67,9 +67,17 @@ as data:
 | `limits-disclosure` | the receipt states its own scope and trust assumptions | the reader cannot be misled by omission | — |
 | `chaos-run` | *advisory, never pass/fail*: a game-day receipt says fault injection was active | a test run cannot be read as production behaviour | anything about the faults themselves |
 
-`SKIP` is a first-class outcome with a printed reason ("no ledger supplied", "receipt is not
-sealed", "chain broken, head not checked"). A verifier that reports coverage it does not have
-is worse than no verifier, so skipped is never silently turned into passed.
+`SKIP` is a first-class outcome with a printed reason ("no ledger found beside the receipt",
+"receipt is not sealed", "chain broken, head not checked"). A verifier that reports coverage it
+does not have is worse than no verifier, so skipped is never silently turned into passed.
+
+**The ledger is found, not requested.** `docket verify` looks for the ledger beside the receipt
+it was handed — the same `.docket/runs/` directory, selected by the `ledger.file_sha256` the
+receipt carries, so the file used is provably the one the receipt was built from. Pass
+`--ledger` to override, and the line naming the file that was used is printed either way. This
+is what makes `docket demo --tamper` repeatable: the tamper lives in the ledger, so a reader
+who follows the demo's own command gets `NOT VERIFIED` rather than a `VERIFIED` from a check
+that never looked.
 
 **One name, one verdict.** `docket verify` never emits the same check name with two different
 statuses: an earlier version reported the Merkle-path verdict and the re-binding verdict under

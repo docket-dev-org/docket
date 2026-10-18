@@ -334,3 +334,42 @@ def stable_seed(*parts: str) -> int:
 
 def money_or_zero(value: Decimal | None) -> str:
     return usd(value) if value is not None else "0.00"
+
+
+def ledger_for_receipt(receipt_path: str | os.PathLike[str]) -> Path | None:
+    """The ledger a receipt was written from, found from the receipt's own location.
+
+    ``docket verify`` used to check only the file it was handed, so a reader who ran the
+    tamper demo and then re-ran the command the demo *should* have printed got ``VERIFIED``
+    back — the tamper is in the ledger, not the receipt, and nothing looked for the ledger.
+    The fix is to look, and to look *here*: the receipt sits in ``<dir>/.docket/receipts/``,
+    so its ledger is a sibling of it rather than something in the current directory, which
+    is where the previous cwd-relative search in ``explain`` looked and often found nothing.
+
+    Selection is by digest, not by recency. A docket directory accumulates one ledger per
+    run, and the receipt already carries ``ledger.file_sha256``; matching on it means the
+    file chosen is provably the one the receipt was built from, so a reader who verifies a
+    receipt copied out of an archive still gets the chain check when the ledger came with it.
+    """
+    receipt = Path(receipt_path)
+    for parent in receipt.parents:
+        runs = parent / "runs"
+        if not runs.is_dir():
+            continue
+        candidates = sorted(runs.glob("*.jsonl"))
+        if not candidates:
+            continue
+        if len(candidates) == 1:
+            return candidates[0]
+        try:
+            document = loads_json(receipt.read_bytes())
+        except (OSError, ValueError):
+            return candidates[-1]
+        wanted = document.get("ledger", {}).get("file_sha256") if isinstance(document.get("ledger"), dict) else None
+        if isinstance(wanted, str):
+            for candidate in candidates:
+                digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+                if digest == wanted:
+                    return candidate
+        return candidates[-1]
+    return None

@@ -5,18 +5,23 @@ provider is scripted and local, so this works on a plane.
 
 ## 1. Install
 
-```bash
-pipx run docket demo          # zero install, runs once
-# or
-pip install docket            # Python 3.11+, no runtime dependencies
-```
-
-From a checkout instead:
+Until the 0.1.0 release lands on PyPI, install from the repository — a clone, or the wheel
+attached to the release:
 
 ```bash
 git clone https://github.com/docket-dev/docket && cd docket
+python3 -m pip install .          # or: pipx install .  (keeps it out of a project venv)
+docket --version
+```
+
+No install at all also works, from inside the clone:
+
+```bash
 PYTHONPATH=src python3 -m docket demo
 ```
+
+`pip install docket` starts working once 0.1.0 is published. Nothing above needs an account,
+an API key, or the network after the clone — the demo provider is scripted and local.
 
 ## 2. Watch a runaway agent get stopped (20 seconds)
 
@@ -85,14 +90,15 @@ docket verify .docket/receipts/DKT-*.receipt.json --ledger .docket/runs/*.jsonl
 Exits `0` if it checks out, `1` if it does not — usable in CI directly.
 
 To prove the point that the format is not this tool, verify with the independent Node
-implementation instead (standard library only, no dependencies):
+implementation instead (standard library only, no dependencies). It ships inside the wheel,
+so this works from an installation and not only from a clone:
 
 ```bash
-node verify-js/verify.mjs .docket/receipts/DKT-*.receipt.json --ledger .docket/runs/*.jsonl
+docket verify --impl node .docket/receipts/DKT-*.receipt.json
 ```
 
-Both implementations are bound to the same committed conformance vectors in `spec/vectors/`.
-If you are writing a verifier in another language, start at
+Both implementations are bound to the same committed conformance vectors, which also ship
+inside the wheel. If you are writing a verifier in another language, start at
 [`../spec/docket-receipt-1.md`](../spec/docket-receipt-1.md) §8 and use those vectors as your
 test suite.
 

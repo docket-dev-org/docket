@@ -7,6 +7,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 from collections.abc import Sequence
@@ -23,7 +24,7 @@ from .receipt import load_receipt
 from .report import diff_receipts, render_diff, render_findings, render_markdown, render_receipt
 from .resilience import parse_fault_spec
 from .supervisor import Supervisor
-from .util import NonStandardJSONError, http_url, human_bytes, loads_json
+from .util import NonStandardJSONError, http_url, human_bytes, ledger_for_receipt, loads_json
 from .verify import verify_receipt
 
 PROGRAM = "docket"
@@ -397,6 +398,19 @@ def _load_receipt_arg(path: str | None) -> dict[str, Any] | None:
     return None
 
 
+def _latest_receipt_path() -> Path | None:
+    """The receipt `--json` and friends mean when none is named."""
+    if Path(".docket" / "latest.receipt.json").exists():
+        return Path(".docket") / "latest.receipt.json"
+    candidates = sorted(Path(".docket" / "receipts").glob("*.receipt.json")) if Path(".docket").is_dir() else []
+    return candidates[-1] if candidates else None
+
+
+def _newest_ledger() -> Path | None:
+    candidates = sorted((Path(".docket") / "runs").glob("*.jsonl"))
+    return max(candidates, key=lambda p: p.stat().st_mtime) if candidates else None
+
+
 def _docket_dir_for(receipt_path: Path, override: str | None) -> Path:
     """Where a run kept its evidence, inferred from the receipt that points at it.
 
@@ -743,7 +757,87 @@ def _write_restore_record(
     return candidate
 
 
+def _node_verifier() -> Path | None:
+    """Where the independent Node verifier lives: the wheel's copy, else the checkout's.
+
+    `docket verify --impl node` is the command a recipient runs, and a recipient installs the
+    wheel, so the wheel carries the file. A contributor running from `src/` has no `_vendor/`
+    directory — force-include only runs at build time — so the repository's own copy is used
+    when it is there. Both are the same bytes, which is what makes the fallback honest rather
+    than a second implementation that happens to be nearby.
+    """
+    installed = Path(__file__).resolve().parent / "_vendor" / "verify.mjs"
+    if installed.is_file():
+        return installed
+    checkout = Path(__file__).resolve().parents[2] / "verify-js" / "verify.mjs"
+    return checkout if checkout.is_file() else None
+
+
+def _verify_with_node(args: argparse.Namespace) -> int:
+    """Verify with the Node implementation that ships inside the wheel.
+
+    "The format is not this tool" is a claim about what a *different* program can reproduce, so
+    the different program has to be reachable from an installation. The wheel carries
+    `verify-js/verify.mjs` under `docket/_vendor/`; this runs it against the same receipt and
+    the same ledger the Python path would use, and passes its verdict through rather than
+    re-rendering it — a second opinion that has been through a translation is not a second
+    opinion.
+
+    Exit codes are the Node verifier's own (0 verified, 1 not verified, 2 usage/IO), so a
+    pipeline that already gates on `docket verify` needs no change when it switches `--impl`.
+    """
+    receipt = Path(args.receipt)
+    if not receipt.is_file():
+        _out(sys.stderr, f"{PROGRAM}: no such receipt: {receipt}")
+        return 1
+    verifier = _node_verifier()
+    if verifier is None:
+        _out(
+            sys.stderr,
+            f"{PROGRAM}: the Node verifier is not in this installation; "
+            "reinstall, or run `docket verify` with the default `--impl python`",
+        )
+        return 70
+    node = shutil.which("node")
+    if node is None:
+        _out(
+            sys.stderr,
+            f"{PROGRAM}: `node` is not on PATH, and --impl node needs Node.js 20 or newer; "
+            "`docket doctor` reports whether it can see it",
+        )
+        return 70
+    command = [node, str(verifier), str(receipt)]
+    ledger = args.ledger or ledger_for_receipt(receipt)
+    if ledger is not None:
+        command += ["--ledger", str(ledger)]
+    if args.json:
+        command.append("--json")
+    # Capture rather than inherit, and re-emit through the same `_out` the rest of the CLI
+    # uses. Inheriting would make the two implementations print differently — one through the
+    # CLI's stream handling, one straight to the file descriptor — and would make this path
+    # untestable, which is how a second implementation quietly stops being checked at all.
+    completed = subprocess.run(  # noqa: S603 - an argv list, no shell
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if completed.stdout:
+        _out(sys.stdout, completed.stdout.rstrip("\n"))
+    if completed.stderr:
+        _out(sys.stderr, completed.stderr.rstrip("\n"))
+    if completed.returncode == 0:
+        _out(
+            sys.stdout,
+            f"  (verified by the Node implementation, {verifier.name} — not by this program)",
+        )
+    return completed.returncode
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
+    if getattr(args, "impl", "python") == "node":
+        return _verify_with_node(args)
     path = Path(args.receipt)
     if not path.exists():
         _out(sys.stderr, f"{PROGRAM}: no such receipt: {path}")
@@ -756,9 +850,18 @@ def cmd_verify(args: argparse.Namespace) -> int:
         candidate = Path(seal_key)
         if candidate.is_file():
             seal_key = candidate.read_text(encoding="utf-8").strip()
+    # No `--ledger` means look for it next to the receipt rather than check less. A reader
+    # who verifies a receipt they were sent, or one from a `--keep` workspace, has the
+    # ledger beside it; refusing to look is how `docket demo --tamper` ends with a demo
+    # that says NOT VERIFIED and a follow-up command that says VERIFIED.
+    ledger_path = args.ledger
+    discovered: Path | None = None
+    if not ledger_path:
+        discovered = ledger_for_receipt(path)
+        ledger_path = str(discovered) if discovered else None
     result = verify_receipt(
         receipt,
-        ledger_path=args.ledger,
+        ledger_path=ledger_path,
         seal_key=seal_key,
         expect_public_key=args.public_key,
     )
@@ -766,6 +869,11 @@ def cmd_verify(args: argparse.Namespace) -> int:
         _out(sys.stdout, json.dumps(result.to_dict(), indent=2))
     else:
         _out(sys.stdout, result.render(color=_color_enabled(sys.stdout)))
+        if discovered is not None:
+            # Name the file that was used, so the verdict is reproducible by hand: a
+            # reader who copies the printed command out gets the same result, and one
+            # who wants to check a different ledger knows which flag to add.
+            _out(sys.stdout, f"  ledger     {discovered} (found beside the receipt)")
     return 0 if result.ok else 1
 
 
@@ -791,8 +899,10 @@ def cmd_explain(args: argparse.Namespace) -> int:
     if args.ledger:
         ledger_path = Path(args.ledger)
     else:
-        candidates = list((Path(".docket") / "runs").glob("*.jsonl"))
-        ledger_path = max(candidates, key=lambda p: p.stat().st_mtime) if candidates else None
+        # Prefer the ledger the receipt was built from, found beside it; fall back to the
+        # newest one in this directory for a receipt that arrived without its ledger.
+        receipt_path = Path(args.receipt) if args.receipt else _latest_receipt_path()
+        ledger_path = (ledger_for_receipt(receipt_path) if receipt_path is not None else None) or _newest_ledger()
     if ledger_path is None or not ledger_path.exists():
         _out(sys.stderr, f"{PROGRAM}: ledger not found; pass --ledger <file>")
         return 1
@@ -1043,11 +1153,21 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         return 0
 
     table = PriceTable.load()
+    node_verifier = _node_verifier()
     checks = [
         ("python", sys.version.split()[0], sys.version_info >= (3, 11)),
-        ("node (for verify-js)", shutil.which("node") or "not found", bool(shutil.which("node"))),
+        (
+            "node (for verify --impl node)",
+            shutil.which("node") or "not found",
+            bool(shutil.which("node")),
+        ),
         ("docket dir writable", str(Path(args.docket_dir).resolve()), os.access(Path.cwd(), os.W_OK)),
         ("price table", f"{table.as_of} · {len(table.prices)} patterns", True),
+        (
+            "independent Node verifier",
+            str(node_verifier) if node_verifier else "not in this installation",
+            node_verifier is not None,
+        ),
     ]
     try:
         from .signing import ed25519_available
@@ -1213,6 +1333,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     verify = sub.add_parser("verify", help="verify a receipt offline; exit 1 if it does not check out")
     verify.add_argument("receipt")
+    verify.add_argument(
+        "--impl",
+        choices=("python", "node"),
+        default="python",
+        help="which implementation to verify with: this one, or the independent Node one that ships beside it",
+    )
     verify.add_argument("--ledger", help="also check the ledger file it came from")
     verify.add_argument("--seal-key", help="HMAC key file, to check a sealed receipt")
     verify.add_argument("--public-key", help="expected Ed25519 public key (hex) of the signer")
