@@ -8,7 +8,7 @@
 | size | 70,590,635 bytes |
 | digest source | `https://go.dev/dl/?mode=json`, fetched 2026-10-17T12:36Z |
 | extracted to | `/usr/local/go` (outside the repository; nothing in `verify-go/` depends on the path) |
-| modules | none — `go list -m all` prints only `github.com/shivanshjain456/docket/verify-go` |
+| modules | none — `go list -m all` prints only `github.com/docket-dev-org/docket/verify-go` |
 
 The digest is checked before extraction:
 

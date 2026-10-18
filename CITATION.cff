@@ -4,10 +4,10 @@ message: "If you use Docket or its receipt format in academic work or in a produ
 type: software
 authors:
   - name: "The Docket contributors"
-repository-code: "https://github.com/shivanshjain456/docket"
-url: "https://github.com/shivanshjain456/docket"
+repository-code: "https://github.com/docket-dev-org/docket"
+url: "https://github.com/docket-dev-org/docket"
 license: Apache-2.0
-license-url: "https://github.com/shivanshjain456/docket/blob/main/LICENSE"
+license-url: "https://github.com/docket-dev-org/docket/blob/main/LICENSE"
 abstract: >-
   Docket supervises an AI agent process, enforces hard caps on spending, tokens, model calls
   and wall-clock time at the provider boundary, and records model calls, tool calls,
@@ -30,4 +30,4 @@ preferred-citation:
   title: "Docket receipt format, version 1 (docket/receipt/v1)"
   authors:
     - name: "The Docket contributors"
-  url: "https://github.com/shivanshjain456/docket/blob/main/spec/docket-receipt-1.md"
+  url: "https://github.com/docket-dev-org/docket/blob/main/spec/docket-receipt-1.md"

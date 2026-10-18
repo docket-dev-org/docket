@@ -390,7 +390,7 @@ numbers, the host they came from and the limits of the method are in
 ## Recipe: CI
 
 ```yaml
-- run: pip install docket   # after the 0.1.0 release; before it: pip install git+https://github.com/shivanshjain456/docket.git
+- run: pip install docket   # after the 0.1.0 release; before it: pip install git+https://github.com/docket-dev-org/docket.git
 - run: docket run -p .docket/ci.toml --label "${{ github.run_id }}" -- python agent.py
   continue-on-error: true      # let the report step run even when the cap fires (exit 42)
 - run: docket verify .docket/latest.receipt.json --json > verification.json

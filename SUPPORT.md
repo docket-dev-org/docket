@@ -20,9 +20,9 @@ Most reports are answered by one of these, and each one prints what it observed 
 
 | what you have | where it goes | notes |
 | --- | --- | --- |
-| something that should work and does not | [bug report](https://github.com/shivanshjain456/docket/issues/new?template=bug.yml) | the fastest path; the template asks for the four things below |
-| a feature request, or an objection to a design decision | [feature request](https://github.com/shivanshjain456/docket/issues/new?template=feature.yml) | "this estimate is wrong" reports are welcome here too |
-| a question, or a "how would I…" | [Discussions](https://github.com/shivanshjain456/docket/discussions), or [an issue](https://github.com/shivanshjain456/docket/issues/new) if that tab is not there yet | `CONTRIBUTING.md` and `docs/faq.md` both route questions here, and a question asked as an issue is answered, not closed |
+| something that should work and does not | [bug report](https://github.com/docket-dev-org/docket/issues/new?template=bug.yml) | the fastest path; the template asks for the four things below |
+| a feature request, or an objection to a design decision | [feature request](https://github.com/docket-dev-org/docket/issues/new?template=feature.yml) | "this estimate is wrong" reports are welcome here too |
+| a question, or a "how would I…" | [Discussions](https://github.com/docket-dev-org/docket/discussions), or [an issue](https://github.com/docket-dev-org/docket/issues/new) if that tab is not there yet | `CONTRIBUTING.md` and `docs/faq.md` both route questions here, and a question asked as an issue is answered, not closed |
 | a security problem | [SECURITY.md](SECURITY.md), privately | **not** an issue — please do not open one for a vulnerability |
 | supporting the project, procurement, invoices | [SPONSORS.md](SPONSORS.md) | what support pays for and what it does not buy |
 

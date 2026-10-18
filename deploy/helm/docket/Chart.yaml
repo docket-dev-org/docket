@@ -4,9 +4,9 @@ description: Run an agent under Docket — hard caps, a hash-chained ledger, and
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
-home: https://github.com/shivanshjain456/docket
+home: https://github.com/docket-dev-org/docket
 sources:
-  - https://github.com/shivanshjain456/docket
+  - https://github.com/docket-dev-org/docket
 keywords:
   - ai-agents
   - cost-control

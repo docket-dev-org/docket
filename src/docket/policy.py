@@ -506,7 +506,7 @@ class Policy:
         """Render the policy as a commented TOML document (used by ``docket init``)."""
         lines = [
             f"# Docket policy — {self.name}",
-            "# https://github.com/shivanshjain456/docket/blob/main/docs/policy-reference.md",
+            "# https://github.com/docket-dev-org/docket/blob/main/docs/policy-reference.md",
             "",
             "[policy]",
             f'name = "{self.name}"',

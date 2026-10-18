@@ -162,6 +162,6 @@ file — is what the receipt embeds, so overrides are visible to anyone verifyin
   ambiguity is a cap, not a chat.
 - Per-tool or per-path budgets ("$2 for file reads, $5 for the shell"). Everything is
   session-scoped today. If you need this, open a discussion with the workflow you have in
-  mind — [#2](https://github.com/shivanshjain456/docket/issues) style, with receipts.
+  mind — [#2](https://github.com/docket-dev-org/docket/issues) style, with receipts.
 - Anything about *semantics*: Docket does not decide whether a call is a good idea, only
   whether it is permitted and what it cost.

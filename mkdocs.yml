@@ -16,9 +16,9 @@
 
 site_name: Docket
 site_description: Every AI agent run gets a docket number — a hard spending cap and a tamper-evident receipt anyone can verify offline.
-site_url: https://shivanshjain456.github.io/docket/
-repo_url: https://github.com/shivanshjain456/docket
-repo_name: shivanshjain456/docket
+site_url: https://docket-dev-org.github.io/docket/
+repo_url: https://github.com/docket-dev-org/docket
+repo_name: docket-dev-org/docket
 edit_uri: edit/main/docs/
 copyright: Apache-2.0 for code · CC BY 4.0 for the specification
 

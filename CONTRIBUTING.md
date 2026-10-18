@@ -16,7 +16,7 @@ clearer, more correct or more portable are the ones that matter most.
 ## Getting started
 
 ```bash
-git clone https://github.com/shivanshjain456/docket
+git clone https://github.com/docket-dev-org/docket
 cd docket
 python3 -m venv .venv && . .venv/bin/activate      # or any 3.11+ interpreter
 pip install -e '.[dev,sign]'   # dev: pytest, ruff (pinned), mkdocs, pyyaml — sign: cryptography
@@ -99,7 +99,7 @@ assignment: your contribution stays yours, licensed under Apache-2.0 like the re
 
 Contributors are listed in `CONTRIBUTORS.md` (generated at release time) and in release notes.
 If your contribution is used in a downstream product, say so in
-[Discussions](https://github.com/shivanshjain456/docket/discussions) — the "who uses this" list is
+[Discussions](https://github.com/docket-dev-org/docket/discussions) — the "who uses this" list is
 the most useful thing a young project can have.
 
 ## Review expectations

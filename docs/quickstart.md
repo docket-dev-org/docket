@@ -9,7 +9,7 @@ Until the 0.1.0 release lands on PyPI, install from the repository — a clone, 
 attached to the release:
 
 ```bash
-git clone https://github.com/shivanshjain456/docket && cd docket
+git clone https://github.com/docket-dev-org/docket && cd docket
 python3 -m pip install .          # or: pipx install .  (keeps it out of a project venv)
 docket --version
 ```

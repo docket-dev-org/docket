@@ -91,5 +91,5 @@ That is a security advisory, and it is exactly the class of report this project 
 not open a public issue first.
 
 **Where do I ask a question that is not here?**
-[Discussions](https://github.com/shivanshjain456/docket/discussions). If your question turns out to
+[Discussions](https://github.com/docket-dev-org/docket/discussions). If your question turns out to
 be a common one, it gets added to this file — that is the only reason it exists.
