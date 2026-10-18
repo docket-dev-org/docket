@@ -57,6 +57,20 @@ construction or the receipt layout must:
 A change that leaves the vectors untouched but alters a shared function is a bug, not a
 feature — CI runs both implementations against the vectors on every pull request.
 
+## What CI runs, and what it blocks
+
+`.github/workflows/ci.yml` runs nine jobs on every push to `main` and every pull request:
+`lint (ruff)`, `tests (python 3.11)`, `tests (python 3.12)`, `tests (python 3.13)`,
+`package (clean install, then run it)`, `conformance (independent verifier, node)`,
+`verify-go (a third implementation, written from the spec alone)`,
+`deploy artefacts (static: no container runtime is used, and none is pretended)`, and
+`docs (mkdocs build --strict: no broken links, no stranded pages)`.
+
+`main` requires all nine, and requires the branch to be up to date before it merges. A red job
+blocks the merge rather than decorating it. The `docs site` and `Security` workflows run on
+their own triggers and are not part of that set, because a path-scoped or scheduled workflow
+that does not run on a given push cannot honestly be required on it.
+
 ## Tests
 
 - Offline, deterministic, no API keys, no sleeps longer than necessary. Timing-sensitive
