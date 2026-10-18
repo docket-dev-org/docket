@@ -427,10 +427,25 @@ def test_a_killed_supervisor_leaves_evidence_and_no_lie(tmp_path):
 
     # Now kill the agent out from under the supervisor, hard, and let the supervisor notice.
     # The child is found by its inherited DOCKET_SESSION, so nothing else on the box can be hit.
-    for pid in _pids_for_session(supervisor.session_id):
+    #
+    # Wait for the child to be *findable* before killing it. A byte in the ledger proves the
+    # supervisor started recording; it does not prove `/proc/<pid>/environ` is readable yet, and
+    # on a loaded runner those are not the same instant. An empty result used to mean "kill
+    # nothing", the child slept out its 30 seconds, and the join below timed out on a run where
+    # the product behaved correctly. The assertion turns that race into a named failure instead
+    # of a timeout, and the kill is then aimed at something that is really there.
+    targets: list[int] = []
+    discover_deadline = time.monotonic() + 15
+    while time.monotonic() < discover_deadline:
+        targets = _pids_for_session(supervisor.session_id)
+        if targets:
+            break
+        time.sleep(0.05)
+    assert targets, "the supervised child was never discoverable by its session id"
+    for pid in targets:
         with contextlib.suppress(ProcessLookupError, PermissionError):
             os.kill(pid, 9)
-    thread.join(timeout=20)
+    thread.join(timeout=30)
     assert not thread.is_alive(), "the supervisor must finish after its child is killed"
     assert [event.seq for event in events_before_kill] == list(range(len(events_before_kill)))
     events, diagnostics = Ledger.read_with_diagnostics(ledgers[0])
