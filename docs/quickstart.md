@@ -5,8 +5,7 @@ provider is scripted and local, so this works on a plane.
 
 ## 1. Install
 
-Until the 0.1.0 release lands on PyPI, install from the repository — a clone, or the wheel
-attached to the release:
+Install from a clone, or from the wheel attached to the release:
 
 ```bash
 git clone https://github.com/docket-dev-org/docket && cd docket
@@ -20,8 +19,15 @@ No install at all also works, from inside the clone:
 PYTHONPATH=src python3 -m docket demo
 ```
 
-`pip install docket` starts working once 0.1.0 is published. Nothing above needs an account,
-an API key, or the network after the clone — the demo provider is scripted and local.
+To install without cloning, use the wheel attached to the release:
+
+```bash
+python3 -m pip install \
+  https://github.com/docket-dev-org/docket/releases/download/v0.1.0/docket-0.1.0-py3-none-any.whl
+```
+
+Nothing above needs an account, an API key, or the network after the download; the demo
+provider is scripted and local.
 
 ## 2. Watch a runaway agent get stopped (20 seconds)
 

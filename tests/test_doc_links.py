@@ -1194,13 +1194,20 @@ def test_the_scan_skips_exactly_the_directories_the_site_stager_skips():
     )
 
 
-def test_no_document_tells_a_reader_to_install_a_package_that_is_not_published():
-    """`pip install docket` is a command that fails until 0.1.0 ships.
+def test_no_document_instructs_a_reader_to_install_an_unpublished_package():
+    """No document may tell a reader to run `pip install docket`, because that command fails.
 
-    Four documents told a reader to run it as the first step — quickstart, the CLI recipe, the
-    integrations page, and the CI example — for a package that PyPI answers 404 for. A first
-    command that fails is the most expensive kind of documentation defect: the reader never
-    reaches the part that would have convinced them.
+    The package is not on PyPI: `https://pypi.org/pypi/docket/json` answers 404. The first
+    command in a guide is the one a reader runs before they have any reason to trust the
+    project, so an instruction that fails there is the most expensive kind of documentation
+    defect. This guard used to allow the instruction provided it carried a "not yet" marker,
+    which institutionalised the gap instead of closing it: four documents each carried their
+    own apology, and a reader met four different explanations of the same problem.
+
+    It now asserts the stronger thing. An install instruction must name a path that resolves,
+    which today means the wheel attached to the release, a clone, or a `git+https` URL. When
+    the package is published, relax this by removing `pip install docket` from the
+    instruction set rather than by adding the marker back.
 
     Only an *instruction* is checked, not a mention: prose that says funding pays for the
     machinery which makes `pip install docket` trustworthy is a statement of intent, and a
@@ -1208,14 +1215,7 @@ def test_no_document_tells_a_reader_to_install_a_package_that_is_not_published()
     YAML comment lives, so both are considered.
     """
     root = Path(__file__).resolve().parents[1]
-    markers = (
-        "after the 0.1.0 release",
-        "once 0.1.0 is published",
-        "starts working",
-        "Until 0.1.0",
-        "Before the 0.1.0",
-        "Until the 0.1.0 release",
-    )
+    instructions = ("- run:", "pip install docket", "pipx run docket", "pipx install docket")
     offenders = []
     for page in sorted(root.rglob("*.md")):
         relative = page.relative_to(root).as_posix()
@@ -1224,13 +1224,12 @@ def test_no_document_tells_a_reader_to_install_a_package_that_is_not_published()
         lines = page.read_text(encoding="utf-8").splitlines()
         for index, line in enumerate(lines):
             stripped = line.strip()
-            if not stripped.startswith(("- run:", "pip install docket", "pipx run docket")):
+            if not stripped.startswith(instructions):
                 continue
-            if "pip install docket" not in stripped and "pipx run docket" not in stripped:
+            if "docket" not in stripped:
                 continue
-            context = "\n".join(lines[max(0, index - 2) : index + 1])
-            if not any(marker in context for marker in markers):
+            if "pip install docket" in stripped or "pipx run docket" in stripped:
                 offenders.append(f"{relative}:{index + 1}: {stripped}")
-    assert not offenders, "a document tells a reader to install an unpublished package without saying so: " + "; ".join(
+    assert not offenders, "a document instructs a reader to install a package PyPI answers 404 for: " + "; ".join(
         offenders
     )
