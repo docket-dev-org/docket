@@ -18,7 +18,7 @@ process binds this maintainer exactly as it binds everyone else.
 ## What maintainers do here
 
 - triage issues and pull requests (target: first response within a week; 72 hours for the
-  *Legible* sponsorship tier and above, as promised in [`SPONSORS.md`](SPONSORS.md));
+  recorded in this file and in the release notes);
 - cut releases: tag, CI build, signed `SHA256SUMS`, release notes from `CHANGELOG.md`;
 - own the security response window described in [`SECURITY.md`](SECURITY.md);
 - keep the specification and the vectors in step with the implementations — the one

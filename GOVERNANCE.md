@@ -11,11 +11,11 @@ project is governed, because the format is worth more than the implementation.
    feature velocity.
 2. **No telemetry, no accounts, no network requirement — ever.** This is a constitutional
    constraint, not a roadmap item.
-3. **Sponsors buy deliverables, not decisions.** Money can pay for a benchmark, a verifier, a
+3. **Money buys deliverables, not decisions.** Funding can pay for a benchmark, a verifier, a
    release window or a support commitment. It cannot buy a format change, a roadmap veto, a
-   "sponsored by" position on a verification result, or silence about a defect. Any sponsored
-   deliverable is public, and a sponsor that asks for anything on this list is told no in
-   public issue rather than email.
+   "funded by" position on a verification result, or silence about a defect. Any funded
+   deliverable is public, and a funder who asks for anything on this list is told no in a
+   public issue rather than in email.
 4. **Claims stay narrow and checkable.** Every security-adjacent claim in the docs must name
    its limits in the same breath. "Honest limits" is a feature of this project, not fine
    print.
@@ -61,17 +61,15 @@ the title and can return.
   and changes only per the format process.
 - Releases are cut from `main` by a maintainer, tagged, built in CI, and accompanied by a
   `CHANGELOG.md` entry and a signed `SHA256SUMS`.
-- The support commitment for any given version is stated at release time. Sponsorship is what
-  allows that commitment to be longer than "until the next maintainer gets busy" —
-  see [`SPONSORS.md`](SPONSORS.md).
+- The support commitment for any given version is stated at release time.
 
 ## Funding and independence
 
-Sponsorship is accepted through GitHub Sponsors (and, if it ever exists, a fiscal host) under
-the rules in principle 3. Funds are spent on the deliverables listed publicly in
-[`SPONSORS.md`](SPONSORS.md); when the project has more than one maintainer, incoming funds
-are split by a published formula rather than by negotiation in private. Until that point the
-maintainer's commitment is stated plainly: sponsorship pays for maintenance time, verifiers,
+Funding is accepted through GitHub Sponsors (and, if it ever exists, a fiscal host) under the
+rules in principle 3, and is spent only on the deliverables listed publicly in
+[`SPONSORS.md`](SPONSORS.md). When the project has more than one maintainer, incoming funds are
+split by a published formula rather than by negotiation in private. Until that point the
+maintainer's commitment is stated plainly: funding pays for maintenance time, verifiers,
 documentation and release engineering — it does not change what the software does or how it
 verifies.
 

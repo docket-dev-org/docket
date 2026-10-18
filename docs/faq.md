@@ -50,7 +50,7 @@ The tool is a supervisor, an HTTP proxy and a file watcher — the standard libr
 three, and a `pipx`-installable tool with zero dependencies is the shortest path to adoption on
 machines where agents already run. The *format* is language-neutral and the verifier exists in
 two languages already; verifiers in Go, Rust and TypeScript are the first funded roadmap items
-(`ROADMAP.md`, `SPONSORS.md`) because verification is the part that should not depend on Python.
+(`ROADMAP.md`) because verification is the part that should not depend on Python.
 
 **What if the agent writes to the ledger?**
 It can. Then verification fails at the first modified event — that is the design. Keep
@@ -79,10 +79,11 @@ retroactive mode, and inventing one would create exactly the unverifiable claims
 exists to avoid.
 
 **What is the business model? Why is it free?**
-The cap and the format are free and Apache-2.0 forever. Sponsorship funds the standard-shaped
-work — independent verifiers, format stewardship, an LTS window, docs, and the public incident
-corpus — with the independence rules written into [`GOVERNANCE.md`](../GOVERNANCE.md). There is
-no hosted product on the roadmap, and there will not be one.
+The cap and the format are free and Apache-2.0 forever. Support funds the standard-shaped work —
+independent verifiers, format stewardship, a support window, docs, and the public incident corpus —
+with the independence rules written into [`GOVERNANCE.md`](../GOVERNANCE.md). There is no hosted
+product on the roadmap, and there will not be one. [`SPONSORS.md`](../SPONSORS.md) says what that
+support pays for and what it does not buy.
 
 **I found a way to make a receipt verify when it should not.**
 That is a security advisory, and it is exactly the class of report this project most wants.

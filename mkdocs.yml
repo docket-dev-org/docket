@@ -104,9 +104,7 @@ nav:
       - Contributing: CONTRIBUTING.md
       - Security policy: SECURITY.md
       - Support: SUPPORT.md
-      - Sponsorship: SPONSORS.md
-      - Adoption model: docs/strategy.md
-      - Sponsorship detail: docs/sponsorship.md
+      - Supporting Docket: SPONSORS.md
       - Decisions (ADRs):
           - 0001 Record format decisions as ADRs: docs/adr/0001-record-format-decisions-as-adrs.md
           - 0002 No floating point in hashed structures: docs/adr/0002-no-floating-point-in-hashed-structures.md

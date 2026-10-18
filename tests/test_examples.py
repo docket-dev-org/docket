@@ -1,6 +1,6 @@
 """The five examples, executed — because "runnable" is a claim about the tool, not about the prose.
 
-`examples/` is advertised in `README.md`, in `docs/testing.md` and in the growth plan as five runnable
+`examples/` is advertised in `README.md` and in `docs/testing.md` as five runnable
 examples, each with its own README, and until this file existed **nothing ran them**: a renamed flag,
 a moved module or a policy key the loader stopped accepting would have left five documents that lie
 and a suite that stayed green. Each test below drives an example's own artefact:

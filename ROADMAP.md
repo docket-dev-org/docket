@@ -1,8 +1,6 @@
 # Roadmap
 
-Themes, not promises: dates are targets and slip when reality intervenes. Anything marked
-💰 is a sponsored deliverable (see [`SPONSORS.md`](SPONSORS.md)); the list is public so that
-funding has consequences that can be checked.
+Themes, not promises: dates are targets and slip when reality intervenes.
 
 ## 0.1 — the bounded run (shipped 2026-10-13)
 

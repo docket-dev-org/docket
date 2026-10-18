@@ -16,7 +16,7 @@ merged pull request will be listed here in the commit that merges it, along with
 changed, because a contribution list that starts empty and fills honestly is more useful than
 one that starts with a placeholder.
 
-## Sponsors
+## Supporters
 
-Individual and organisational sponsors are listed in [`SPONSORS.md`](SPONSORS.md) — including a
-one-time "filing fee" tier whose entire benefit is that your name appears there.
+Anyone who supports the project is listed here. [SPONSORS.md](SPONSORS.md) says what support pays
+for and what it does not buy.

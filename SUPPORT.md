@@ -24,7 +24,7 @@ Most reports are answered by one of these, and each one prints what it observed 
 | a feature request, or an objection to a design decision | [feature request](https://github.com/docket-dev/docket/issues/new?template=feature.yml) | "this estimate is wrong" reports are welcome here too |
 | a question, or a "how would I…" | [Discussions](https://github.com/docket-dev/docket/discussions), or [an issue](https://github.com/docket-dev/docket/issues/new) if that tab is not there yet | `CONTRIBUTING.md` and `docs/faq.md` both route questions here, and a question asked as an issue is answered, not closed |
 | a security problem | [SECURITY.md](SECURITY.md), privately | **not** an issue — please do not open one for a vulnerability |
-| sponsorship, procurement, invoices | [SPONSORS.md](SPONSORS.md) and [docs/sponsorship.md](docs/sponsorship.md) | what funding does and does not buy, in writing |
+| supporting the project, procurement, invoices | [SPONSORS.md](SPONSORS.md) | what support pays for and what it does not buy |
 
 ## What to include in a bug report
 
@@ -58,6 +58,7 @@ A report that carries those four is usually diagnosable without a round trip. A 
 
 There is no SLA, no paid support tier, and no on-call rota. Issues are read by the maintainers when
 they can be, and the ones that come with a reproduction go first because they are the ones that can be
-answered. **A sponsorship does not buy support** unless a separate written agreement says so —
-[SPONSORS.md](SPONSORS.md) states that in the same words, and it is the reason this page exists: a
+answered. **A sponsorship does not buy support** unless a separate written agreement says so, and
+[SPONSORS.md](SPONSORS.md) states it in the same words. This page exists because that sentence has to
+be findable by the person about to be disappointed: a
 funding page that quietly implies support hours would be selling something the project does not have.

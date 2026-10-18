@@ -97,4 +97,4 @@ Ordinary bugs (wrong output, a crash, an unhelpful message) are normal issues, n
 
 Until 1.0, the latest minor release receives security fixes. After 1.0, the latest two minors
 and the previous major, for a stated window announced at release (the long-term-support policy
-is one of the funded deliverables in [`SPONSORS.md`](SPONSORS.md)).
+and is maintained rather than assembled once).

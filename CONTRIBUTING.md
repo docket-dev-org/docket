@@ -20,7 +20,7 @@ git clone https://github.com/docket-dev/docket
 cd docket
 python3 -m venv .venv && . .venv/bin/activate      # or any 3.11+ interpreter
 pip install -e '.[dev,sign]'   # dev: pytest, ruff (pinned), mkdocs, pyyaml — sign: cryptography
-make test          # 1207 tests, fully offline, ~2-4 min on 2 vCPU
+make test          # 1196 tests, fully offline, ~2-4 min on 2 vCPU
 make demo          # the runaway-agent demo
 make verify-js     # independent Node verifier against the committed vectors
 ```
@@ -106,8 +106,7 @@ the most useful thing a young project can have.
 
 Maintainers aim to triage within a week and to give a real answer rather than silence. If a
 pull request is going in a direction the project will not take, you will get an explanation
-with the reasoning, not a closed tab. That promise is also a sponsorable deliverable — see
-[`SPONSORS.md`](SPONSORS.md).
+with the reasoning, not a closed tab.
 
 ## Security
 

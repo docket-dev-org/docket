@@ -50,18 +50,7 @@ summary of it.
 | At least one agent-governance project already advertises a cryptographic audit trail (Justin0504/Aegis) | GitHub search result and repository description | **A** for the claim's existence; **no evaluation** of its implementation was performed. This is why the README does not claim to be "the first" such tool |
 | Several session-level observability tools exist for coding agents (e.g. a Claude Code usage monitor at ~8.7k stars) | GitHub Search API, 2026-10-13 | **A** |
 
-## 3. Claims about growth and sponsorship (used to size the plan, not the product)
-
-| Claim as used | Source | Grade |
-| --- | --- | --- |
-| A Hacker News launch moves stars on average by +121 (24 h), +189 (48 h), +289 (7 d) — medians far lower, and 12:00–17:00 UTC performs best | arXiv:2511.04453, *Launch-Day Diffusion*, 2025 | **B** — single-platform study, mean-driven, excludes non-HN pathways |
-| Viral growth is rare (~1.6–2.3 % of projects); ~73 % of viral projects credit deliberate social promotion; most developers consult stars when evaluating a project | Borges & Valente, arXiv:1811.07643 (peer-reviewed) | **B** — strong method, older (2018-era) data |
-| Top-decile HN posts associate with roughly 2× the three-day star gain | arXiv:1908.04219 | **C** — association, small sample, confounded |
-| HN exposure raises stars/forks/contributors afterwards | arXiv:2506.12643 | **C** — matched subset, no control group (author-acknowledged) |
-| GitHub Sponsors mechanics: up to 10 recurring and 10 one-time tiers; `.github/FUNDING.yml`; tier benefits should be specific and testable | GitHub Sponsors documentation (first-party) | **A** |
-| Individual sponsors average single-digit dollars/month; organisations roughly 15× that and around 40 % of funding dollars; CLI maintainers report $800–4,000/month; corporate retainers $1,000–10,000/month; organisational interest typically emerges after ~1k stars and visible dependents | Practitioner guides and maintainer surveys, 2026 (several are SEO-grade) | **E** — directional only. The sponsorship figures in [sponsorship.md](sponsorship.md) are therefore presented as configurations of assumptions, with the organisation:individual mix called out as the weakest input |
-
-## 4. Design decisions and why they are in the repository
+## 3. Design decisions and why they are in the repository
 
 | Decision | Why | Where it is testable |
 | --- | --- | --- |
@@ -73,7 +62,7 @@ summary of it.
 | `budget_mode = "quota"` for subscription plans | much 2026 coding-agent usage is not metered per token, so inventing a dollar figure would be a lie dressed as a number | `docs/policy-reference.md` |
 | Every receipt carries `limits_disclosure`, and verification fails without it | the honest-limits block is the part of this project that survives adversarial review | `tests/test_receipt_verify.py` |
 
-## 5. Claims deliberately not made
+## 4. Claims deliberately not made
 
 | Tempting claim | Why it is not made |
 | --- | --- |
@@ -82,15 +71,12 @@ summary of it.
 | "Prevents agents from writing files" | `deny_write` is a tripwire and an evidence source; prevention needs a sandbox, and [threat-model.md](threat-model.md) says so |
 | "Prevents runaway spend absolutely" | It prevents the model calls that cross the boundary it controls, and kills the process group. An agent holding a direct provider credential and a URL that bypasses the boundary is outside its reach — which is exactly what `limits_disclosure` states on every receipt |
 | "Compliance with the EU AI Act" | No certification exists for this, and the relevant obligations moved to December 2027 (Reg. (EU) 2026/1744). Nothing here pitches regulatory urgency |
-| "X % of teams will pay for this" | No such measurement was made. Sponsorship numbers are assumption configurations, labelled as such |
-| "N thousand stars within a year" as a prediction | The public growth plan states the target as an ambition, shows the required rate against verified comparables, and marks it as a tail outcome rather than a forecast |
 
-## 6. Reproducing this
+## 5. Reproducing this
 
-- GitHub figures: `research/gh_sweep.py` in the originating workspace re-queries the comparable
-  set (unauthenticated REST, throttled ~7 s/call) and writes `research/gh_sweep.json` (46
-  repositories: stars, forks, age, stars/month, language, last push). Threshold counts were
-  re-queried on 2026-10-13.
+- Star and fork counts for the comparable projects named in §2 came from the GitHub REST API,
+  unauthenticated, on 2026-10-13. They are a snapshot: re-query before quoting them, because a
+  figure that was true on the day it was fetched is not a figure that stays true.
 - Anything graded **C–E** should be re-checked before it appears in a public claim. No
   load-bearing claim in the README depends on a grade below **B**, and the one that carries the
   most weight (Mandiant) is graded **B** with its source page verified by fetch.

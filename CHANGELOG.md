@@ -112,14 +112,13 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   vector names). `make conformance` runs both shipped verifiers and the capability comparison; it is
   part of `make check`. Both implementations now report **58 correct, 0 wrong, 0 not-judged** over
   2 positive and 27 negative vectors.
-- **The star-count sweep ships with the repository, and a test keeps the page that quotes it honest.**
-  `docs/strategy.md` argues from GitHub star counts — how many repositories hold more than 100,000
-  stars, and how fast ten comparable projects reached theirs. An audit of this project's own claims on
-  2026-10-17 found two of those figures traceable to nothing: one had been read against `dify/dify`,
-  a slug that answers 404 (the project is `langgenius/dify`), and one had come from a search listing
-  nobody saved. Both are re-swept by canonical slug, and the raw response of the query now ships at
-  `docs/measurements/2026-10-16-github-sweep/gh_sweep-2026-10-16T1959Z.json` — one row per project,
-  each carrying the slug asked for, the API path called and the URL that answers it, plus three
+- **A star-count comparison that was quoting two figures traceable to nothing, and no longer does.**
+  An audit of this project's own claims on 2026-10-17 found two landscape numbers with no source: one
+  had been read against `dify/dify`, a slug that answers 404 (the project is `langgenius/dify`), and
+  one had come from a search listing nobody saved. Both were re-swept by canonical slug against the
+  GitHub REST API, unauthenticated, and the query that produced them is recorded with its timestamp so
+  the snapshot can be re-taken. What was learned and kept: every figure quoted onward carries the slug
+  asked for, the API path called and the URL that answers it, plus three
   `total_count` search rows. `tests/test_strategy_numbers.py` reads the page and the sweep together
   and refuses a page whose star counts, ages, rates, thresholds or inline figures stopped matching
   the evidence beside it; it cannot re-ask GitHub (that is the sweep's job, and re-running it means
@@ -221,7 +220,7 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 - **The five examples are executed by the suite instead of being described by it**
   (`tests/test_examples.py`, 9 tests). `examples/` was advertised in the README, in these docs and in
-  the growth plan as five runnable examples, and nothing ran them: a renamed flag, a moved module or
+  the adoption plan as five runnable examples, and nothing ran them: a renamed flag, a moved module or
   a policy key the loader stopped accepting would have left five documents that lie and a suite that
   stayed green. The quickstart and the SDK example now run as programs — offline, in a temporary
   directory — and the receipt each one prints is fed to the verification command each one prints; the
@@ -621,6 +620,29 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   comes from the small vocabulary the page defines, and that the size the companion maps quote is the
   size the page has. It caught one row on its first run: a book, named with neither a link nor a year.
 
+### Removed
+
+- **The adoption-and-sponsorship model, its detail page, and the star-count sweep that fed them.**
+  The adoption model argued from GitHub star counts — how many repositories hold more than 100,000
+  stars, how fast ten comparable projects reached theirs, and what that implied about this project's
+  own twelve-month target — and its companion page costed seven deliverables against a funding goal.
+  Both were written for a reader deciding whether to bet money on the project, which is a real reader
+  and not the one the repository is for. Presenting the tool primarily through its growth targets is a
+  claim about attention, not about software, and the two documents spent more words on the star
+  arithmetic than on what the boundary does. The raw sweep JSON went with them, because nothing else
+  in the tree quoted it.
+
+  What is kept, and why: the landscape figures in [`docs/evidence.md`](docs/evidence.md) §2 — stars
+  and forks for comparable projects, fetched 2026-10-13 and labelled as a snapshot — because they
+  size the field a reader is choosing in. The governance principle that funding cannot buy a format
+  change, a roadmap veto or silence about a defect, because that is a safeguard rather than a pitch.
+  And one sentence in the README, in the licence section, pointing at
+  [`SPONSORS.md`](SPONSORS.md), which is now a short page stating what support pays for, what it does
+  not buy, and that a sponsorship does not buy support.
+
+  `tests/test_strategy_numbers.py` went too: it existed to reconcile the deleted page's figures
+  against the deleted sweep, and a test guarding a removed claim is decoration.
+
 ### Fixed
 
 - **The tamper demo is now reproducible.** `docket demo --tamper` doctored the ledger and
@@ -635,11 +657,11 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   hashes change each time, and exit code `43` is stated as what it is: the policy could not be
   loaded.
 
-- **`docs/strategy.md` re-based onto the sweep it names.** Every figure in its comparison table, its
-  three ecosystem-threshold rows and its inline audience sentences is now the value in that file, with
-  ages as months since creation and each rate as the stars over that age. The undated first sweep,
-  `research/gh_sweep.json`, is kept as it was written: it fed the adjacent-audience rows the research
-  log quotes, and an observation archive is not re-based.
+- **The growth model re-based onto the sweep it names.** Every figure in its comparison table, its
+  three ecosystem-threshold rows and its inline audience sentences became the value in that sweep, with
+  ages as months since creation and each rate as the stars over that age. The undated first sweep was
+  kept as it was written: it fed the adjacent-audience rows the research log quotes, and an observation
+  archive is not re-based.
 - **The accessibility checker read a form control's own content as its name, and a wrapping `<label>`'s
   whole text as a label.** The checker was swept by the mutation harness (136 candidates, 134 killed,
   98.5% — the score and both survivors are in `docs/testing.md`), and reading the survivors found three
@@ -673,7 +695,7 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   than measured.** Three of the last four dependency-matrix rounds were quoted in this page with a
   number worked out by hand from the previous round's, and all three were wrong — by one, by two, by
   two — which is the same failure the matrix section already records for `paste | bc`, one level up.
-  The sections now say so, and the growth plan's two moving numbers are written by
+  The sections now say so, and the plan's two moving numbers are written by
   `mutation/rebase_plan_numbers.py` (workspace, not shipped), which reads them from the measurement,
   refuses a missing label instead of reading it as zero, and re-reads the file before reporting.
 
@@ -683,8 +705,8 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   page now says so, in the same correction round as the fabricated rank above.
 
 - **A fabricated citation rank in four documents, including the README.** "OWASP's *Top 10 for Agentic
-  Applications* puts denial of wallet at risk #2" appeared in `README.md`, `docs/evidence.md`,
-  `docs/incident-corpus.md` and `docs/strategy.md`, and the phrase it stood for — that the agentic list
+  Applications* puts denial of wallet at risk #2" appeared in `README.md`, `docs/evidence.md` and
+  `docs/incident-corpus.md`, and the phrase it stood for — that the agentic list
   "treats resource/cost abuse as its own class" — is not true either: its classes are ASI01–ASI10, and
   cost exhaustion is a class in the **LLM** list (LLM10:2025 *Unbounded Consumption*), which all four
   documents already cite correctly two lines away. The evidence ledger had even hedged that the rank

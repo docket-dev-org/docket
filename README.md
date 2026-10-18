@@ -329,8 +329,8 @@ cd docket
 PYTHONPATH=src python3 -m pytest tests -ra
 ```
 
-That is 1207 tests in about three minutes, fully offline: no API keys, no network, no provider account.
-The whole gate is `make check` (1207 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
+That is 1196 tests in about three minutes, fully offline: no API keys, no network, no provider account.
+The whole gate is `make check` (1196 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
 
 Two rules matter more than style:
 
@@ -343,6 +343,6 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and the review bar, [SU
 
 Docket is licensed under the **Apache License 2.0** (SPDX: `Apache-2.0`); the full text is in [LICENSE](LICENSE). The specification text in `spec/` is licensed **CC BY 4.0** so that other implementations can copy it freely.
 
-Docket is funded directly rather than through a hosted tier; [SPONSORS.md](SPONSORS.md) states what funding pays for and what it does not buy.
+Docket is free and Apache-2.0, with no hosted tier; [SPONSORS.md](SPONSORS.md) says what support pays for and what it does not buy.
 
 Receipts, ledgers, reports, snapshots, and restores that Docket writes are **yours**. The license covers Docket's source code; it makes no claim on the data you record with it, and the format is published so that a record outlives this tool.

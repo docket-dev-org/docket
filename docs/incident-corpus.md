@@ -3,7 +3,7 @@
 Docket's whole reason to exist is a failure mode with a name: **unbounded consumption** — OWASP's
 LLM10, and known in practice as **denial of wallet**. This page
 is the maintained, sourced record of it. It is also a funded deliverable
-([`SPONSORS.md`](../SPONSORS.md), item 4) because a standard needs an evidence base, not a
+because a standard needs an evidence base, not a
 vibe.
 
 **How to read the confidence column**
