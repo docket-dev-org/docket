@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Run any receipt verifier over the conformance corpus, and say exactly where it disagrees.
 
-The corpus in `spec/vectors/` is the format's contract: seven positive vectors that a conforming
-implementation must accept, and `spec/vectors/invalid/` — twenty-six documents that it must refuse,
-each with a machine-readable expectation naming the check that has to catch it.
+The corpus in `spec/vectors/` is the format's contract: two positive vectors that a conforming
+implementation must accept, and `spec/vectors/invalid/` — forty-two documents, of which thirty-eight
+it must refuse and four it must accept, each with a machine-readable expectation naming the check
+that has to catch it.
 
 This tool exists so that a third party can point it at *their* verifier:
 
