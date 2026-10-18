@@ -10,7 +10,7 @@ A local budget-and-evidence layer for AI agents: it caps what a run can spend, r
 Docket wraps the agent you already run. It needs no account, no server, no telemetry, and no API keys of its own.
 
 > [!NOTE]
-> Docket 0.1.0 is on PyPI and installs with `pip install docket`. The `docket/receipt/v1` format is versioned and frozen: the specification in `spec/` and its 44 committed conformance vectors define it, and three implementations that share no code are held to that contract, so a receipt written by 0.1.0 verifies under any later release. The command line follows semantic versioning. Exit codes, flags, and the JSON shape of every command are part of the interface and stay stable across 0.1.x; the format tag changes only under the process in [CONTRIBUTING.md](CONTRIBUTING.md#changing-the-format), and never silently.
+> Docket 0.1.0 is on PyPI and installs with `pip install docket-ai`. The `docket/receipt/v1` format is versioned and frozen: the specification in `spec/` and its 44 committed conformance vectors define it, and three implementations that share no code are held to that contract, so a receipt written by 0.1.0 verifies under any later release. The command line follows semantic versioning. Exit codes, flags, and the JSON shape of every command are part of the interface and stay stable across 0.1.x; the format tag changes only under the process in [CONTRIBUTING.md](CONTRIBUTING.md#changing-the-format), and never silently.
 
 ---
 
@@ -127,7 +127,7 @@ To install Docket into your current Python environment, run:
 
 ```bash
 # Requires: Python 3.11+, pip, and network access to pypi.org.
-python3 -m pip install docket
+python3 -m pip install docket-ai
 docket --version
 ```
 
@@ -135,7 +135,7 @@ To keep the package out of your project virtualenv, install it into its own isol
 
 ```bash
 # Requires: Python 3.11+, pipx, and network access to pypi.org.
-pipx install docket
+pipx install docket-ai
 ```
 
 To install straight from the repository rather than the release, which tracks `main` instead of a pinned version, run:
@@ -144,6 +144,9 @@ To install straight from the repository rather than the release, which tracks `m
 # Requires: Python 3.11+, pip, git, and network access to github.com.
 python3 -m pip install git+https://github.com/docket-dev-org/docket.git
 ```
+
+> [!NOTE]
+> The distribution is named `docket-ai` because PyPI administratively prohibits the bare name `docket`: it answers 404 on the JSON API, and `twine upload` still refuses it with "The name 'docket' isn't allowed". PyPI keeps that list to prevent dependency-confusion attacks, and the only way off it is a PEP 541 request reviewed by the PyPI administrators. Everything else is `docket`: the import is `import docket`, the console script is `docket`, and the command you type is `docket`. Only the name `pip install` takes differs.
 
 ### 2. Cap a run of your own agent
 

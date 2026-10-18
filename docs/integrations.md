@@ -140,7 +140,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       # docket is on PyPI:
-      - run: pip install docket
+      - run: pip install docket-ai
       - name: Run the agent under a cap
         run: docket run -p .docket/ci.toml --label "${{ github.run_id }}" -- python agent.py
         continue-on-error: true

@@ -62,6 +62,20 @@ def _is_build_output(path: Path) -> bool:
     return any(part in BUILD_OUTPUT for part in path.relative_to(REPO).parts)
 
 
+def _distribution_name(root: Path) -> str:
+    """The distribution name from `pyproject.toml`, which is the single place it is written.
+
+    Read rather than repeated so that a rename cannot leave the guard checking one name while
+    the guide tells a reader another. PyPI prohibits the bare name `docket`, so the
+    distribution is `docket-ai` while the import, the console script and the command are all
+    still `docket`.
+    """
+    text = (root / "pyproject.toml").read_text(encoding="utf-8")
+    match = re.search(r'^name\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    assert match, "pyproject.toml has no project name"
+    return match.group(1)
+
+
 def _text_files() -> list[Path]:
     files: list[Path] = []
     for path in REPO.rglob("*"):
@@ -1195,7 +1209,7 @@ def test_the_scan_skips_exactly_the_directories_the_site_stager_skips():
 
 
 def test_no_document_tells_a_reader_to_install_an_unpublished_package() -> None:
-    """No document may apologise for an install path, and the README's first one must be PyPI.
+    """No document may apologise for an install path, and the README's first one must resolve.
 
     This guard used to assert the opposite: that no document instructs a reader to run
     `pip install docket`, because `https://pypi.org/pypi/docket/json` answered 404 and the
@@ -1208,16 +1222,20 @@ def test_no_document_tells_a_reader_to_install_an_unpublished_package() -> None:
 
     1. No document still carries the apology. A stale "not on PyPI" line is worse than the gap
        it describes, because a reader who can install the package is being told they cannot.
-    2. The README's first install instruction is `python3 -m pip install docket`. That is the
-       path a reader meets first, and it has to be the one that works without a clone.
+    2. The README's first install instruction names the distribution that is actually on PyPI.
+       That is `docket-ai`, not `docket`: PyPI administratively prohibits the bare name, so
+       `pip install docket` answers "no matching distribution" no matter what the README says.
+       The distribution name is checked against `pyproject.toml` rather than written twice, so
+       a rename cannot leave the guard and the guide disagreeing.
 
     Only an *instruction* is checked, not a mention: prose that says funding pays for the
-    machinery which makes `pip install docket` trustworthy is a statement of intent, and a
-    reader cannot run a table cell. The marker may sit on the line above, which is where a
-    YAML comment lives, so both are considered.
+    machinery which makes installation trustworthy is a statement of intent, and a reader
+    cannot run a table cell. The marker may sit on the line above, which is where a YAML
+    comment lives, so both are considered.
     """
     root = Path(__file__).resolve().parents[1]
-    instructions = ("- run:", "pip install docket", "pipx run docket", "pipx install docket")
+    distribution = _distribution_name(root)
+    instructions = ("- run:", f"pip install {distribution}", f"pipx run {distribution}", f"pipx install {distribution}")
     apologies: list[str] = []
     for page in sorted(root.rglob("*.md")):
         relative = page.relative_to(root).as_posix()
@@ -1233,9 +1251,7 @@ def test_no_document_tells_a_reader_to_install_an_unpublished_package() -> None:
             lowered = stripped.lower()
             if "not on pypi" in lowered or "does not resolve" in lowered or "is not on pypi" in lowered:
                 apologies.append(f"{relative}:{index + 1}: {stripped}")
-    assert not apologies, (
-        "a document still apologises for an install path that works: " + "; ".join(apologies)
-    )
+    assert not apologies, "a document still apologises for an install path that works: " + "; ".join(apologies)
 
     readme = (root / "README.md").read_text(encoding="utf-8").splitlines()
     first_install = next(
@@ -1247,6 +1263,6 @@ def test_no_document_tells_a_reader_to_install_an_unpublished_package() -> None:
         None,
     )
     assert first_install is not None, "the README no longer contains a pip install instruction"
-    assert "pip install docket" in first_install, (
-        f"the README's first install instruction is not the PyPI one: {first_install!r}"
+    assert f"pip install {distribution}" in first_install, (
+        f"the README's first install instruction is not the published distribution: {first_install!r}"
     )

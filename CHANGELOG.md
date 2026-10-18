@@ -10,6 +10,54 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **Published to PyPI as `docket-ai` 0.1.0.** `pip install docket-ai` installs the same
+  package, and the import, the console script and the command are all still `docket`. The
+  distribution name differs because PyPI administratively prohibits the bare name `docket`:
+  the JSON API answers 404 for it, and `twine upload` still refuses it with *"The name
+  'docket' isn't allowed"*. PyPI keeps that list to prevent dependency-confusion attacks, and
+  the only way off it is a PEP 541 request reviewed by the PyPI administrators. `PUBLISHING.md`
+  records the reason, the one place the name is written, and the request process.
+
+- **`PUBLISHING.md`, the maintainer runbook for shipping a release.** It records what the
+  release gate does, why the PyPI upload stays a manual `twine upload` rather than a step in
+  the workflow (a PyPI token can publish under the project's name forever and cannot be
+  scoped to a branch, so a repository secret hands it to everyone who ever gains admin here,
+  while `github.token` is scoped to one run and expires with it), the prohibited-name
+  evidence, and how to cut and re-cut a tag.
+
+### Changed
+
+- **The README leads with the install path that works.** It told a reader that `docket` was
+  not on PyPI, that the name had been unregistered on 2026-10-17, and that
+  `pip install docket` would start working after a future 0.1.0 publication. The release
+  exists, so the apology was the only thing left. The install section now opens with
+  `python3 -m pip install docket-ai`, and `pipx install docket-ai` replaces the wheel URL.
+  The clone path stays, because it is what a contributor wants rather than what a user wants.
+
+- **The version note states what is guaranteed instead of hedging.** It said the CLI "may
+  change before 1.0", which read as an unfinished project. It now says the format is frozen by
+  the specification and its 44 vectors across three implementations, and that exit codes,
+  flags and the JSON shape of every command are part of the interface and stable across 0.1.x.
+
+- **The exit-code table gains `1`, and documents exit-code propagation.** `docket run` hands
+  back the exit code of the command it wrapped, so `docket run --policy docket.toml --
+  ./build.sh` is safe in a pipeline. That was true and undocumented.
+
+- **The quickstart verifies `.docket/latest.receipt.json` instead of a `DKT-*.receipt.json`
+  glob.** The glob worked on the first run and exited `2` on the second, because `verify` takes
+  one receipt and argparse rejects two. The path every run rewrites has no such edge.
+
+- **`pyproject.toml` uses the SPDX license expression and `license-files`**, so PyPI renders
+  the licence rather than a free-text string.
+
+### Fixed
+
+- **The doc-link guard now asserts the opposite of what it used to.** It used to fail any
+  document that instructed a reader to install an unpublished package, and its own docstring
+  said to relax it by removing the instruction once published. It now fails any document that
+  still carries the apology, and reads the distribution name from `pyproject.toml` rather than
+  repeating it, so a rename cannot leave the guard and the guide disagreeing.
+
 - **`docket verify --impl node`: a second opinion from an installation.** The claim that the
   format is not this tool needed the other tool to be reachable without a clone, so the wheel now
   carries `verify-js/verify.mjs` and the conformance corpus under `docket/_vendor/`, and

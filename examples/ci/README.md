@@ -15,7 +15,7 @@ jobs:
         with: { python-version: "3.12" }
 
       # docket is on PyPI:
-      - run: pip install docket
+      - run: pip install docket-ai
 
       - name: Run the agent under a policy
         run: |

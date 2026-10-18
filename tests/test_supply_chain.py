@@ -110,8 +110,8 @@ def test_every_optional_import_is_guarded_by_a_reason(name: str):
     `import cryptography` at the top of a module turns the extra into a requirement, and the failure
     appears in a clean environment as an ImportError from an unrelated command. Each allowed import
     is therefore required to sit inside a `try`/`except ImportError` (or an import *inside* a function,
-    which is the same thing with a smaller blast radius), so that `pip install docket` keeps working
-    with neither extra installed.
+    which is the same thing with a smaller blast radius), so that `pip install docket-ai` keeps
+    working with neither extra installed.
     """
     directory = ALLOWED_THIRD_PARTY[name][1]
     guarded: list[str] = []

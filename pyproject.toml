@@ -3,7 +3,13 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "docket"
+# The distribution name is `docket-ai` because PyPI administratively prohibits the bare name
+# `docket`: it answers 404 on the JSON API, and `twine upload` still refuses it with
+# "The name 'docket' isn't allowed". PyPI keeps that list to prevent dependency-confusion
+# attacks, and the only way off it is a PEP 541 request reviewed by the PyPI admins.
+# The *import* name, the console script and the command a user types are all still `docket`;
+# only the thing `pip install` names is different. See README.md and PUBLISHING.md.
+name = "docket-ai"
 version = "0.1.0"
 description = "Every AI agent run gets a docket number: hard spending caps and a tamper-evident receipt anyone can verify offline."
 readme = "README.md"
