@@ -3,9 +3,11 @@
 ## Reporting a vulnerability
 
 Use GitHub's [private vulnerability reporting](https://github.com/docket-dev-org/docket/security/advisories/new)
-on this repository. If you cannot use it, email `security@docket.dev`. Please include: version
-(`docket --version`), platform, the smallest reproduction you have, and whether the issue lets
-an agent escape a cap, forge a receipt, or read data Docket promised not to record.
+on this repository. If you cannot use that either, contact the maintainer directly through
+GitHub: [@shivanshjain456](https://github.com/shivanshjain456). There is no security mailing
+list — this is a solo project, so the inbox is one account, and it is this one. Please include:
+version (`docket --version`), platform, the smallest reproduction you have, and whether the
+issue lets an agent escape a cap, forge a receipt, or read data Docket promised not to record.
 
 **Response targets** (best effort, stated so you can hold us to them): acknowledgement within
 72 hours, an assessment within 7 days, and a fix or a documented mitigation within 30 days for

@@ -1,7 +1,7 @@
-# Funding options shown by GitHub's Sponsor button.
-# Replace the accounts below with the real ones at publication time (see PUBLISH.md).
+# Funding options shown by GitHub's Sponsor button. Only the GitHub Sponsors account is
+# configured; there is no custom funding URL, because this project runs no website of its
+# own beyond the GitHub Pages documentation site.
 github: [docket-dev-org]
 # open_collective: docket
 # ko_fi: docket
 # tidelift: pypi:docket
-# custom: ["https://docket.dev/sponsor"]

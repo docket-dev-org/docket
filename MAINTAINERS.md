@@ -5,7 +5,7 @@ list changes, what each role can decide, and the Format Steward's rotation.
 
 | maintainer | role | areas | since |
 | --- | --- | --- | --- |
-| *(founding maintainer — to be filled in at publication)* | Maintainer + Format Steward | everything | 2026-10 |
+| shivanshjain456 | Maintainer + Format Steward | everything | 2026-10 |
 
 The founding maintainer is the author of the initial implementation, the specification and the
 conformance vectors, and holds the Format Steward role for the first year as described in
