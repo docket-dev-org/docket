@@ -183,7 +183,7 @@ jobs:
           /tmp/clean/bin/docket demo | tee /tmp/demo.out
           grep -q "VERIFIED" /tmp/demo.out
           grep -q "Runaway loop" /tmp/demo.out
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/*
