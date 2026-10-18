@@ -255,7 +255,7 @@ Exit codes are part of the interface:
 | code | meaning |
 | --- | --- |
 | `0` | the command exited normally |
-| `1` | `verify`, `report`, `explain` or `diff` found a problem, or the receipt could not be read |
+| `1` | `verify`, `report`, `explain` or `diff` found a problem, or the receipt could not be read; `restore` also uses `1` when there is no snapshot to restore |
 | `42` | a cap was crossed and the run was stopped |
 | `43` | the policy could not be loaded: missing file, invalid TOML, or a value out of range |
 | `70` | internal error |
