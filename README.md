@@ -200,14 +200,20 @@ docket verify .docket/receipts/DKT-*.receipt.json
 
 ```text
 hello from the agent
-docket: DKT-20261017-6A90BB completed · $0.00 of $1.00 cap · 0 calls · receipt .docket/receipts/DKT-20261017-6A90BB.receipt.json
+docket: DKT-20261018-5FB7B5 completed · $0.00 of $1.00 cap · 0 calls · receipt .docket/receipts/DKT-20261018-5FB7B5.receipt.json
 
-VERIFIED  DKT-20261017-6A90BB
+VERIFIED  DKT-20261018-5FB7B5
   PASS  format: docket/receipt/v1
-  PASS  usage-inclusion-proofs: no metered calls in this session
-  PASS  cost-recomputation: 0 calls recomputed from token counts
+  PASS  ledger-chain: 9 events, every hash and link recomputed
+  PASS  head: head matches receipt
+  PASS  event-count: 9 events
+  PASS  merkle-root: recomputed root matches the receipt
   PASS  totals: 0 call(s), total 0.00 agrees with recomputation
+  PASS  limits-disclosure: receipt states what Docket could and could not observe
+  ledger     .docket/runs/30bb5ff6360b.jsonl (found beside the receipt)
 ```
+
+One run, trimmed to the lines that matter; the docket number, the event count and the ledger name are yours. The chain, the head and the Merkle root are checked because `docket verify` finds the ledger beside the receipt — no flag needed — and the last line names the file it used.
 
 Point the command at your real agent and the same receipt carries its calls. Exit code `0` means the run ended normally; `42` means a cap stopped it.
 
