@@ -139,7 +139,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      # Before the 0.1.0 release: pip install git+https://github.com/docket-dev/docket.git
+      # Before the 0.1.0 release: pip install git+https://github.com/shivanshjain456/docket.git
       - run: pip install docket
       - name: Run the agent under a cap
         run: docket run -p .docket/ci.toml --label "${{ github.run_id }}" -- python agent.py

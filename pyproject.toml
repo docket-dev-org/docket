@@ -66,12 +66,12 @@ dev = [
 docket = "docket.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/docket-dev/docket"
-Documentation = "https://github.com/docket-dev/docket/tree/main/docs"
-Specification = "https://github.com/docket-dev/docket/blob/main/spec/docket-receipt-1.md"
-Issues = "https://github.com/docket-dev/docket/issues"
-Changelog = "https://github.com/docket-dev/docket/blob/main/CHANGELOG.md"
-Sponsor = "https://github.com/sponsors/docket-dev"
+Homepage = "https://github.com/shivanshjain456/docket"
+Documentation = "https://github.com/shivanshjain456/docket/tree/main/docs"
+Specification = "https://github.com/shivanshjain456/docket/blob/main/spec/docket-receipt-1.md"
+Issues = "https://github.com/shivanshjain456/docket/issues"
+Changelog = "https://github.com/shivanshjain456/docket/blob/main/CHANGELOG.md"
+Sponsor = "https://github.com/sponsors/shivanshjain456"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/docket"]

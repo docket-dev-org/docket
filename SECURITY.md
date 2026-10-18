@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Use GitHub's [private vulnerability reporting](https://github.com/docket-dev/docket/security/advisories/new)
+Use GitHub's [private vulnerability reporting](https://github.com/shivanshjain456/docket/security/advisories/new)
 on this repository. If you cannot use it, email `security@docket.dev`. Please include: version
 (`docket --version`), platform, the smallest reproduction you have, and whether the issue lets
 an agent escape a cap, forge a receipt, or read data Docket promised not to record.

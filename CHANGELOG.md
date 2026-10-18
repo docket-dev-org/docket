@@ -1164,5 +1164,5 @@ First release: a bounded, legible, provable agent run.
   they are estimates for budgeting, and every receipt states which table it used and flags
   any model priced by fallback as `assumed`.
 
-[Unreleased]: https://github.com/docket-dev/docket/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/docket-dev/docket/releases/tag/v0.1.0
+[Unreleased]: https://github.com/shivanshjain456/docket/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/shivanshjain456/docket/releases/tag/v0.1.0

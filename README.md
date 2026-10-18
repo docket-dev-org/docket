@@ -1,6 +1,6 @@
 # docket
 
-[![CI](https://github.com/docket-dev/docket/actions/workflows/ci.yml/badge.svg)](https://github.com/docket-dev/docket/actions/workflows/ci.yml)
+[![CI](https://github.com/shivanshjain456/docket/actions/workflows/ci.yml/badge.svg)](https://github.com/shivanshjain456/docket/actions/workflows/ci.yml)
 [![version](https://img.shields.io/badge/version-0.1.0-blue)](CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
@@ -129,7 +129,7 @@ Docket runs on Linux and macOS. The Windows code paths exist — a separate file
 To install Docket into your current Python environment, run:
 
 ```bash
-git clone https://github.com/docket-dev/docket.git
+git clone https://github.com/shivanshjain456/docket.git
 cd docket
 python3 -m pip install .
 ```
@@ -317,14 +317,14 @@ Docket ships no MCP server and no `AGENTS.md`, and the omission is deliberate: D
    print(session.receipt_path)
    ```
 
-If you need a protocol bridge — an MCP server, an internal agent framework, or an A2A gateway — the boundary already answers the provider's own HTTP API, so a bridge in front of it changes nothing about what is recorded. [Open an issue](https://github.com/docket-dev/docket/issues) with the interface you need and the repository will grow one rather than claim one today.
+If you need a protocol bridge — an MCP server, an internal agent framework, or an A2A gateway — the boundary already answers the provider's own HTTP API, so a bridge in front of it changes nothing about what is recorded. [Open an issue](https://github.com/shivanshjain456/docket/issues) with the interface you need and the repository will grow one rather than claim one today.
 
 ## Contributing
 
 To run the suite exactly as CI runs it, run:
 
 ```bash
-git clone https://github.com/docket-dev/docket.git
+git clone https://github.com/shivanshjain456/docket.git
 cd docket
 PYTHONPATH=src python3 -m pytest tests -ra
 ```

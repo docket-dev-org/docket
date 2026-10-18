@@ -29,7 +29,7 @@ A sponsorship does not buy support either, unless a separate written agreement s
 
 ## If you want to contribute
 
-[GitHub Sponsors](https://github.com/sponsors/docket-dev) is the mechanism, and one-time support
+[GitHub Sponsors](https://github.com/sponsors/shivanshjain456) is the mechanism, and one-time support
 at any amount is as welcome as a monthly tier. The most useful contribution is not money:
 a receipt from a run that surprised you, a defect report with the ledger attached, or a
 conformance vector from a language this repository does not cover yet.

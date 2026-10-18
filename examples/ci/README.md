@@ -15,7 +15,7 @@ jobs:
         with: { python-version: "3.12" }
 
       # Until 0.1.0 is on PyPI, install from the repository:
-      #   pip install git+https://github.com/docket-dev/docket.git
+      #   pip install git+https://github.com/shivanshjain456/docket.git
       - run: pip install docket
 
       - name: Run the agent under a policy

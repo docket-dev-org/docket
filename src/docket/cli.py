@@ -1225,7 +1225,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=PROGRAM,
         description="Every agent run gets a docket number: hard caps, and a tamper-evident receipt anyone can verify.",
-        epilog="Docs: https://github.com/docket-dev/docket · Spec: spec/docket-receipt-1.md",
+        epilog="Docs: https://github.com/shivanshjain456/docket · Spec: spec/docket-receipt-1.md",
     )
     parser.add_argument("--version", action="version", version=f"{PROGRAM} {__version__}")
     sub = parser.add_subparsers(dest="subcommand")
