@@ -196,6 +196,48 @@ def test_the_node_verifier_in_the_wheel_is_the_one_in_the_repository():
     assert resolved.read_bytes() == (root / "verify-js" / "verify.mjs").read_bytes()
 
 
+def test_the_module_version_is_not_written_twice() -> None:
+    """`docket --version` must report the distribution that is actually installed.
+
+    `src/docket/__init__.py` used to carry a literal `__version__ = "0.1.0"` while
+    `pyproject.toml` moved to 0.1.1. Nothing compared the two, so the drift was invisible: the
+    published page, `pip show` and `importlib.metadata` all said 0.1.1, while every receipt's
+    `tool.version` field and `docket --version` said 0.1.0. A receipt that misreports the tool
+    that wrote it makes a false claim about provenance, which is the one thing a receipt exists
+    to make checkable.
+
+    The version is now derived from the installed distribution, falling back to the
+    `pyproject.toml` of a source tree and then to `unknown`. This test pins the derivation: the
+    module must not hard-code a version, and when it can be determined it must match
+    `pyproject.toml`.
+    """
+    import os
+    import re
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    declared = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+
+    source = (root / "src" / "docket" / "__init__.py").read_text(encoding="utf-8")
+    literal = re.search(r'^__version__\s*=\s*"', source, flags=re.MULTILINE)
+    assert literal is None, "__version__ is a literal again; it must be derived so it cannot drift from pyproject.toml"
+
+    # In a source tree the version comes from pyproject.toml, so it must equal the declared one.
+    # The probe runs in a subprocess so that this test process's own imports cannot answer.
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(root / "src")
+    probe = subprocess.run(
+        [sys.executable, "-c", "import docket; print(docket.__version__)"],
+        capture_output=True,
+        text=True,
+        cwd=str(root),
+        env=env,
+        check=True,
+    )
+    reported = probe.stdout.strip()
+    assert reported == declared, f"source tree reports {reported!r}, pyproject.toml says {declared!r}"
+
+
 def test_every_ci_step_that_installs_the_package_names_the_distribution() -> None:
     """A CI step that installs by the wrong name fails the job it was written to prove.
 

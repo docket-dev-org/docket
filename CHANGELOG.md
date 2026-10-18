@@ -20,6 +20,22 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   supply-chain guard was added, so its rendered page said 1196 tests where the repository said
   1197. The wheels are otherwise byte-identical.
 
+## [0.1.2] - 2026-10-18
+
+### Fixed
+
+- **`docket --version` reported a version the package was not.** `src/docket/__init__.py` carried a
+  literal `__version__ = "0.1.0"` while `pyproject.toml` moved to 0.1.1, and nothing compared the
+  two. Every receipt's `tool.version` field and the output of `docket --version`, `docket
+  selftest` and `docket doctor` said 0.1.0 while `pip show`, the PyPI page and
+  `importlib.metadata` said 0.1.1. A receipt that names the wrong tool makes a false claim about
+  provenance, which is the one thing a receipt exists to make checkable.
+
+  The version is now read from the installed distribution, falling back to the `pyproject.toml`
+  of a source tree and then to `unknown`. The distribution name is not written into the module,
+  so renaming it cannot desynchronise the two again. `tests/test_supply_chain.py` asserts the
+  derivation and fails if the literal returns.
+
 ## [Unreleased]
 
 ### Added
@@ -1226,6 +1242,7 @@ First release: a bounded, legible, provable agent run.
   they are estimates for budgeting, and every receipt states which table it used and flags
   any model priced by fallback as `assumed`.
 
-[Unreleased]: https://github.com/docket-dev-org/docket/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/docket-dev-org/docket/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/docket-dev-org/docket/releases/tag/v0.1.2
 [0.1.1]: https://github.com/docket-dev-org/docket/releases/tag/v0.1.1
 [0.1.0]: https://github.com/docket-dev-org/docket/releases/tag/v0.1.0
