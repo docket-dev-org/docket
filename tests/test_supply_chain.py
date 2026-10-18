@@ -194,3 +194,39 @@ def test_the_node_verifier_in_the_wheel_is_the_one_in_the_repository():
     resolved = _node_verifier()
     assert resolved is not None, "no Node verifier found from a checkout"
     assert resolved.read_bytes() == (root / "verify-js" / "verify.mjs").read_bytes()
+
+
+def test_every_ci_step_that_installs_the_package_names_the_distribution() -> None:
+    """A CI step that installs by the wrong name fails the job it was written to prove.
+
+    The `package` job builds the wheel and then installs it into a clean venv to check that a
+    user can. It installed `docket` by name, which stopped resolving the moment the
+    distribution became `docket-ai`, and the job went red on a build that was fine. Nothing in
+    the suite noticed, because nothing builds a wheel.
+
+    The distribution name is read from `pyproject.toml` rather than repeated, so this asserts
+    the same thing the job does. PyPI prohibits the bare name `docket`, so the distribution and
+    the command genuinely differ, and a test that only checked "the word docket appears" would
+    pass while the job was broken.
+    """
+    import tomllib
+
+    root = Path(__file__).resolve().parents[1]
+    config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    distribution = config["project"]["name"]
+
+    workflows = sorted((root / ".github" / "workflows").glob("*.yml"))
+    assert workflows, "no workflows found"
+    offenders: list[str] = []
+    for workflow in workflows:
+        for number, line in enumerate(workflow.read_text(encoding="utf-8").splitlines(), start=1):
+            if "pip install" not in line or "--find-links" not in line:
+                continue
+            if "$DIST" in line or f"install {distribution}" in line:
+                continue
+            if "find-links" in line and distribution not in line:
+                offenders.append(f"{workflow.relative_to(root)}:{number}: {line.strip()}")
+    assert not offenders, (
+        "a CI step installs the package by a name that is not the distribution in "
+        f"pyproject.toml ({distribution!r}): " + "; ".join(offenders)
+    )

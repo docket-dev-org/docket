@@ -12,7 +12,7 @@ and can be told to fail on cue.
 ## The suite
 
 ```console
-$ make test          # 1196 tests, no network (2-4 min on a 2-vCPU box)
+$ make test          # 1197 tests, no network (2-4 min on a 2-vCPU box)
 $ make check         # + ruff, + bandit, + the independent Node verifier
 ```
 
@@ -33,7 +33,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | `test_cache.py` | 74 | the response cache: what may be stored and what may never be, hit/miss/TTL/LRU/ceiling behaviour, the key covering the request as sent, an open breaker not blocking a hit, concurrency, every receipt-level attack on a saving, and twenty-five tests written to kill survivors of a mutation sweep — nine for the cache itself and sixteen for the verifier that recomputes a stated saving |
 | `test_proxy_concurrency.py` | 6 | parallel calls through the real boundary: chain, totals, limiter, breaker, cap |
 | `test_resilience.py` | 60 | breaker, limiter, fault injection grammar, evidence guard |
-| `test_supply_chain.py` | 6 | what the package installs and what it imports: `dependencies = []` read from the manifest, the three extras by name, and an AST walk asserting every import outside the standard library resolves to a declared, guarded extra |
+| `test_supply_chain.py` | 7 | what the package installs and what it imports: `dependencies = []` read from the manifest, the three extras by name, and an AST walk asserting every import outside the standard library resolves to a declared, guarded extra |
 | `test_explain.py` | 13 | analysis rules and their attributed impact |
 | `test_supervisor.py` | 11 | the run lifecycle, exit codes, the evidence directory exclusion |
 | `test_snapshot_restore.py` | 26 | snapshot, plan, apply, the CLI, idempotence, the restore record |

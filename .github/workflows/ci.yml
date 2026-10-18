@@ -177,7 +177,12 @@ jobs:
         run: |
           set -euo pipefail
           python -m venv /tmp/clean
-          /tmp/clean/bin/pip install --no-index --find-links dist docket
+          # The distribution name, not the command. PyPI prohibits the bare name `docket`, so
+          # what `pip install` takes is `docket-ai` while the console script stays `docket`.
+          # Read from pyproject.toml rather than written twice, so a rename cannot leave this
+          # job installing a name the build does not produce.
+          DIST="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["name"])')"
+          /tmp/clean/bin/pip install --no-index --find-links dist "$DIST"
           /tmp/clean/bin/docket --version
           cd "$(mktemp -d)"
           /tmp/clean/bin/docket demo | tee /tmp/demo.out
