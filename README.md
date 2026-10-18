@@ -5,12 +5,12 @@
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 
-A local budget-and-evidence layer for AI agents: it caps what a run can spend, records every model call, tool call, and file change in a hash-chained ledger, and emits a receipt that a third party verifies offline — without the ledger, the tool, or network access.
+A local budget-and-evidence layer for AI agents: it caps what a run can spend, records every model call, tool call, and file change in a hash-chained ledger, and emits a receipt that a third party verifies offline, without the ledger, the tool, or network access.
 
 Docket wraps the agent you already run. It needs no account, no server, no telemetry, and no API keys of its own.
 
 > [!NOTE]
-> Docket is 0.1.0, dated 2026-10-13. The receipt format is versioned and frozen by the specification and its 44 vectors; the CLI may still change before 1.0.
+> Docket 0.1.0 was released on 2026-10-13. The `docket/receipt/v1` format is stable and versioned: compatible additions keep the tag, and consumers ignore members they do not know. The 44 committed conformance vectors hold three independent implementations to that contract, so a receipt written today verifies under any later release. The command line follows semantic versioning, so flags and exit codes are stable across 0.1.x and may change at 1.0.
 
 ---
 
@@ -28,18 +28,18 @@ Existing tooling covers parts of this problem. None of it covers the seam betwee
 | --- | --- | --- |
 | An LLM gateway or proxy | Routes traffic, adds keys, meters usage per tenant | Records only traffic it sees, keeps the record in its own database, and the invoice it produces is the vendor's word |
 | Observability or APM | Traces, spans, dashboards for everything | After the fact; sampling loses the events you want; nothing is tamper-evident |
-| A sandbox or container | Prevents writes and egress it was told to prevent | Prevention is not accounting — "it could not write there" is not "it wrote this, here is the digest" |
+| A sandbox or container | Prevents writes and egress it was told to prevent | Prevention is not accounting: "it could not write there" is not "it wrote this, here is the digest" |
 | LLM record/replay tools | Replays previous calls, makes tests deterministic | Built for development, not custody; no caps, no file evidence, no third-party verification |
 
 Docket is designed around five commitments that follow from those gaps:
 
-1. **Account, do not pretend to sandbox.** Docket proves what happened. For prevention, use a container — and read [the threat model](docs/threat-model.md) for the line between the two.
+1. **Account, do not pretend to sandbox.** Docket proves what happened. For prevention, use a container, and read [the threat model](docs/threat-model.md) for the line between the two.
 2. **Caps bind outside the agent.** The boundary refuses the request that would cross the cap, and the supervisor terminates the process group. The agent cannot be prompted out of it.
 3. **Verification must not require trust.** A receipt is checked by recomputing hashes and costs from the file itself, by three independent implementations, under a written [format specification](spec/docket-receipt-1.md).
 4. **The record states its own limits.** Every receipt carries `limits_disclosure`: what Docket could see in that run and what it could not. Silence is never the default.
 5. **The money must be recomputable.** Costs are recomputed by the verifier from raw token counts and the embedded price table, so a stranger does not have to believe your arithmetic.
 
-## Architecture & how it works
+## Architecture and how it works
 
 ```text
    your agent ──────► Docket supervisor ──────► recording boundary ──────► provider API
@@ -66,12 +66,12 @@ Docket is designed around five commitments that follow from those gaps:
 2. **The boundary forwards each model request** to the upstream provider, counts tokens, prices the call, and appends an event. When a cap would be crossed it refuses with HTTP 403 (`docket_cap_exceeded`) and the supervisor stops the process group with exit code `42`.
 3. **The ledger appends canonical JSON** with no floats, one event per line, each event carrying the hash of the previous one. A filesystem watcher adds events for changed files with their content digests.
 4. **At exit the supervisor writes a receipt**: totals, policy, environment, per-model breakdown, an RFC 6962 Merkle root over every event, and the price table used.
-5. **The verifier recomputes everything it can** from the receipt alone — chain links, Merkle paths, per-call cost, totals, latency percentiles — and reports per check `PASS`, `FAIL`, or `SKIP` with a reason.
+5. **The verifier recomputes everything it can** from the receipt alone: chain links, Merkle paths, per-call cost, totals, and latency percentiles. It reports per check `PASS`, `FAIL`, or `SKIP` with a reason.
 
 ### What a receipt proves, and what it does not
 
 - **Proves:** the recorded events are in order and unaltered since they were written; the totals agree with the recorded token counts and the embedded price table; the listed files changed in the listed ways; which calls were refused and why.
-- **Does not prove:** that the ledger contains everything the machine did. Traffic that never crossed the boundary is invisible — an agent pointed at a provider URL directly, or a tunnel allowed by `egress.mode = "tunnel"`.
+- **Does not prove:** that the ledger contains everything the machine did. Traffic that never crossed the boundary is invisible, whether an agent pointed at a provider URL directly or a tunnel allowed by `egress.mode = "tunnel"`.
 - **Does not prevent:** writes outside the boundary, or reads the process was permitted to make. `deny_write` is detection and evidence, not a veto: user space cannot intercept another process's syscalls without `ptrace` or a container.
 - **Does not sign by default:** sealing is an HMAC with your key; signing is Ed25519 with a key someone else can verify. Without either, a receipt is tamper-evident against the ledger but not against someone who can rewrite both files.
 
@@ -80,7 +80,7 @@ Docket is designed around five commitments that follow from those gaps:
 
 ### Three implementations, one format
 
-The format is only worth what an independent implementation can reproduce, so the repository holds three verifiers that share no code: the Python reference, a zero-dependency Node one, and a clean-room Go one written from the specification alone. All three run against 44 committed conformance vectors — 42 negative documents (6 refused at parse time, 2 carrying a malformed ledger, 34 that must fail a named check) and 2 valid ones — which is 132 verdicts that have to agree.
+The format is only worth what an independent implementation can reproduce, so the repository holds three verifiers that share no code: the Python reference, a zero-dependency Node one, and a clean-room Go one written from the specification alone. All three run against the same 44 committed conformance vectors, which are 2 valid documents plus a negative corpus of 42, of which 38 must be refused (6 at parse time, 32 by a named check) and 4 must be accepted. That is 132 verdicts that have to agree.
 
 ```console
 $ make conformance
@@ -101,9 +101,9 @@ $ make conformance
 | [Comparison](docs/comparison.md) | Docket against gateways, observability, sandboxes, and record/replay tools |
 | [Response cache](docs/caching.md) | what a cache hit is, the brake it needs, and the measured cost |
 | [Testing](docs/testing.md) | what is tested, by kind, and what is deliberately not |
-| [Format specification](spec/docket-receipt-1.md) · [Conformance](spec/conformance.md) | the normative `docket/receipt/v1` contract and the corpus that holds implementations to it |
+| [Format specification](spec/docket-receipt-1.md) and [Conformance](spec/conformance.md) | the normative `docket/receipt/v1` contract and the corpus that holds implementations to it |
 | [Production coverage](docs/production-coverage.md) | 77 production-engineering concepts, each with what exists here and where |
-| [Resilience practice](docs/sre-coverage.md) | 22 resilience practices — stress, fuzzing, chaos, game days, FMEA, post-mortems — and which ones are practised |
+| [Resilience practice](docs/sre-coverage.md) | 22 resilience practices, covering stress, fuzzing, chaos, game days, FMEA, and post-mortems, and which ones are practised |
 | [Evidence](docs/evidence.md) | every problem claim with its source and its strength grade |
 
 ## Prerequisites
@@ -111,36 +111,81 @@ $ make conformance
 | requirement | version | needed for |
 | --- | --- | --- |
 | Python | 3.11 or newer | `docket` itself; the reference verifier; the test suite |
-| `pip` and `venv` | bundled with Python 3.11+ | installing from a clone or a wheel |
+| `pip` and `venv` | bundled with Python 3.11+ | installing from the wheel or from a clone |
 | Node.js | 20 or newer | optional: the second verifier (`verify-js/verify.mjs`) |
 | Go | 1.27 or newer | optional: the third verifier (`verify-go/`), built from source |
 | Disk | a few MB per run | ledgers and receipts under `.docket/` |
 | Network | none for `demo`, `verify`, `selftest`, or the test suite | a real capped run needs the provider your agent already calls |
 
-Docket runs on Linux and macOS. The Windows code paths exist — a separate file lock and a process-liveness probe — and CI exercises only Ubuntu, so treat Windows as supported-but-not-covered by CI.
+Docket runs on Linux and macOS. The Windows code paths exist, a separate file lock and a process-liveness probe, and CI exercises only Ubuntu, so treat Windows as supported but not covered by CI.
 
 ## Quick start
 
 > [!IMPORTANT]
-> `docket` is **not on PyPI yet**: the name was unregistered when this was checked on 2026-10-17. `pip install docket` starts working after the 0.1.0 publication. Until then, install from a clone as shown below, or from the wheel attached to the release.
+> Docket is not on PyPI, so `pip install docket` does not resolve. Install the wheel attached to the release below; it is the same artefact the release gate builds and tests, and its checksum is published beside it.
 
-### 1. Install from a clone
+### 1. Install
 
 To install Docket into your current Python environment, run:
 
 ```bash
-git clone https://github.com/docket-dev-org/docket.git
-cd docket
-python3 -m pip install .
+# Requires: Python 3.11+, pip, and network access to github.com.
+python3 -m pip install \
+  https://github.com/docket-dev-org/docket/releases/download/v0.1.0/docket-0.1.0-py3-none-any.whl
+docket --version
 ```
 
-To keep the package out of your project virtualenv, use `pipx install .` in the same directory instead. To skip installing entirely, run `PYTHONPATH=src python3 -m docket demo` from the clone.
-
-### 2. Watch a runaway agent get stopped
-
-The demo starts a real supervisor, a real recording boundary, and a scripted provider, then refuses the call that would cross a $2.00 cap:
+To keep the package out of your project virtualenv, install it into its own isolated environment instead:
 
 ```bash
+# Requires: Python 3.11+, pipx, and network access to github.com.
+pipx install \
+  https://github.com/docket-dev-org/docket/releases/download/v0.1.0/docket-0.1.0-py3-none-any.whl
+```
+
+To install straight from the repository rather than the release, which tracks `main` instead of a pinned version, run:
+
+```bash
+# Requires: Python 3.11+, pip, git, and network access to github.com.
+python3 -m pip install git+https://github.com/docket-dev-org/docket.git
+```
+
+### 2. Cap a run of your own agent
+
+To create a starter policy and run any command under it, run:
+
+```bash
+# Requires: docket installed, and a command that exits.
+docket init --name my-agent --max-usd 1
+docket run --policy docket.toml -- python3 -c "print('hello from the agent')"
+docket verify .docket/receipts/DKT-*.receipt.json
+```
+
+```text
+hello from the agent
+docket: DKT-20261018-5FB7B5 completed · $0.00 of $1.00 cap · 0 calls · receipt .docket/receipts/DKT-20261018-5FB7B5.receipt.json
+
+VERIFIED  DKT-20261018-5FB7B5
+  PASS  format: docket/receipt/v1
+  PASS  ledger-chain: 9 events, every hash and link recomputed
+  PASS  head: head matches receipt
+  PASS  event-count: 9 events
+  PASS  merkle-root: recomputed root matches the receipt
+  PASS  totals: 0 call(s), total 0.00 agrees with recomputation
+  PASS  limits-disclosure: receipt states what Docket could and could not observe
+  ledger     .docket/runs/30bb5ff6360b.jsonl (found beside the receipt)
+```
+
+One run, trimmed to the lines that matter; the docket number, the event count and the ledger name are yours. The chain, the head and the Merkle root are checked because `docket verify` finds the ledger beside the receipt, with no flag needed, and the last line names the file it used.
+
+Point the command at your real agent and the same receipt carries its calls. Exit code `0` means the run ended normally; `42` means a cap stopped it.
+
+### 3. See the failure modes
+
+`docket demo` starts a real supervisor, a real recording boundary, and a scripted provider, then refuses the call that would cross a $2.00 cap:
+
+```bash
+# Requires: docket installed. No API key and no network are used.
 docket demo
 ```
 
@@ -169,11 +214,10 @@ FINDINGS  (deterministic unless marked heuristic)
 
 The transcript is trimmed to the lines that matter; every line in it comes from one real run, and the full output names the rule behind each finding and what to change.
 
-### 3. Break the record on purpose
-
 To see tamper detection, run the same demo with one byte of the ledger flipped:
 
 ```bash
+# Requires: docket installed. Offline.
 docket demo --tamper
 ```
 
@@ -186,38 +230,9 @@ NOT VERIFIED  DKT-20261018-746EF4
   FAIL  merkle-root: recomputed ded1ee862e4a1df7… != receipt 4b3ccfcfb84a1449…
 ```
 
-The event number, both hashes, and the date inside the docket number differ on every run; the verdict and the three failing checks do not. The receipt itself is intact — the ledger beside it is the doctored file — so `docket verify <receipt>` finds that ledger and fails the same way. The receipt does not become "unreadable". It becomes specific about exactly where the record stops being trustworthy.
+The event number, both hashes, and the date inside the docket number differ on every run; the verdict and the three failing checks do not. The receipt itself is intact and the ledger beside it is the doctored file, so `docket verify <receipt>` finds that ledger and fails the same way. The receipt does not become "unreadable". It becomes specific about exactly where the record stops being trustworthy.
 
-### 4. Run your own command
-
-To create a starter policy and run any command under it, run:
-
-```bash
-docket init --name my-agent --max-usd 1
-docket run --policy docket.toml -- python3 -c "print('hello from the agent')"
-docket verify .docket/receipts/DKT-*.receipt.json
-```
-
-```text
-hello from the agent
-docket: DKT-20261018-5FB7B5 completed · $0.00 of $1.00 cap · 0 calls · receipt .docket/receipts/DKT-20261018-5FB7B5.receipt.json
-
-VERIFIED  DKT-20261018-5FB7B5
-  PASS  format: docket/receipt/v1
-  PASS  ledger-chain: 9 events, every hash and link recomputed
-  PASS  head: head matches receipt
-  PASS  event-count: 9 events
-  PASS  merkle-root: recomputed root matches the receipt
-  PASS  totals: 0 call(s), total 0.00 agrees with recomputation
-  PASS  limits-disclosure: receipt states what Docket could and could not observe
-  ledger     .docket/runs/30bb5ff6360b.jsonl (found beside the receipt)
-```
-
-One run, trimmed to the lines that matter; the docket number, the event count and the ledger name are yours. The chain, the head and the Merkle root are checked because `docket verify` finds the ledger beside the receipt — no flag needed — and the last line names the file it used.
-
-Point the command at your real agent and the same receipt carries its calls. Exit code `0` means the run ended normally; `42` means a cap stopped it.
-
-## Core workflows & CLI reference
+## Core workflows and CLI reference
 
 | command | what it does | what you get |
 | --- | --- | --- |
@@ -227,7 +242,7 @@ Point the command at your real agent and the same receipt carries its calls. Exi
 | `docket verify <receipt>` | Verifies a receipt offline | One line per check; exit `1` if any `FAIL`; the ledger beside the receipt is used unless `--ledger` names another; `--impl node` hands it to the independent Node verifier the wheel carries |
 | `docket report <receipt>` | Renders the receipt | Terminal summary or Markdown for a change request or incident ticket |
 | `docket explain <receipt>` | Re-derives findings from the ledger | Where the money and the risk went, with the rule and evidence behind each finding |
-| `docket diff <a> <b>` | Compares two runs | Cost, calls, models, tools, and file deltas — a regression check for agents |
+| `docket diff <a> <b>` | Compares two runs | Cost, calls, models, tools, and file deltas, which is a regression check for agents |
 | `docket restore <receipt>` | Rolls back a `--snapshot` run | A dry run by default; `--apply` restores, refusing files edited after the run |
 | `docket prices` | Shows the bundled price table | Per-model prices with their provenance and revision date |
 | `docket doctor` | Checks the local environment | Ledger health, damaged or unreadable files, disk floor, and configuration problems |
@@ -245,7 +260,7 @@ Exit codes are part of the interface:
 | `70` | internal error |
 | `130` | interrupted (Ctrl-C) |
 
-Three workflows cover most of the work:
+Four workflows cover most of the work:
 
 1. **Cap a coding agent.** Run `docket run --max-usd 5 -- claude` and read the receipt when the task ends. The table of agents and their flags is in [Integrations](docs/integrations.md).
 2. **Gate a pipeline on evidence.** Run `docket verify .docket/latest.receipt.json --json` in CI; a non-zero exit fails the job, and the JSON names the check that failed. The ledger beside the receipt is checked too, so a chain break fails the gate. See [Verification](docs/verification.md).
@@ -271,7 +286,7 @@ grace_seconds = 5.0         # SIGTERM, then SIGKILL after this many seconds
 
 [files]
 watch = ["."]               # tree recorded in the receipt, changes digested
-deny_write = [".env"]       # violations are recorded and reported — not prevented
+deny_write = [".env"]       # violations are recorded and reported, not prevented
 
 [egress]
 mode = "deny"               # "deny" refuses unlisted hosts; "tunnel" forwards and records them
@@ -288,7 +303,7 @@ Precedence runs command-line flag, then policy file, then built-in default. Thre
 - Docket exports `DOCKET_PROXY_URL`, `DOCKET_SESSION`, `DOCKET_POLICY_DIGEST`, and `DOCKET_TOOL_VERSION` to the child process, so an instrumented agent can cite its own run.
 - The full schema, including the resilience and cache sections, is in the [policy reference](docs/policy-reference.md).
 
-## AI agent integration (MCP and AGENTS.md)
+## AI agent integration
 
 Docket ships no MCP server and no `AGENTS.md`, and the omission is deliberate: Docket wraps a process, so an agent needs no protocol, no client library, and no knowledge that Docket exists. Three surfaces connect the two, in the order most teams need them.
 
@@ -317,20 +332,20 @@ Docket ships no MCP server and no `AGENTS.md`, and the omission is deliberate: D
    print(session.receipt_path)
    ```
 
-If you need a protocol bridge — an MCP server, an internal agent framework, or an A2A gateway — the boundary already answers the provider's own HTTP API, so a bridge in front of it changes nothing about what is recorded. [Open an issue](https://github.com/docket-dev-org/docket/issues) with the interface you need and the repository will grow one rather than claim one today.
+If you need a protocol bridge, whether an MCP server, an internal agent framework, or an A2A gateway, the boundary already answers the provider's own HTTP API, so a bridge in front of it changes nothing about what is recorded. [Open an issue](https://github.com/docket-dev-org/docket/issues) with the interface you need and the repository will grow one rather than claim one today.
 
 ## Contributing
 
 To run the suite exactly as CI runs it, run:
 
 ```bash
+# Requires: Python 3.11+, and the repository checked out.
 git clone https://github.com/docket-dev-org/docket.git
 cd docket
 PYTHONPATH=src python3 -m pytest tests -ra
 ```
 
-That is 1196 tests in about three minutes, fully offline: no API keys, no network, no provider account.
-The whole gate is `make check` (1196 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
+That is 1196 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1196 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
 
 Two rules matter more than style:
 
