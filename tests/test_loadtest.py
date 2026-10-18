@@ -682,9 +682,9 @@ def test_the_report_is_written_with_sorted_keys(tmp_path, monkeypatch, ledger, f
         proxy.stop()
 
     text = written.read_text(encoding="utf-8")
-    assert text.strip() == json.dumps(
-        json.loads(text), sort_keys=True
-    ), "the report on disk is not the sorted form of itself"
+    assert text.strip() == json.dumps(json.loads(text), sort_keys=True), (
+        "the report on disk is not the sorted form of itself"
+    )
     pairs = json.loads(text, object_pairs_hook=lambda items: items)  # keeps the byte order
     keys = [key for key, _ in pairs]
     assert keys == sorted(keys), f"top-level keys are in insertion order, not sorted: {keys}"

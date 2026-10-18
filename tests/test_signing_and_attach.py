@@ -158,9 +158,9 @@ def test_sdk_inside_a_supervised_run_writes_through_the_boundary(tmp_path, fake_
     # boundary actually bound (the requested port is in `session.start`, and a run that asked for
     # "any free port" must not have a guessed number in its record).
     assert any("excluded" in note for note in supervisor_notes), supervisor_notes
-    assert any(
-        note.get("message") == "the boundary is listening on loopback" for note in supervisor_notes
-    ), supervisor_notes
+    assert any(note.get("message") == "the boundary is listening on loopback" for note in supervisor_notes), (
+        supervisor_notes
+    )
     for note in supervisor_notes:
         # Every supervisor note says what it is about; none of them is an unattributed sentence.
         assert note.get("message") or "excluded" in note, note
@@ -173,7 +173,7 @@ def test_sdk_standalone_still_writes_its_own_ledger_and_receipt(tmp_path):
     script.write_text(
         f"""
 import sys
-sys.path.insert(0, {str(REPO / 'src')!r})
+sys.path.insert(0, {str(REPO / "src")!r})
 import docket
 
 with docket.Session(docket_dir={str(docket_dir)!r}) as session:

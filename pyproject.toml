@@ -52,10 +52,10 @@ dev = [
   "pytest>=8",
   "pytest-cov>=5",
   # Pinned, not floored, and to the same version `.github/workflows/ci.yml` installs. Ruff's
-  # formatter is not stable between releases: 0.17 rewrites 17 files in this tree that 0.6.9 leaves
+  # formatter is not stable between releases: 0.17 rewrites 24 files in this tree that 0.6.9 leaves
   # alone (it joins implicitly concatenated string literals), so a floored requirement would give a
   # contributor a `make lint` that fails on files CI calls formatted — and a `make fmt` that
-  # rewrites seventeen of them. Moving the pin is a deliberate change: reformat, then bump both
+  # rewrites twenty-four of them. Moving the pin is a deliberate change: reformat, then bump both
   # places together.
   "ruff==0.17.0",
   "mkdocs-material>=9.5",

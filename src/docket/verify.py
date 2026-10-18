@@ -413,8 +413,7 @@ def verify_receipt(
                         report_row(
                             "usage-inclusion-proofs",
                             index,
-                            f"usage row {index} does not prove against the receipt's Merkle root "
-                            f"{root_value[:16]}…",
+                            f"usage row {index} does not prove against the receipt's Merkle root {root_value[:16]}…",
                         )
                 except ValueError as exc:
                     proof_failures += 1
@@ -1040,8 +1039,7 @@ def verify_receipt(
             declared_tokens = whole(stated_cache.get("avoided_tokens"), "the receipt's cache.avoided_tokens")
             if declared_tokens is None:
                 savings_problems.append(
-                    f"the receipt's cache.avoided_tokens is not a whole number: "
-                    f"{stated_cache.get('avoided_tokens')!r}"
+                    f"the receipt's cache.avoided_tokens is not a whole number: {stated_cache.get('avoided_tokens')!r}"
                 )
             elif declared_tokens != avoided_tokens_total:
                 savings_problems.append(

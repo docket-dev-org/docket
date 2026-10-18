@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install ruff==0.6.9 bandit
+      - run: pip install ruff==0.17.0 bandit
       - run: ruff check src tests spec examples tools assets
       - run: ruff format --check src tests spec examples tools assets
       - name: bandit (static security analysis)

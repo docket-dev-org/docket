@@ -315,9 +315,9 @@ def test_numbers_render_the_way_helm_renders_them(checker):
         -0.5: "-0.5",
     }
     for number, expected in helm_output.items():
-        assert (
-            checker._go_float(float(number)) == expected
-        ), f"Helm renders {number!r} as {expected!r}; this renderer says {checker._go_float(float(number))!r}"
+        assert checker._go_float(float(number)) == expected, (
+            f"Helm renders {number!r} as {expected!r}; this renderer says {checker._go_float(float(number))!r}"
+        )
 
 
 def test_a_template_that_does_not_say_what_type_it_means_renders_a_float(checker):

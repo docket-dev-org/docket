@@ -862,9 +862,9 @@ def test_the_production_coverage_map_covers_every_concept_it_claims_to():
         )
         for name, status in rows:
             base = re.split(r",| \(", status, maxsplit=1)[0].strip()
-            assert (
-                base in DOCUMENTED_STATUSES
-            ), f"{section} / {name}: status {status!r} is not one of the legend's: {DOCUMENTED_STATUSES}"
+            assert base in DOCUMENTED_STATUSES, (
+                f"{section} / {name}: status {status!r} is not one of the legend's: {DOCUMENTED_STATUSES}"
+            )
 
     total = sum(len(rows) for rows in found.values())
     for filename in ("README.md", "CHANGELOG.md"):
@@ -938,15 +938,15 @@ def test_the_resilience_practice_map_covers_every_practice_it_claims_to():
         for name, status in rows:
             base = re.split(r",| \(| / ", status, maxsplit=1)[0].strip()
             assert base in DOCUMENTED_STATUSES, (
-                f"{section} / {name}: status {status!r} is not one of the legend's: " f"{DOCUMENTED_STATUSES}"
+                f"{section} / {name}: status {status!r} is not one of the legend's: {DOCUMENTED_STATUSES}"
             )
         total += len(rows)
 
     assert total == 22, f"the practice map has {total} rows; twenty-two practices were catalogued"
     readme = (root / "README.md").read_text(encoding="utf-8")
-    assert (
-        f"{total} resilience practices" in readme
-    ), "the README no longer points at the practice map by its counted size"
+    assert f"{total} resilience practices" in readme, (
+        "the README no longer points at the practice map by its counted size"
+    )
 
 
 def test_every_failure_mode_in_the_fmea_names_a_detector_that_exists():
@@ -984,13 +984,13 @@ def test_every_failure_mode_in_the_fmea_names_a_detector_that_exists():
         paths = re.findall(r"`([A-Za-z0-9_./-]+\.(?:py|md|json|mjs|yaml|yml|toml))`", catcher)
         assert paths, f"{mode.strip()}: the catcher names no artefact to check"
         for path in paths:
-            assert (
-                root / path
-            ).exists(), f"{mode.strip()}: {path} is named as what catches this failure and is not in the tree"
+            assert (root / path).exists(), (
+                f"{mode.strip()}: {path} is named as what catches this failure and is not in the tree"
+            )
 
-    assert risks == sorted(
-        risks, reverse=True
-    ), f"the FMEA's rows are no longer ordered by risk, highest first: {risks}"
+    assert risks == sorted(risks, reverse=True), (
+        f"the FMEA's rows are no longer ordered by risk, highest first: {risks}"
+    )
 
 
 #: Documentation that a reader is expected to open, and therefore paths in it that a clone must
@@ -1120,9 +1120,9 @@ def test_the_documented_file_canary_notices_the_rule_that_hid_a_measurement():
     )
     current = _ignore_rules((REPO / ".gitignore").read_text(encoding="utf-8"))
     assert _ignoring_rule(current, target) is None, "the shipped .gitignore now hides a report the documentation names"
-    assert (
-        _ignoring_rule(current, "load-report.json") is not None
-    ), "the anchored rule must still ignore the copy `make load` writes to the repository root"
+    assert _ignoring_rule(current, "load-report.json") is not None, (
+        "the anchored rule must still ignore the copy `make load` writes to the repository root"
+    )
 
 
 #: The vocabulary the standards map's strength column is allowed to use. It is deliberately small:
@@ -1163,13 +1163,13 @@ def test_the_standards_map_states_a_source_and_a_strength_for_every_mechanism():
             f"no document identifier: {source[:120]}"
         )
         assert strength.startswith(STANDARDS_STRENGTHS), (
-            f"{mechanism}: strength {strength!r} is outside the vocabulary " f"{STANDARDS_STRENGTHS} the page defines"
+            f"{mechanism}: strength {strength!r} is outside the vocabulary {STANDARDS_STRENGTHS} the page defines"
         )
 
     companion = (root / "docs" / "sre-coverage.md").read_text(encoding="utf-8")
-    assert (
-        f"{len(rows)} mechanisms" in companion
-    ), f"docs/sre-coverage.md no longer quotes the standards map's size ({len(rows)} mechanisms)"
+    assert f"{len(rows)} mechanisms" in companion, (
+        f"docs/sre-coverage.md no longer quotes the standards map's size ({len(rows)} mechanisms)"
+    )
 
 
 def test_the_scan_skips_exactly_the_directories_the_site_stager_skips():
@@ -1190,7 +1190,7 @@ def test_the_scan_skips_exactly_the_directories_the_site_stager_skips():
     _sys.modules[name] = module
     spec.loader.exec_module(module)
     assert set(GENERATED_DIRECTORIES) == set(module.SKIP_DIRS) - {".git"}, (
-        f"this scan skips {sorted(GENERATED_DIRECTORIES)}; the stager skips " f"{sorted(module.SKIP_DIRS)}"
+        f"this scan skips {sorted(GENERATED_DIRECTORIES)}; the stager skips {sorted(module.SKIP_DIRS)}"
     )
 
 

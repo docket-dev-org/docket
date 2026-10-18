@@ -531,9 +531,9 @@ def test_a_run_never_records_its_own_evidence_as_the_agents_work(workspace: Path
     notes = [event.data for event in events if event.type == "note" and event.data.get("excluded")]
     assert notes, "the exclusion has to be in the record, not just in the code"
     assert notes[0]["excluded"] == ".docket/**"
-    assert (
-        ".docket/**" in result.receipt["policy"]["document"]["files"]["ignore"]
-    ), "the receipt embeds the policy that was in force, exclusion included"
+    assert ".docket/**" in result.receipt["policy"]["document"]["files"]["ignore"], (
+        "the receipt embeds the policy that was in force, exclusion included"
+    )
     assert set(result.receipt["ops"]["rollback"]["paths"]) == set(changed)
     assert (docket_dir / "runs").exists(), "the ledger survived the rollback"
     assert (docket_dir / "receipts").exists()

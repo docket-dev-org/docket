@@ -499,10 +499,10 @@ miss.
 
 | site | what the test asserted | what the second mutant did behind it |
 | --- | --- | --- |
-| `verify.py:857` | `… count: 'seven'` — the value, and not the type suffix beside it | `type(malformed[1]).__name__`: with two malformed rows of the *same* type the sentence reads identically either way, so the assertion could not see whose type was quoted |
+| `verify.py:856` | `… count: 'seven'` — the value, and not the type suffix beside it | `type(malformed[1]).__name__`: with two malformed rows of the *same* type the sentence reads identically either way, so the assertion could not see whose type was quoted |
 | `verify.py:870` | `p50 12 ms · p99 12 ms over 1 measured call(s)` | the fixture measured **one** call, where p50 and p99 are the same number: looking up the wrong percentile printed the same sentence, character for character |
-| `verify.py:1064` | `not [failure for failure in result.failures if "further origin problems" in failure]` | the stop condition counts a list, and its two spellings (`> 3` and `>= 3`) print the *same* sentence for every length except one: at exactly three the mutant adds "further origin problems: 0 more" where the original says nothing. The test holds exactly three now — a group naming the wrong model, a token count that does not match the call it cites, and the appendix key that both takes the call out of the cached-response record and stops the tally containing it — and asserts the four sentences that follow, plus the absence of a fifth |
-| `verify.py:1170` | that a group whose `hits` is not a positive count is refused | the guard refuses it, and the *tally* loop is a second pass over the same groups that does not skip them: with `int(group.get("hits") or 0)` mutated to `or 1`, the falsy count becomes the ledger's own count, the comparison agrees, and the second sentence about the same group is never written |
+| `verify.py:1062` | `not [failure for failure in result.failures if "further origin problems" in failure]` | the stop condition counts a list, and its two spellings (`> 3` and `>= 3`) print the *same* sentence for every length except one: at exactly three the mutant adds "further origin problems: 0 more" where the original says nothing. The test holds exactly three now — a group naming the wrong model, a token count that does not match the call it cites, and the appendix key that both takes the call out of the cached-response record and stops the tally containing it — and asserts the four sentences that follow, plus the absence of a fifth |
+| `verify.py:1168` | that a group whose `hits` is not a positive count is refused | the guard refuses it, and the *tally* loop is a second pass over the same groups that does not skip them: with `int(group.get("hits") or 0)` mutated to `or 1`, the falsy count becomes the ledger's own count, the comparison agrees, and the second sentence about the same group is never written |
 
 All four repairs are in `tests/test_cache.py` and marked in place: the assertion extended to include
 `(str)`; a second metered call with a different latency (`extra_latency=40`) so that the two
@@ -525,8 +525,8 @@ calls (absent is not zero), and a `mixed` basis over rows that are all one kind 
 falsifiable). The fifth was the worst of them: `not (reported and estimated)` weakened to `or` makes
 "mixed" unfalsifiable for exactly the case it exists for. Three are equivalents, demonstrated rather
 than argued: the two bool/`None` fast paths produce the same status *and the same sentence* for
-`true` and `null` (`verify.py:194` in `whole`, `verify.py:646` in the `by_model` normaliser), and the
-`breakdown_judged` flag at `verify.py:686` sits behind `if recomputed is not None` — a row whose cost
+`true` and `null` (`verify.py:194` in `whole`, `verify.py:645` in the `by_model` normaliser), and the
+`breakdown_judged` flag at `verify.py:687` sits behind `if recomputed is not None` — a row whose cost
 is not an amount fails `cost-recomputation` and the breakdown block is never entered, which is shown
 by probing both shapes and observing no `by-model-totals` verdict at all.
 
@@ -552,8 +552,8 @@ tests that closed them. Every other file's rows come from the run that produced 
 | site | mutant | verdict |
 | --- | --- | --- |
 | `verify.py:194` | `isinstance(value, bool) or value is None` → `and` | **equivalent.** `whole(True)` fails as a bool on one path and as the unparsable string `"True"` on the other, and `whole(None)` likewise; both routes record the same named failure with the same text. |
-| `verify.py:646` | the same expression in `quiet_whole`, the `by_model` normaliser | **equivalent.** Probed with `by_model[0].calls` set to `true` and to `null`: the mutant and the original both report `by_model['claude-sonnet-5'].calls is not a whole number`, character for character. |
-| `verify.py:686` | `breakdown_judged = True` → `False` in the arithmetic-failure branch | **unreachable.** The branch that sets it is inside `if recomputed is not None`; every input that could raise there (a non-numeric token count, a cost that is not an amount) fails `cost-recomputation` first and returns `recomputed = None`, so the derived-member block never runs — probed with both shapes, and `by-model-totals` is absent from the report in each. |
+| `verify.py:645` | the same expression in `quiet_whole`, the `by_model` normaliser | **equivalent.** Probed with `by_model[0].calls` set to `true` and to `null`: the mutant and the original both report `by_model['claude-sonnet-5'].calls is not a whole number`, character for character. |
+| `verify.py:687` | `breakdown_judged = True` → `False` in the arithmetic-failure branch | **unreachable.** The branch that sets it is inside `if recomputed is not None`; every input that could raise there (a non-numeric token count, a cost that is not an amount) fails `cost-recomputation` first and returns `recomputed = None`, so the derived-member block never runs — probed with both shapes, and `by-model-totals` is absent from the report in each. |
 | `canon.py:51` | `or` → `and` in the early return for bool/`None`/str | **equivalent.** The fallback at the end of `_normalise` returns those three types unchanged as well; the early return is a fast path, not a behaviour. |
 | `canon.py:139`, `canon.py:160` | `len(level) > 1` → `>=` and `1` → `0` in the `while` loop of `merkle_root` and of `merkle_proof` | **non-terminating, all four.** Each turns a one-node level into a level that is promoted to itself, so the tree never finishes. They exceed a 45 s per-mutant timeout (the same sites exceeded 120 s in an earlier run): reported as timeouts, never as kills, because a hang is not the suite noticing a wrong answer. |
 | `ledger.py:153,160,161,168` | `compare=False` → `True` on the clock, the two handles and the append lock | **equivalent.** Nothing compares two `Ledger` objects — the field option is declared so that a repr and a comparison cannot reach into a descriptor, and the *repr* half of the same declaration is killed by `test_the_repr_of_a_ledger_is_safe_to_put_in_a_log`. |
@@ -572,8 +572,8 @@ tests that closed them. Every other file's rows come from the run that produced 
 | `helm_fidelity.py:53` | `if spec is None or spec.loader is None` → `and` | **unreachable, and marked as such.** The guard carries `# pragma: no cover`; `spec` is `None` only when `spec_from_file_location` fails, and for a file that exists the loader it returns is never `None`. Reaching the branch needs an interpreter whose import machinery returns a loaderless spec. |
 | `helm_fidelity.py:105` | `zip(left, right, strict=True)` → `strict=False` | **equivalent.** The line above returns a length mismatch before the `zip` is built, so the two lists are always the same length by then and `strict` can never fire. A belt kept on after the braces. |
 | `ledger.py:680` | `except (ValueError, OverflowError)` → the two mutants of its `return False` | **unreachable on this kernel.** `os.kill` reports a pid no kernel would hand out as `ESRCH`, which is an `OSError` and is handled (and killed) by the branch above; this guard is for the platforms that raise `OverflowError` instead. |
-| `a11y_check.py:287` | `return []` → `return None`, the fallback of `_native_text_alternative` | **equivalent.** Its only caller is `if native:` — `None` and `[]` are both falsy and the caller never iterates the result, so no page can distinguish them. Deleting the fallback would not help: an early `return None` on every path is the same mutant wearing a different line number |
-| `a11y_check.py:130` | the parser's sentinel node `Node("root", {}, 1)` → line `0` | **equivalent.** The sentinel is not an element any rule reports — every rule walks `root.descendants()`, which starts at the children — so its own line number is read by nothing. It is a marker for the stack's floor, and `Node.line` is a field the sentinel has to fill |
+| `a11y_check.py:289` | `return []` → `return None`, the fallback of `_native_text_alternative` | **equivalent.** Its only caller is `if native:` — `None` and `[]` are both falsy and the caller never iterates the result, so no page can distinguish them. Deleting the fallback would not help: an early `return None` on every path is the same mutant wearing a different line number |
+| `a11y_check.py:132` | the parser's sentinel node `Node("root", {}, 1)` → line `0` | **equivalent.** The sentinel is not an element any rule reports — every rule walks `root.descendants()`, which starts at the children — so its own line number is read by nothing. It is a marker for the stack's floor, and `Node.line` is a field the sentinel has to fill |
 
 [^prefile]: Measured before the `_span` byte-offset fix in `tools/mutate.py` (see *Mutation
     testing*): the candidate count for `verify.py` and `ledger.py` here is lower than the number
@@ -640,11 +640,11 @@ Writing the tests that kill a mutant is where the defects were:
 
 Five of the eight survivors the 237-site sweep first reported were gaps in code that had been
 written hours earlier, and each is closed by a test that names the behaviour: an integral float in
-`by_model` (§3.2 normalises it — `verify.py:649`), the three usage-source counts omitted on a
+`by_model` (§3.2 normalises it — `verify.py:648`), the three usage-source counts omitted on a
 session with no metered calls, where `-1` is the only thing separating "absent" from "stated as
-zero" (`verify.py:758`–`:760`), and a `mixed` basis over rows that are all one kind, weakened to
+zero" (`verify.py:757`–`:759`), and a `mixed` basis over rows that are all one kind, weakened to
 `or` so that the claim is unfalsifiable in exactly the case the sentence exists for
-(`verify.py:800`). The worst of them is the last: it is not a crash and not a wrong sentence, but a
+(`verify.py:799`). The worst of them is the last: it is not a crash and not a wrong sentence, but a
 **pass** where the receipt's own classification is contradicted by its rows. They were found by
 mutation after the tests were green, which is the only reason they were found at all.
 

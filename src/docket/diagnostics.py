@@ -508,7 +508,7 @@ def self_test(*, keep_workspace: bool = False) -> tuple[list[Probe], Path]:
         add(
             "a failed call is not recorded as a successful one",
             len(errors) == 2 and not [e for e in ledger5 if e.type == ev.MODEL_RESPONSE],
-            f"{len(errors)} model.error, " f"{len([e for e in ledger5 if e.type == ev.MODEL_RESPONSE])} model.response",
+            f"{len(errors)} model.error, {len([e for e in ledger5 if e.type == ev.MODEL_RESPONSE])} model.response",
         )
         proxy5.stop()
 
@@ -627,8 +627,7 @@ def self_test(*, keep_workspace: bool = False) -> tuple[list[Probe], Path]:
             add(
                 "a failing write degrades the record visibly instead of silently",
                 False,
-                f"the probe itself failed ({probe_result.returncode}): "
-                f"{(probe_result.stderr or '').strip()[-200:]}",
+                f"the probe itself failed ({probe_result.returncode}): {(probe_result.stderr or '').strip()[-200:]}",
             )
         else:
             facts = json.loads(probe_result.stdout.strip().splitlines()[-1])

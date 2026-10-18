@@ -763,9 +763,9 @@ def test_the_docstring_rule_answers_with_exactly_true_or_false():
     assert mutate._is_docstring(statement.body[0], mutate._parents_of(statement)) is False
 
     number = ast.parse("5\n")
-    assert (
-        mutate._is_docstring(number.body[0].value, mutate._parents_of(number)) is False
-    ), "a bare number is wrapped in the same `ast.Expr` a docstring is"
+    assert mutate._is_docstring(number.body[0].value, mutate._parents_of(number)) is False, (
+        "a bare number is wrapped in the same `ast.Expr` a docstring is"
+    )
 
     assigned = ast.parse('value = "a string, but not a docstring"\n')
     assert mutate._is_docstring(assigned.body[0].value, mutate._parents_of(assigned)) is False

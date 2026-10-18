@@ -126,8 +126,7 @@ def test_the_search_box_rule_did_not_go_blind(checker, tmp_path: Path) -> None:
             "heading-order",
         ),
         (
-            "<!DOCTYPE html><html lang='en'><head><title>t</title></head><body>"
-            "<h1>a</h1><p>no main</p></body></html>",
+            "<!DOCTYPE html><html lang='en'><head><title>t</title></head><body><h1>a</h1><p>no main</p></body></html>",
             "main-landmark",
         ),
         (
@@ -560,9 +559,9 @@ def test_the_css_exemption_reads_the_subject_of_the_selector_not_its_ancestor(ch
     )
     root = site(tmp_path, {"index.html": page}, css=css)
     found, _, report = checker.check_site(root)
-    assert [(violation.rule, "unexempt" in violation.detail) for violation in found] == [
-        ("control-name", True)
-    ], "the control whose own class the rule does not name is still reported"
+    assert [(violation.rule, "unexempt" in violation.detail) for violation in found] == [("control-name", True)], (
+        "the control whose own class the rule does not name is still reported"
+    )
     assert report["classes_that_exempted_a_control"] == ["md-toggle"]
 
 

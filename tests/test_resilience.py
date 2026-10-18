@@ -636,9 +636,9 @@ def test_a_fault_argument_is_the_value_that_was_written():
     condition about `argument`, not a fallback computed from it.
     """
     assert [fault.fraction for fault in parse_fault_spec("truncate=0.8")] == [0.8]
-    assert [fault.fraction for fault in parse_fault_spec("truncate")] == [
-        0.5
-    ], "the documented default, and only when the argument is absent"
+    assert [fault.fraction for fault in parse_fault_spec("truncate")] == [0.5], (
+        "the documented default, and only when the argument is absent"
+    )
     assert [fault.seconds for fault in parse_fault_spec("slow=2s")] == [2.0]
     assert [fault.seconds for fault in parse_fault_spec("delay")] == [1.0]
     assert [fault.probability for fault in parse_fault_spec("drop:0.25")] == [0.25]

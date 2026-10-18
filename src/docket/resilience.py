@@ -430,7 +430,7 @@ def parse_fault_spec(spec: str) -> list[Fault]:
             # only honest option: a chaos flag that quietly does something else is worse
             # than no flag at all.
             raise ValueError(
-                f"{token!r} sets a value on {kind!r}, which takes none; write {kind}:{argument} " "for a probability"
+                f"{token!r} sets a value on {kind!r}, which takes none; write {kind}:{argument} for a probability"
             )
         elif kind == "truncate":
             try:

@@ -325,7 +325,7 @@ def test_the_usage_row_counts_in_the_failure_message_are_exact(make_receipt):
     ), summary.detail
     # ... and the re-binding line, which counts the rows the *ledger* disagrees with.
     assert rebound[-1].detail == (
-        "2 of 10 usage rows are not the events the recomputed ledger has at those sequence numbers " "(7 re-bound)"
+        "2 of 10 usage rows are not the events the recomputed ledger has at those sequence numbers (7 re-bound)"
     ), rebound[-1].detail
 
     # The per-row reports are capped per check, so one kind of defect cannot spend the whole
@@ -692,9 +692,9 @@ def test_an_unreadable_usage_appendix_is_reported_instead_of_recomputed(make_rec
     assert "not readable" in recomputation.detail, recomputation.detail
     # And nothing claims there were no calls: an unreadable appendix is not an empty one. The
     # failure above is the only thing said about those rows.
-    assert not [
-        check for check in result.checks if check.name == "every-usage-row-recomputed"
-    ], "an unreadable appendix must not be reported as a session with no metered calls"
+    assert not [check for check in result.checks if check.name == "every-usage-row-recomputed"], (
+        "an unreadable appendix must not be reported as a session with no metered calls"
+    )
 
 
 def test_one_kind_of_bad_usage_row_cannot_flood_the_report(make_receipt):

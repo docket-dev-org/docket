@@ -136,7 +136,7 @@ def child_main() -> int:
     )
     (workdir / "src" / "reconcile_fix.py").write_text("TOLERANCE = 0.0\n", encoding="utf-8")
     (workdir / ".env").write_text(
-        "# written by the agent, inside the deny_write scope\n" "AWS_SECRET_ACCESS_KEY=demo-not-a-real-key\n",
+        "# written by the agent, inside the deny_write scope\nAWS_SECRET_ACCESS_KEY=demo-not-a-real-key\n",
         encoding="utf-8",
     )
 

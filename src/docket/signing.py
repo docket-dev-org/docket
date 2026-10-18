@@ -119,7 +119,7 @@ def ed25519_available() -> bool:
 def generate_keypair(private_path: str | os.PathLike[str]) -> str:
     """Create an Ed25519 keypair; returns the public key as hex."""
     if not ed25519_available():  # pragma: no cover - environment dependent
-        raise RuntimeError("Ed25519 signing needs the optional 'cryptography' package: " "pip install 'docket[sign]'")
+        raise RuntimeError("Ed25519 signing needs the optional 'cryptography' package: pip install 'docket[sign]'")
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 

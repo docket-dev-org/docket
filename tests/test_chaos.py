@@ -355,9 +355,9 @@ def test_the_reference_agent_can_repeat_itself_identically_and_normally_does_not
                 if str(request["path"]).endswith("/chat/completions")
             ]
             assert len(bodies) == 3, f"{mode}: the agent should have made three calls, got {len(bodies)}"
-            assert (
-                len(set(bodies)) == 1
-            ) is expect_identical, f"{mode}: identical={len(set(bodies)) == 1}, expected identical={expect_identical}"
+            assert (len(set(bodies)) == 1) is expect_identical, (
+                f"{mode}: identical={len(set(bodies)) == 1}, expected identical={expect_identical}"
+            )
     finally:
         upstream.stop()
 
@@ -397,9 +397,9 @@ def test_a_phase_policy_is_that_phases_policy_and_not_the_previous_phases() -> N
     assert cache_phase.cache.enabled and cache_phase.cache.max_hits == 2
     pressure = _phase_policy(next(p for p in GAME_DAY_PHASES if p.name == "ledger-pressure"), shared)
     assert pressure.resilience.max_events == 8
-    assert (
-        pressure.resilience.max_calls_per_second is None
-    ), "the ledger-pressure phase inherited the rate-limit phase's bucket"
+    assert pressure.resilience.max_calls_per_second is None, (
+        "the ledger-pressure phase inherited the rate-limit phase's bucket"
+    )
 
 
 def test_the_cache_brake_phase_proves_a_saving_and_the_ceiling_that_ends_it(tmp_path: Path):

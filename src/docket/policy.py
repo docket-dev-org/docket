@@ -335,7 +335,7 @@ class Policy:
             return list(default or [])
         if isinstance(value, str):
             raise ValueError(
-                f"{section}.{key} must be a list of strings, got the string {value!r} " f'(write it as ["{value}"])'
+                f'{section}.{key} must be a list of strings, got the string {value!r} (write it as ["{value}"])'
             )
         if isinstance(value, bool | int | float | dict):
             raise ValueError(f"{section}.{key} must be a list of strings, got {type(value).__name__}")

@@ -69,7 +69,7 @@ def main() -> int:
         else:
             session.record_model_call(model="claude-haiku-4.5", input_tokens=800, output_tokens=120)
 
-        print(f"recorded  {session.calls} model call(s), {session.tokens:,} tokens, " f"${session.cost} attributed")
+        print(f"recorded  {session.calls} model call(s), {session.tokens:,} tokens, ${session.cost} attributed")
 
     receipt = session.receipt
     print(

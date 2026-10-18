@@ -86,7 +86,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SITE = ROOT / "site"
 
 #: Elements that never have children, so a tree builder must not push them.
-VOID = frozenset("area base br col embed hr img input link meta param source track wbr".split())
+VOID = frozenset(
+    ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]
+)
 #: Elements whose text is code, not prose: never part of an accessible name.
 OPAQUE = frozenset(("script", "style", "template"))
 #: Form controls, and the input types whose accessible name a person never hears.

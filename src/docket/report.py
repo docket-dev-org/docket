@@ -140,9 +140,7 @@ def render_receipt(receipt: dict[str, Any], *, color: bool = True, show_findings
     ops = receipt.get("ops") or {}
     snapshot = ops.get("snapshot")
     if snapshot and snapshot.get("taken"):
-        detail = (
-            f"snapshot: {snapshot.get('files', 0)} file(s), " f"{human_bytes(snapshot.get('bytes_stored', 0))} stored"
-        )
+        detail = f"snapshot: {snapshot.get('files', 0)} file(s), {human_bytes(snapshot.get('bytes_stored', 0))} stored"
         if snapshot.get("not_covered"):
             detail += _paint(f"  {len(snapshot['not_covered'])} not covered", YELLOW, color)
         lines.append(_row("undo", detail, color))

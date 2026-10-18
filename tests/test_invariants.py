@@ -384,9 +384,9 @@ def test_a_stopped_boundary_hands_back_every_socket_it_listened_on(tmp_path):
         if not any(thread.name == "docket-proxy" for thread in threading.enumerate()):
             break
         time.sleep(0.05)
-    assert not any(
-        thread.name == "docket-proxy" for thread in threading.enumerate()
-    ), "the boundary's serving thread must stop with the boundary"
+    assert not any(thread.name == "docket-proxy" for thread in threading.enumerate()), (
+        "the boundary's serving thread must stop with the boundary"
+    )
 
 
 def test_a_killed_supervisor_leaves_evidence_and_no_lie(tmp_path):
@@ -438,9 +438,9 @@ def test_a_killed_supervisor_leaves_evidence_and_no_lie(tmp_path):
     assert diagnostics["healthy"] in (True, False), "classification never raises on a killed run"
     for path in (docket_dir / "receipts").glob("*.receipt.json"):
         receipt = json.loads(path.read_text(encoding="utf-8"))
-        assert (
-            receipt["session"]["exit_code"] != 0 or receipt["session"]["breached"]
-        ), "a receipt written for a killed run must not present it as a clean exit"
+        assert receipt["session"]["exit_code"] != 0 or receipt["session"]["breached"], (
+            "a receipt written for a killed run must not present it as a clean exit"
+        )
     upstream.stop()
 
 
@@ -641,9 +641,9 @@ def test_the_backoff_helper_honours_the_header_and_stays_bounded(tmp_path):
         assert limited, "the boundary's refusal is evidence, not a stderr line"
         assert all("retry_after_seconds" in event.data for event in limited)
         assert result.receipt["session"]["exit_code"] in (0, EXIT_CAP_EXCEEDED)
-        assert not [
-            event for event in events if event.type == "model.error"
-        ], "no event failed to encode: a note that cannot be written is a silent lie"
+        assert not [event for event in events if event.type == "model.error"], (
+            "no event failed to encode: a note that cannot be written is a silent lie"
+        )
     finally:
         upstream.stop()
 

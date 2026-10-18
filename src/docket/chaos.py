@@ -241,8 +241,7 @@ def audit_run(
         check(
             "throttled calls are recorded with the limiter's own state and a retry hint",
             "pass" if (names_limiter and hints_present) else "fail",
-            f"{limited} throttle event(s); limiter snapshot on each: {names_limiter}; "
-            f"retry_after_seconds={hints[:3]}",
+            f"{limited} throttle event(s); limiter snapshot on each: {names_limiter}; retry_after_seconds={hints[:3]}",
         )
         if summary is not None:
             check(
@@ -312,8 +311,7 @@ def audit_run(
         check(
             "a non-zero exit is explained by a recorded cause",
             "pass" if explained else "fail",
-            f"exit {exit_code}; caps={len(facts['cap_events'])}, denials={facts['denials']}, "
-            f"errors={facts['errors']}",
+            f"exit {exit_code}; caps={len(facts['cap_events'])}, denials={facts['denials']}, errors={facts['errors']}",
         )
     # 10. Ledger ceiling: when the record refuses to grow, the run must stop.
     ledger_caps = [c for c in facts["cap_events"] if c.get("cap") in {"max_events", "max_ledger_bytes"}]
@@ -452,8 +450,7 @@ def render_chaos(outcome: dict[str, Any]) -> str:
     failed = [c for c in outcome["checks"] if c["status"] == "fail"]
     skipped = [c for c in outcome["checks"] if c["status"] == "skip"]
     lines.append(
-        f"  {len(outcome['checks']) - len(failed) - len(skipped)} passed, {len(failed)} failed, "
-        f"{len(skipped)} skipped"
+        f"  {len(outcome['checks']) - len(failed) - len(skipped)} passed, {len(failed)} failed, {len(skipped)} skipped"
     )
     lines.append("")
     if outcome["receipt_path"]:
@@ -1200,8 +1197,7 @@ def render_post_mortem(report: dict[str, Any]) -> str:
         "one supervisor per run."
     )
     lines.append(
-        "- Clock skew across machines is not corrected: timestamps are recording-time evidence, not "
-        "wall-clock truth."
+        "- Clock skew across machines is not corrected: timestamps are recording-time evidence, not wall-clock truth."
     )
     lines.append(
         "- The fake upstream used by the offline commands is deliberately single-node; upstream "

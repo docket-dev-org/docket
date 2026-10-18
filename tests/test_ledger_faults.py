@@ -261,9 +261,9 @@ def test_a_write_that_fails_degrades_the_record_visibly():
     # the receipt built from a damaged ledger has to be able to say *what* was not recorded, not
     # merely that something was not. `tools/mutate.py` emptied `data` on this path and no test
     # disagreed, because the assertions were about counts rather than contents.
-    assert (
-        facts["recorded_with_data"] == facts["recorded_events"]
-    ), f"{facts['recorded_events'] - facts['recorded_with_data']} in-memory event(s) lost their data"
+    assert facts["recorded_with_data"] == facts["recorded_events"], (
+        f"{facts['recorded_events'] - facts['recorded_with_data']} in-memory event(s) lost their data"
+    )
     assert facts["first_unwritten_data"], "the first unwritten event must keep its payload"
     assert facts["first_unwritten_data"]["padding"] == "x" * 200
 

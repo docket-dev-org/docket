@@ -1438,9 +1438,9 @@ def test_a_group_that_claims_no_hits_is_refused(tmp_path):
         result = verify_receipt(receipt, ledger_events=ledger.events)
         assert not result.ok
         assert _naming(result, "does not say how many hits it counts: 0"), result.failures
-        assert _naming(
-            result, f"claims 0 hit(s) replaying seq {group['origin_seq']}; the ledger records 1"
-        ), result.failures
+        assert _naming(result, f"claims 0 hit(s) replaying seq {group['origin_seq']}; the ledger records 1"), (
+            result.failures
+        )
     finally:
         ledger.close()
 
@@ -1663,9 +1663,9 @@ def test_the_latency_check_names_the_first_malformed_row(tmp_path):
         # The whole sentence, type suffix included: `malformed[0]` appears twice on that line, and
         # an assertion that stops before `(str)` leaves the second half unpinned — mutating the
         # *type* lookup then reports the second row's type while still naming the first row's value.
-        assert _naming(
-            result, "a latency that is not a whole, non-negative millisecond count: 'seven' (str)"
-        ), result.failures
+        assert _naming(result, "a latency that is not a whole, non-negative millisecond count: 'seven' (str)"), (
+            result.failures
+        )
     finally:
         ledger.close()
 

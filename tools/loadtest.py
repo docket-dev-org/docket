@@ -422,7 +422,7 @@ def _rss_cell(rss: dict[str, int]) -> str:
         return f"not measured (the run was too short for a trend: {rss['samples']} usable sample(s))"
     growth = rss["end"] - rss["start"]
     peak = f", peak {rss['peak_kib']} KiB by `VmHWM`" if rss["peak_kib"] >= 0 else ""
-    return f"start {rss['start']} KiB → end {rss['end']} KiB over {rss['samples']} samples " f"({growth:+d} KiB){peak}"
+    return f"start {rss['start']} KiB → end {rss['end']} KiB over {rss['samples']} samples ({growth:+d} KiB){peak}"
 
 
 def markdown(report: dict[str, Any]) -> str:
