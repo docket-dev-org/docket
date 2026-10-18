@@ -1,13 +1,19 @@
 name: docs site
 
-# Manual on purpose. Deploying Pages requires the repository's Pages source to be set to
-# "GitHub Actions" first, and a workflow that fails until someone flips a setting teaches
-# people to ignore red Xs on `main`. Enable Pages (Settings → Pages → Source: GitHub Actions),
-# then run this once from the Actions tab. Afterwards, if you want the site rebuilt on every
-# push, change `workflow_dispatch` below to `push: branches: [main]` with `paths: [docs/**,
-# mkdocs.yml, tools/build_docs_site.py, README.md]`.
-
+# Rebuilds on every push that touches the docs, and can still be run by hand. The workflow
+# used to be manual-only on purpose: deploying Pages needs the repository's Pages source set
+# to "GitHub Actions" first, and a workflow that fails until someone flips a setting teaches
+# people to ignore red Xs on `main`. Pages was enabled during publication and this workflow
+# has since run green from a dispatch, so the rebuild is now automatic.
 on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "tools/build_docs_site.py"
+      - "README.md"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
