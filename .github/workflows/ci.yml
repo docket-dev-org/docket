@@ -118,10 +118,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install the checker's dependency
+      - name: Install the checker's dependencies
         # PyYAML reads the manifests. Without it tools/deploy_check.py exits 2 — a failed run, never a
         # silent pass — and this step is what stops that from being discovered by a user.
-        run: pip install pyyaml
+        # pytest is needed by the step below, which proves the checker can actually fail; the
+        # runner image ships neither, so both are installed here rather than assumed.
+        run: pip install pyyaml pytest
       - name: Check deploy/ (manifests, chart, compose, Dockerfile)
         run: make deploy-check
       - name: The checker fails on a broken artefact
