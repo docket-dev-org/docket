@@ -82,6 +82,14 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   optional `cryptography` package is absent. Documented in the CLI reference, and tested end to
   end: keygen, sign, verify, and a tampered receipt that fails both the totals and the signature.
 
+- **Two `assert`s were added to narrow a type, and `bandit` refused them.** An `assert` is
+  removed under `python -O`, and a tool whose whole claim is that it does not skip checks cannot
+  rest one on a statement the interpreter is entitled to delete. `verify.py` now tests
+  `chain_problem` directly — which is the narrowing that was wanted anyway, and drops the
+  `chain_ok` alias that made the tuple unreachable — and `policy.py` raises for the case that
+  cannot happen rather than asserting it. The line citations in `docs/testing.md` moved with the
+  code and were re-checked against the harness's site list again.
+
 - **Eight definitions in the package were dead code.** `generate_keypair` was the visible one —
   `docket run --sign` was a flag with no way to produce a key, and the function that could have
   produced one was invisible. Seven more had the same shape: `short_hash`, `mb`,

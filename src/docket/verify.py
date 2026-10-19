@@ -253,11 +253,15 @@ def verify_receipt(
         )
     else:
         chain_problem = Ledger(events=events).chain_error()
-        chain_ok = chain_problem is None
-        if chain_ok:
+        # `chain_problem` is tested directly rather than through a `chain_ok` alias: the alias
+        # was a bool, so the tuple was unreachable in the branch that unpacks it. An `assert`
+        # would have narrowed it too, but an assert is removed under `python -O`, and a tool
+        # whose whole claim is that it does not skip checks cannot rest one on that.
+        if chain_problem is None:
+            chain_ok = True
             add("ledger-chain", "pass", f"{len(events)} events, every hash and link recomputed")
         else:
-            assert chain_problem is not None, "chain_ok is False exactly when chain_problem is not None"
+            chain_ok = False
             seq, reason = chain_problem
             add("ledger-chain", "fail", f"broken at event #{seq}: {reason}")
         # Every downstream comparison uses *recomputed* hashes, never the hashes stored

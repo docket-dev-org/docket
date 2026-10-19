@@ -723,7 +723,8 @@ def _resilience_from(raw: dict[str, Any]) -> Resilience:
     # default cannot return None. The helper cannot see that, so the calls state it.
     def required(section: str, key: str, fallback: int) -> int:
         value = _whole_key(section, key, raw.get(key), fallback)
-        assert value is not None, f"{section}.{key} has a default and cannot resolve to None"
+        if value is None:  # pragma: no cover - a default that is not None cannot produce None
+            raise ValueError(f"{section}.{key} has a default and cannot resolve to None")
         return value
 
     resilience = Resilience(
