@@ -75,7 +75,8 @@ def _usage_rows(events: list[Event], proofs: dict[int, list[dict[str, str]]] | N
         # A row for a response that the cache kept carries the key it was kept under,
         # which is what lets a reader check a cache hit without the ledger: the hit
         # names the key and the origin sequence, and this row is that sequence.
-        cache_meta = data.get("cache") if isinstance(data.get("cache"), dict) else {}
+        _raw = data.get("cache")
+        cache_meta = _raw if isinstance(_raw, dict) else {}
         if cache_meta.get("stored") is True and cache_meta.get("key"):
             row["cache_key"] = str(cache_meta["key"])
         if proofs is not None and event.seq in proofs:

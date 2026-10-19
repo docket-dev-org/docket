@@ -196,6 +196,39 @@ def test_the_node_verifier_in_the_wheel_is_the_one_in_the_repository():
     assert resolved.read_bytes() == (root / "verify-js" / "verify.mjs").read_bytes()
 
 
+def test_the_typing_classifier_is_backed_by_a_marker_and_a_clean_check() -> None:
+    """`Typing :: Typed` and `py.typed` are a claim, and the claim has three parts.
+
+    The classifier said the package was typed and the wheel shipped no `py.typed`, so no
+    consumer's type checker would read the annotations at all. That is invisible from the
+    repository: `pip install` succeeds, the tests pass, and nothing compares the claim to the
+    artefact. Two of the three parts are checked here, offline:
+
+    * `src/docket/py.typed` exists, so the annotations ship;
+    * `[project]` declares the classifier and `requires-python` together, because a marker
+      without the classifier is the same claim made only half-way.
+
+    The third part — that the annotations are *correct* — is mypy's, and it runs in CI. That is
+    the part that mattered: the package was annotated all along, and 65 of those annotations
+    were wrong, which nobody could see because nothing asked. Running mypy here as well would
+    need mypy in the test dependencies, which the package deliberately does not have.
+    """
+    import tomllib
+
+    root = Path(__file__).resolve().parents[1]
+    marker = root / "src" / "docket" / "py.typed"
+    assert marker.is_file(), (
+        "src/docket/py.typed is missing: the Typing :: Typed classifier is a claim no type "
+        "checker can act on without it"
+    )
+
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    assert "Typing :: Typed" in project.get("classifiers", []), (
+        "the Typing :: Typed classifier is gone while src/docket/py.typed ships: the marker would be an unclaimed one"
+    )
+    assert project.get("requires-python", "").startswith(">=3.11"), "the typing claim needs 3.11+"
+
+
 def test_the_version_is_written_in_exactly_one_place() -> None:
     """Every claim about which version is running must come from one derivation.
 

@@ -503,7 +503,8 @@ def apply_restore(
                     }
                 )
                 continue
-            mode = _mode_of(item, item.get("mode_honoured") if isinstance(item.get("mode_honoured"), int) else 0)
+            honoured = item.get("mode_honoured")
+            mode = _mode_of(item, honoured if isinstance(honoured, int) else 0)
             if observed == expected and _current_mode(path) == mode:
                 # The file already holds the bytes the snapshot wants, with the mode the plan
                 # would apply: an earlier run of this same command, or the operator putting it

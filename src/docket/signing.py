@@ -141,8 +141,19 @@ def sign(receipt_core: dict[str, Any], private_path: str | os.PathLike[str]) -> 
     if not ed25519_available():  # pragma: no cover - environment dependent
         raise RuntimeError("Ed25519 signing needs the optional 'cryptography' package")
     from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     key = serialization.load_pem_private_key(Path(private_path).read_bytes(), password=None)
+    if not isinstance(key, Ed25519PrivateKey):
+        # `load_pem_private_key` returns a union of every key type the library supports, and most
+        # of them have no `.sign(data)` — RSA needs padding and an algorithm, DSA needs an
+        # algorithm, ECDSA needs a signature algorithm. Refusing here names the key that was
+        # supplied; letting it through would be an AttributeError from inside the library, which
+        # tells a reader nothing about which file is wrong.
+        raise ValueError(
+            f"{private_path} holds a {type(key).__name__}, not an Ed25519 private key; "
+            "generate one with `docket keygen` or OpenSSL's `genpkey -algorithm ed25519`"
+        )
     signature = key.sign(canonical_bytes(receipt_core))
     public = key.public_key().public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)
     return {"alg": ALG_SIGN, "public_key": public.hex(), "value": base64.b16encode(signature).decode().lower()}

@@ -23,6 +23,7 @@ seconds or "somewhere around two seconds".
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from typing import TypeGuard
 
 #: The percentile rule this module implements. Named in every summary it produces, checked by
 #: every verifier that reads one, and normative in ``spec/docket-receipt-1.md`` §6.3.
@@ -43,8 +44,13 @@ class LatencyError(ValueError):
     """
 
 
-def is_latency(value: object) -> bool:
-    """True when ``value`` may be recorded as a latency: an ``int`` (not a ``bool``) >= 0."""
+def is_latency(value: object) -> TypeGuard[int]:
+    """True when ``value`` may be recorded as a latency: an ``int`` (not a ``bool``) >= 0.
+
+    A ``TypeGuard`` rather than a plain ``bool`` so that a caller which rejects the value narrows
+    it in the fall-through path: ``as_latency`` below does exactly that, and without the guard
+    ``int(value)`` is a conversion from ``object`` that no overload of ``int`` accepts.
+    """
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
@@ -52,7 +58,7 @@ def as_latency(value: object, *, where: str = "latency_ms") -> int:
     """``value`` as a latency, or raise :class:`LatencyError` naming where it came from."""
     if not is_latency(value):
         raise LatencyError(f"{where} is not a whole number of milliseconds: {value!r}")
-    return int(value)  # type: ignore[arg-type]
+    return int(value)
 
 
 def percentile_ms(values: Sequence[int], percent: int) -> int:

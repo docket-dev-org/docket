@@ -622,7 +622,7 @@ def _phase_policy(phase: Phase, base: Policy) -> Policy:
     """
     policy = deepcopy(base)
     if phase.policy_mutator == "per_second":
-        policy.resilience.max_calls_per_second = 2
+        policy.resilience.max_calls_per_second = Decimal(2)
     elif phase.policy_mutator == "max_events":
         policy.resilience.max_events = 8
     elif phase.policy_mutator == "cache":
@@ -776,8 +776,10 @@ def _cache_checks(record: dict[str, Any]) -> list[dict[str, str]]:
     not a checkable statement; those three are.
     """
     checks: list[dict[str, str]] = []
-    block = record.get("receipt_cache") if isinstance(record.get("receipt_cache"), dict) else None
-    totals = record.get("receipt_totals") if isinstance(record.get("receipt_totals"), dict) else {}
+    _raw = record.get("receipt_cache")
+    block = _raw if isinstance(_raw, dict) else None
+    _raw = record.get("receipt_totals")
+    totals = _raw if isinstance(_raw, dict) else {}
     facts = record.get("facts") or {}
     hits = int(facts.get("cache_hits") or 0)
     checks.append(

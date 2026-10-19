@@ -42,6 +42,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -147,7 +148,6 @@ def collect_diagnostics(docket_dir: Path) -> dict[str, Any]:
     runs = sorted((docket_dir / "runs").glob("*.jsonl")) if (docket_dir / "runs").exists() else []
     receipts = sorted((docket_dir / "receipts").glob("*.receipt.json")) if (docket_dir / "receipts").exists() else []
     torn = sorted((docket_dir / "runs").glob("*.torn-*")) if (docket_dir / "runs").exists() else []
-    free = None
     # A free-space figure is nice to have; an unreadable filesystem is not a reason to
     # withhold the rest of the report. `None` says "not known", which the renderer prints.
     free: int | None = None
@@ -441,7 +441,7 @@ def self_test(*, keep_workspace: bool = False) -> tuple[list[Probe], Path]:
 
         # -- 4. cap enforcement --------------------------------------------- #
         ledger3 = Ledger.open(workspace / "runs" / "cap.jsonl", max_bytes=None)
-        capped = Policy(name="cap", caps=Caps(max_usd="0.001", on_breach="deny"))
+        capped = Policy(name="cap", caps=Caps(max_usd=Decimal("0.001"), on_breach="deny"))
         proxy3 = RecordingProxy(
             ledger=ledger3,
             policy=capped,

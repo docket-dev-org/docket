@@ -455,6 +455,8 @@ class Supervisor:
         proc: subprocess.Popen[bytes] | None = None
         exit_code = EXIT_INTERNAL
         interrupted = False
+        # Keyed by signal *number*, and the values are the handlers `signal.signal` returns:
+        # either a callable or one of the SIG_* constants, which is why the value type is `Any`.
         previous_handlers: dict[int, Any] = {}
 
         try:
@@ -478,12 +480,18 @@ class Supervisor:
 
             for sig in (signal.SIGINT, signal.SIGTERM):
                 with contextlib.suppress(ValueError, OSError):  # pragma: no cover - non-main thread
-                    previous_handlers[sig] = signal.signal(sig, _forward)
+                    # `signal.signal` is overloaded on the signal type; the return is the
+                    # previous handler, which mypy types through the `Signals` overload.
+                    previous_handlers[sig] = signal.signal(sig, _forward)  # type: ignore[assignment]
 
             exit_code = self._supervise(proc, breach_state, started_mono, ledger, proxy)
         finally:
-            for sig, handler in previous_handlers.items():
+            # `signal.signal` is overloaded on the signal type, so mypy resolves the loop
+            # variable through the `Signals` overload and rejects the int key. The dict is keyed
+            # by number because that is what `signal.signal` hands back.
+            for sig, handler in previous_handlers.items():  # type: ignore[assignment]
                 with contextlib.suppress(ValueError, OSError):  # pragma: no cover
+                    # `handler` is `Any` because that is what `signal.signal` hands back.
                     signal.signal(sig, handler)
 
         # -- filesystem evidence -------------------------------------------- #
@@ -591,7 +599,7 @@ class Supervisor:
             snapshot=self.snapshot,
             rollback=self.rollback,
             seal_key=self.seal_key,
-            sign_key=self.sign_key,
+            sign_key=Path(self.sign_key) if self.sign_key is not None else None,
             label=self.label,
             breaker=breaker,
             limiter=limiter,

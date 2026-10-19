@@ -22,9 +22,15 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install ruff==0.17.0 bandit
+      - run: pip install ruff==0.17.0 bandit mypy
       - run: ruff check src tests spec examples tools assets
       - run: ruff format --check src tests spec examples tools assets
+      - name: mypy (the package is annotated, so the annotations are held to it)
+        # The `Typing :: Typed` classifier and the `py.typed` marker are a claim that a
+        # consumer's type checker can read this package's annotations. Without this job the
+        # claim is decoration: the package was annotated all along, and 65 of those
+        # annotations were wrong, which nobody could see because nothing asked.
+        run: mypy --ignore-missing-imports src/docket
       - name: bandit (static security analysis)
         # The suppressions live in [tool.bandit] in pyproject.toml, each with its reason.
         # What remains has to be clean: this is a tool whose whole pitch is that a run is

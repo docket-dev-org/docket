@@ -210,7 +210,9 @@ def _rate(value: object, *, what: str) -> float:
     if isinstance(value, bool):
         raise ValueError(f"{what} must be a number, not a bool: {value!r}")
     try:
-        number = float(value)  # type: ignore[arg-type] - anything with __float__, checked next
+        # `object` has no `__float__` in the stub, so the call is unchecked; the guard below
+        # is what actually decides, and it rejects anything that is not a number.
+        number = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{what} must be a number, not {type(value).__name__}: {value!r}") from exc
     if not math.isfinite(number) or number <= 0:
@@ -223,8 +225,13 @@ def _count(value: object, *, what: str, minimum: int = 1) -> int:
     if isinstance(value, bool):
         raise ValueError(f"{what} must be a whole number, not a bool: {value!r}")
     try:
-        number = int(value)  # type: ignore[arg-type]
-        exact = float(value) == number  # type: ignore[arg-type] - rejects 2.5, accepts "2"
+        # `object` has no `__int__` in the stubs, so mypy reports `call-overload`, not
+        # `arg-type`. The guard above has already refused the only value that matters (a bool);
+        # the try/except below is what decides everything else.
+        number = int(value)  # type: ignore[call-overload]
+        # The comparison rejects 2.5 and accepts "2": `int("2") == 2.0` is true,
+        # `int("2.5")` raises, and `int(2.5) == 2.0` is false.
+        exact = float(value) == number  # type: ignore[arg-type]
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{what} must be a whole number, not {type(value).__name__}: {value!r}") from exc
     if not exact:

@@ -190,11 +190,17 @@ def run_demo(
 
     epoch = 1_792_000_000.0  # a fixed clock keeps the demo reproducible
 
-    def clock() -> str:
-        clock.tick += 0.41
-        return time.strftime("%H:%M:%S", time.gmtime(epoch + clock.tick))
+    # A closure that carries its own tick. An attribute on a function is the shortest way to say
+    # it, and mypy needs the class spelling to accept it, so it is spelled out here.
+    class _Clock:
+        def __init__(self) -> None:
+            self.tick = 0.0
 
-    clock.tick = 0.0  # type: ignore[attr-defined]
+        def __call__(self) -> str:
+            self.tick += 0.41
+            return time.strftime("%H:%M:%S", time.gmtime(epoch + self.tick))
+
+    clock = _Clock()
 
     monotonic_value = {"t": 0.0}
 
@@ -204,6 +210,8 @@ def run_demo(
 
     policy = Policy(
         name="demo: stop a runaway agent",
+        # `max_usd` is the string the CLI handed over; `Caps.__post_init__` converts and
+        # validates it, which is the one sanctioned path from a typed flag to a Decimal cap.
         caps=Caps(max_usd=max_usd, warn_at=0.7, on_breach="kill", grace_seconds=2.0),
         files=Files(watch=["."], ignore=[".docket/**"], deny_write=[".env", "**/.env"]),
         cache=Cache(enabled=cache, max_hits=DEMO_CACHE_MAX_HITS if cache else 1000),

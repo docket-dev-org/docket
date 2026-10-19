@@ -10,7 +10,7 @@ build-backend = "hatchling.build"
 # The *import* name, the console script and the command a user types are all still `docket`;
 # only the thing `pip install` names is different. See README.md and PUBLISHING.md.
 name = "docket-ai"
-version = "0.1.2"
+version = "0.1.3"
 description = "Every AI agent run gets a docket number: hard spending caps and a tamper-evident receipt anyone can verify offline."
 readme = "README.md"
 requires-python = ">=3.11"

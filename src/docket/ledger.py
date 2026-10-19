@@ -41,7 +41,7 @@ import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from .canon import canonical_bytes, merkle_root, sha256_hex
 from .resilience import EvidenceGuard
@@ -360,7 +360,11 @@ class Ledger:
     def __enter__(self) -> Ledger:
         return self
 
-    def __exit__(self, *exc_info: Any) -> bool:
+    def __exit__(self, *exc_info: Any) -> Literal[False]:
+        # `Literal[False]`, not `bool`: a context manager annotated `bool` is one that *could*
+        # return True, and the type would say so. Nothing is ever suppressed here, and the
+        # literal is what lets the annotation say that. (Returning `None` is the same behaviour
+        # and would read the same, but it would delete a mutation site the docs cite.)
         self.close()
         return False
 
@@ -661,7 +665,15 @@ def _pid_alive(pid: int) -> bool:
 
         process_query_limited_information = 0x1000
         still_active = 259
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        # `WinDLL` exists only on Windows; the stubs mypy reads here are the Linux ones, so the
+        # name is looked up dynamically. The branch is unreachable anywhere else.
+        # Reached through the module dict because `ctypes.WinDLL` does not exist on the
+        # stubs mypy reads on Linux, and `getattr` with a constant is rewritten by ruff's
+        # B009. The branch is unreachable anywhere but Windows.
+        windll = ctypes.__dict__.get("WinDLL")
+        if windll is None:  # pragma: no cover - not Windows
+            return False
+        kernel32 = windll("kernel32", use_last_error=True)
         handle = kernel32.OpenProcess(process_query_limited_information, False, wintypes.DWORD(pid))
         if not handle:
             return False  # no such process, or not one this user may ask about

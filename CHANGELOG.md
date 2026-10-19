@@ -36,7 +36,7 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   so renaming it cannot desynchronise the two again. `tests/test_supply_chain.py` asserts the
   derivation and fails if the literal returns.
 
-## [Unreleased]
+## [0.1.3] - 2026-10-19
 
 ### Fixed
 
@@ -63,6 +63,30 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   case, and `tests/test_examples.py` drives the supervised path and asserts the agent's own events
   reached the run's ledger labelled `reported_by: "agent"` and that the receipt verifies.
 
+- **The `Typing :: Typed` classifier was a claim with nothing behind it.** `pyproject.toml`
+  declared the classifier and the wheel shipped no `py.typed`, so no consumer's type checker
+  would read the package's annotations at all. The package was annotated all along — and 65 of
+  those annotations were wrong, which nobody could see because nothing asked. `py.typed` now
+  ships, mypy runs in the lint job, and the 65 errors are fixed: narrowing that did not survive
+  a second method call, `__exit__` annotated `bool` where it always returns `False`, a signing
+  key accepted and then used as any key type, a metrics dict annotated `dict[str, int]` that
+  holds a decimal string, and the rest. A guard test fails if the marker disappears while the
+  classifier stays.
+
+- **`docket keygen` did not exist, so `docket run --sign` had no way to produce a key.**
+  `src/docket/signing.py` could generate an Ed25519 keypair from the first release and nothing
+  called it: no command, no documentation. The only way to sign a receipt was to already know
+  the library function. `docket keygen [PATH] [--force]` writes the keypair at mode 0600, prints
+  the public key, refuses to replace an existing key without `--force` (replacing a signing key
+  invalidates every receipt signed with the old one), and exits 70 naming the install when the
+  optional `cryptography` package is absent. Documented in the CLI reference, and tested end to
+  end: keygen, sign, verify, and a tampered receipt that fails both the totals and the signature.
+
+- **A signing key of the wrong type produced an `AttributeError` from inside `cryptography`.**
+  `load_pem_private_key` returns a union of every key type the library supports, and most of
+  them have no `.sign(data)`. The call now refuses a non-Ed25519 key with a message naming the
+  file and the key it holds.
+
 - **Every link in the README was broken on the PyPI page.** `README.md` is the package's long
   description, and PyPI renders it with no repository around it, resolving a relative target
   against `https://pypi.org/project/docket-ai/`. All 29 relative links therefore 404ed there while
@@ -76,6 +100,14 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 - `Documentation` in `[project.urls]` pointed at a GitHub directory listing. It now points at the
   live documentation site, which is what a reader arriving from PyPI is looking for.
+
+- Two public properties replace a private attribute an example reached into:
+  `Session.docket_number` and `Session.ledger_path`, the latter returning `None` when a
+  supervisor owns the ledger rather than a path this session does not write to.
+
+- The line citations in `docs/testing.md` were re-based onto the code as it now stands. Each one
+  was re-checked against `tools/mutate.py`'s site list, so every number the page quotes is a
+  line the mutation harness would actually mutate.
 
 - The conformance vectors were regenerated, because they carry `tool.version` and the spec states
   that vectors move with the implementation in the same commit. Only the version string and the

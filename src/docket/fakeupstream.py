@@ -163,8 +163,8 @@ class FakeUpstream:
         upstream._server.daemon_threads = True
         upstream._thread = threading.Thread(target=upstream._server.serve_forever, daemon=True)
         upstream._thread.start()
-        host, port = upstream._server.server_address[:2]
-        return host, port
+        address = upstream._server.server_address
+        return str(address[0]), int(address[1])
 
     def stop(self) -> None:
         if self._server is not None:
@@ -173,8 +173,11 @@ class FakeUpstream:
 
     @property
     def url(self) -> str:
-        host, port = self._server.server_address[:2]  # type: ignore[union-attr]
-        return f"http://{host}:{port}"
+        # `server_address` is typed loosely by `socketserver`: the host half may be `bytes` on
+        # some platforms, and an f-string over bytes would render `b'127.0.0.1'`. Decode it.
+        address = self._server.server_address[:2]  # type: ignore[union-attr]
+        host = address[0].decode() if isinstance(address[0], bytes) else str(address[0])
+        return f"http://{host}:{address[1]}"
 
     def _next_step(self) -> Step:
         step = self.steps[min(self._index, len(self.steps) - 1)]

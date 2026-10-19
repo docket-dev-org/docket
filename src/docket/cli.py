@@ -23,6 +23,7 @@ from .pricing import PriceTable
 from .receipt import load_receipt
 from .report import diff_receipts, render_diff, render_findings, render_markdown, render_receipt
 from .resilience import parse_fault_spec
+from .signing import ed25519_available, generate_keypair
 from .supervisor import Supervisor
 from .util import NonStandardJSONError, http_url, human_bytes, ledger_for_receipt, loads_json
 from .verify import verify_receipt
@@ -400,9 +401,11 @@ def _load_receipt_arg(path: str | None) -> dict[str, Any] | None:
 
 def _latest_receipt_path() -> Path | None:
     """The receipt `--json` and friends mean when none is named."""
-    if Path(".docket" / "latest.receipt.json").exists():
-        return Path(".docket") / "latest.receipt.json"
-    candidates = sorted(Path(".docket" / "receipts").glob("*.receipt.json")) if Path(".docket").is_dir() else []
+    latest = Path(".docket") / "latest.receipt.json"
+    if latest.exists():
+        return latest
+    receipts = Path(".docket") / "receipts"
+    candidates = sorted(receipts.glob("*.receipt.json")) if receipts.is_dir() else []
     return candidates[-1] if candidates else None
 
 
@@ -896,13 +899,14 @@ def cmd_explain(args: argparse.Namespace) -> int:
     if receipt is None:
         _out(sys.stderr, f"{PROGRAM}: no receipt found. Pass one, or run something first.")
         return 1
+    ledger_path: Path | None
     if args.ledger:
         ledger_path = Path(args.ledger)
     else:
         # Prefer the ledger the receipt was built from, found beside it; fall back to the
         # newest one in this directory for a receipt that arrived without its ledger.
-        receipt_path = Path(args.receipt) if args.receipt else _latest_receipt_path()
-        ledger_path = (ledger_for_receipt(receipt_path) if receipt_path is not None else None) or _newest_ledger()
+        named = Path(args.receipt) if args.receipt else _latest_receipt_path()
+        ledger_path = (ledger_for_receipt(named) if named is not None else None) or _newest_ledger()
     if ledger_path is None or not ledger_path.exists():
         _out(sys.stderr, f"{PROGRAM}: ledger not found; pass --ledger <file>")
         return 1
@@ -1129,6 +1133,44 @@ def cmd_game_day(args: argparse.Namespace) -> int:
         _out(sys.stdout, f"  post-mortem: {out_dir / 'post-mortem.md'}")
         _out(sys.stdout, f"  raw record:  {out_dir / 'game-day.json'}")
     return 1 if report["failed_checks"] else 0
+
+
+def cmd_keygen(args: argparse.Namespace) -> int:
+    """Write an Ed25519 keypair, so `docket run --sign` has a key to use.
+
+    `src/docket/signing.py` has been able to generate a keypair since the first release, and
+    nothing called it: no command, no documentation, so the only way to sign a receipt was to
+    already know the library function and the OpenSSL incantation. A signing feature with no
+    documented way to produce a key is a signing feature nobody can use.
+    """
+    if not ed25519_available():
+        _out(sys.stderr, f"{PROGRAM}: signing needs the optional 'cryptography' package")
+        _out(sys.stderr, f"{PROGRAM}: install it with: pip install 'docket[sign]'")
+        return 70
+
+    path = Path(args.path)
+    if path.exists() and not args.force:
+        _out(sys.stderr, f"{PROGRAM}: {path} exists (use --force to replace it)")
+        _out(sys.stderr, f"{PROGRAM}: replacing a signing key invalidates every receipt signed with the old one")
+        return 1
+
+    try:
+        public_hex = generate_keypair(path)
+    except OSError as exc:
+        _out(sys.stderr, f"{PROGRAM}: cannot write {path}: {exc}")
+        return 1
+
+    _out(sys.stdout, f"private key  {path}  (mode 0600; keep it secret, keep it backed up)")
+    _out(sys.stdout, f"public key   {public_hex}")
+    _out(sys.stdout, "")
+    _out(sys.stdout, "sign a receipt with it:")
+    _out(sys.stdout, f"  {PROGRAM} run --sign {path} -- <your agent>")
+    _out(
+        sys.stdout,
+        "a verifier needs the receipt's embedded public key, so no second file travels with it; "
+        "publish the key above if readers should be able to check a signature against it",
+    )
+    return 0
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
@@ -1421,6 +1463,16 @@ def build_parser() -> argparse.ArgumentParser:
     game_day.add_argument("--max-usd", type=_cap_amount, help="USD cap per phase (required with --online)")
     game_day.add_argument("--json", action="store_true")
     game_day.set_defaults(func=cmd_game_day)
+
+    keygen = sub.add_parser("keygen", help="write an Ed25519 keypair for signing receipts")
+    keygen.add_argument(
+        "path",
+        nargs="?",
+        default="docket-signing.key",
+        help="where to write the private key (default docket-signing.key)",
+    )
+    keygen.add_argument("--force", action="store_true", help="overwrite an existing key (refused by default)")
+    keygen.set_defaults(func=cmd_keygen)
 
     doctor = sub.add_parser("doctor", help="check the local environment and the health of existing ledgers")
     doctor.add_argument("--docket-dir", default=".docket")

@@ -12,7 +12,7 @@ and can be told to fail on cue.
 ## The suite
 
 ```console
-$ make test          # 1201 tests, no network (2-4 min on a 2-vCPU box)
+$ make test          # 1204 tests, no network (2-4 min on a 2-vCPU box)
 $ make check         # + ruff, + bandit, + the independent Node verifier
 ```
 
@@ -33,7 +33,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | `test_cache.py` | 74 | the response cache: what may be stored and what may never be, hit/miss/TTL/LRU/ceiling behaviour, the key covering the request as sent, an open breaker not blocking a hit, concurrency, every receipt-level attack on a saving, and twenty-five tests written to kill survivors of a mutation sweep — nine for the cache itself and sixteen for the verifier that recomputes a stated saving |
 | `test_proxy_concurrency.py` | 6 | parallel calls through the real boundary: chain, totals, limiter, breaker, cap |
 | `test_resilience.py` | 60 | breaker, limiter, fault injection grammar, evidence guard |
-| `test_supply_chain.py` | 8 | what the package installs and what it imports: `dependencies = []` read from the manifest, the three extras by name, and an AST walk asserting every import outside the standard library resolves to a declared, guarded extra |
+| `test_supply_chain.py` | 9 | what the package installs and what it imports: `dependencies = []` read from the manifest, the three extras by name, and an AST walk asserting every import outside the standard library resolves to a declared, guarded extra |
 | `test_explain.py` | 13 | analysis rules and their attributed impact |
 | `test_supervisor.py` | 11 | the run lifecycle, exit codes, the evidence directory exclusion |
 | `test_snapshot_restore.py` | 26 | snapshot, plan, apply, the CLI, idempotence, the restore record |
@@ -43,7 +43,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | `test_chaos.py` | 34 | the fault grammar, `audit_run`, the game-day phases (including the cache brake), the reference agent repeating itself on request, and the independence of the phases' policies from one another |
 | `test_security.py` | 40 | red team: forgery, injection, bypass, confinement, secret capture |
 | `test_cli_input.py` | 51 | numeric flags: every cap, every way to spell it wrong |
-| `test_cli_sdk_demo.py` | 23 | the commands end to end, the SDK, the demo |
+| `test_cli_sdk_demo.py` | 25 | the commands end to end, the SDK, the demo |
 | `test_examples.py` | 10 | the five examples executed rather than described: the quickstart and the SDK program run offline and the receipt each one prints is then verified with the command each one prints, one digit of the quickstart's ledger is edited and the same verification is required to fail, both policy files are accepted by a real supervised run, and every README's links, repository paths and Python files are checked |
 | `test_i18n.py` | 16 | locale independence, Unicode round trips, non-ASCII paths |
 | `test_url_guards.py` | 43 | the two URL guards, and a syntax-tree walk that every `urlopen` uses one |
@@ -499,10 +499,10 @@ miss.
 
 | site | what the test asserted | what the second mutant did behind it |
 | --- | --- | --- |
-| `verify.py:856` | `… count: 'seven'` — the value, and not the type suffix beside it | `type(malformed[1]).__name__`: with two malformed rows of the *same* type the sentence reads identically either way, so the assertion could not see whose type was quoted |
-| `verify.py:870` | `p50 12 ms · p99 12 ms over 1 measured call(s)` | the fixture measured **one** call, where p50 and p99 are the same number: looking up the wrong percentile printed the same sentence, character for character |
-| `verify.py:1062` | `not [failure for failure in result.failures if "further origin problems" in failure]` | the stop condition counts a list, and its two spellings (`> 3` and `>= 3`) print the *same* sentence for every length except one: at exactly three the mutant adds "further origin problems: 0 more" where the original says nothing. The test holds exactly three now — a group naming the wrong model, a token count that does not match the call it cites, and the appendix key that both takes the call out of the cached-response record and stops the tally containing it — and asserts the four sentences that follow, plus the absence of a fifth |
-| `verify.py:1168` | that a group whose `hits` is not a positive count is refused | the guard refuses it, and the *tally* loop is a second pass over the same groups that does not skip them: with `int(group.get("hits") or 0)` mutated to `or 1`, the falsy count becomes the ledger's own count, the comparison agrees, and the second sentence about the same group is never written |
+| `verify.py:861` | `… count: 'seven'` — the value, and not the type suffix beside it | `type(malformed[1]).__name__`: with two malformed rows of the *same* type the sentence reads identically either way, so the assertion could not see whose type was quoted |
+| `verify.py:874` | `p50 12 ms · p99 12 ms over 1 measured call(s)` | the fixture measured **one** call, where p50 and p99 are the same number: looking up the wrong percentile printed the same sentence, character for character |
+| `verify.py:1171` | `not [failure for failure in result.failures if "further origin problems" in failure]` | the stop condition counts a list, and its two spellings (`> 3` and `>= 3`) print the *same* sentence for every length except one: at exactly three the mutant adds "further origin problems: 0 more" where the original says nothing. The test holds exactly three now — a group naming the wrong model, a token count that does not match the call it cites, and the appendix key that both takes the call out of the cached-response record and stops the tally containing it — and asserts the four sentences that follow, plus the absence of a fifth |
+| `verify.py:1188` | that a group whose `hits` is not a positive count is refused | the guard refuses it, and the *tally* loop is a second pass over the same groups that does not skip them: with `int(group.get("hits") or 0)` mutated to `or 1`, the falsy count becomes the ledger's own count, the comparison agrees, and the second sentence about the same group is never written |
 
 All four repairs are in `tests/test_cache.py` and marked in place: the assertion extended to include
 `(str)`; a second metered call with a different latency (`extra_latency=40`) so that the two
@@ -525,8 +525,8 @@ calls (absent is not zero), and a `mixed` basis over rows that are all one kind 
 falsifiable). The fifth was the worst of them: `not (reported and estimated)` weakened to `or` makes
 "mixed" unfalsifiable for exactly the case it exists for. Three are equivalents, demonstrated rather
 than argued: the two bool/`None` fast paths produce the same status *and the same sentence* for
-`true` and `null` (`verify.py:194` in `whole`, `verify.py:645` in the `by_model` normaliser), and the
-`breakdown_judged` flag at `verify.py:687` sits behind `if recomputed is not None` — a row whose cost
+`true` and `null` (`verify.py:194` in `whole`, `verify.py:650` in the `by_model` normaliser), and the
+`breakdown_judged` flag at `verify.py:690` sits behind `if recomputed is not None` — a row whose cost
 is not an amount fails `cost-recomputation` and the breakdown block is never entered, which is shown
 by probing both shapes and observing no `by-model-totals` verdict at all.
 
@@ -552,8 +552,8 @@ tests that closed them. Every other file's rows come from the run that produced 
 | site | mutant | verdict |
 | --- | --- | --- |
 | `verify.py:194` | `isinstance(value, bool) or value is None` → `and` | **equivalent.** `whole(True)` fails as a bool on one path and as the unparsable string `"True"` on the other, and `whole(None)` likewise; both routes record the same named failure with the same text. |
-| `verify.py:645` | the same expression in `quiet_whole`, the `by_model` normaliser | **equivalent.** Probed with `by_model[0].calls` set to `true` and to `null`: the mutant and the original both report `by_model['claude-sonnet-5'].calls is not a whole number`, character for character. |
-| `verify.py:687` | `breakdown_judged = True` → `False` in the arithmetic-failure branch | **unreachable.** The branch that sets it is inside `if recomputed is not None`; every input that could raise there (a non-numeric token count, a cost that is not an amount) fails `cost-recomputation` first and returns `recomputed = None`, so the derived-member block never runs — probed with both shapes, and `by-model-totals` is absent from the report in each. |
+| `verify.py:650` | the same expression in `quiet_whole`, the `by_model` normaliser | **equivalent.** Probed with `by_model[0].calls` set to `true` and to `null`: the mutant and the original both report `by_model['claude-sonnet-5'].calls is not a whole number`, character for character. |
+| `verify.py:690` | `breakdown_judged = True` → `False` in the arithmetic-failure branch | **unreachable.** The branch that sets it is inside `if recomputed is not None`; every input that could raise there (a non-numeric token count, a cost that is not an amount) fails `cost-recomputation` first and returns `recomputed = None`, so the derived-member block never runs — probed with both shapes, and `by-model-totals` is absent from the report in each. |
 | `canon.py:51` | `or` → `and` in the early return for bool/`None`/str | **equivalent.** The fallback at the end of `_normalise` returns those three types unchanged as well; the early return is a fast path, not a behaviour. |
 | `canon.py:139`, `canon.py:160` | `len(level) > 1` → `>=` and `1` → `0` in the `while` loop of `merkle_root` and of `merkle_proof` | **non-terminating, all four.** Each turns a one-node level into a level that is promoted to itself, so the tree never finishes. They exceed a 45 s per-mutant timeout (the same sites exceeded 120 s in an earlier run): reported as timeouts, never as kills, because a hang is not the suite noticing a wrong answer. |
 | `ledger.py:153,160,161,168` | `compare=False` → `True` on the clock, the two handles and the append lock | **equivalent.** Nothing compares two `Ledger` objects — the field option is declared so that a repr and a comparison cannot reach into a descriptor, and the *repr* half of the same declaration is killed by `test_the_repr_of_a_ledger_is_safe_to_put_in_a_log`. |
@@ -561,17 +561,17 @@ tests that closed them. Every other file's rows come from the run that produced 
 | `ledger.py:215` | `if size > 0` → `>=` | **equivalent.** For a zero-byte file the guarded block reads the file and extends the event list with nothing. |
 | `ledger.py:277` | `getattr(self._handle, "closed", False)` → default `True` | **equivalent.** The attribute exists on every file object a ledger can hold; the default is reachable only for an object that is not a file. |
 | `ledger.py:301` | `self.max_bytes or 0` → `or 1` | **equivalent (unreachable).** This expression is inside `LedgerFullError`, raised only when a ceiling is set, and `_room_for` never refuses when both ceilings are `None`. |
-| `ledger.py:365` | `__exit__` returning `False` → `None` | **equivalent.** The `with` statement tests truthiness; both let an exception through. |
-| `ledger.py:406` | the diagnostics skeleton's `trailing_newline: True` → `False` | **equivalent.** Every path that reads bytes overwrites it; it is readable only for a file that does not exist, where neither value is a claim about bytes. |
-| `ledger.py:628-646` | six mutants: the `and`/`not` of the stale-lock test (`:628`), `unlink(missing_ok=True)` in the stale branch (`:629`) and in the release path (`:646`), and the two `return`s of the stale branch (`:630`, `:633`) | **five unreachable here, one equivalent.** `:628`–`:633` sit inside `_acquire_lock`'s `try: # pragma: no cover - Windows` block, past the `fcntl` early return, so on any platform with `flock` they cannot run at all — the POSIX equivalents are killed. `:646` does run here, and its `missing_ok=False` is equivalent because a lock file that is already gone raises `FileNotFoundError`, an `OSError` the line above suppresses. |
+| `ledger.py:369` | `__exit__` returning `False` → `None` | **equivalent.** The `with` statement tests truthiness; both let an exception through. |
+| `ledger.py:410` | the diagnostics skeleton's `trailing_newline: True` → `False` | **equivalent.** Every path that reads bytes overwrites it; it is readable only for a file that does not exist, where neither value is a claim about bytes. |
+| `ledger.py:632-646` | six mutants: the `and`/`not` of the stale-lock test (`:628`), `unlink(missing_ok=True)` in the stale branch (`:629`) and in the release path (`:646`), and the two `return`s of the stale branch (`:630`, `:633`) | **five unreachable here, one equivalent.** `:628`–`:633` sit inside `_acquire_lock`'s `try: # pragma: no cover - Windows` block, past the `fcntl` early return, so on any platform with `flock` they cannot run at all — the POSIX equivalents are killed. `:646` does run here, and its `missing_ok=False` is equivalent because a lock file that is already gone raises `FileNotFoundError`, an `OSError` the line above suppresses. |
 | `loaddriver.py:216` | `if next_call > now` → `>=` | **equivalent.** At `next_call == now` the mutant calls `time.sleep(0.0)` where the original skips the call; a zero-length sleep does not move the schedule. |
 | `loaddriver.py:265` | `while time.monotonic() < due` → `<=` | **equivalent in effect, and stated precisely.** The outer loop samples RSS on a fixed cadence; this inner loop only waits until the next sample is due, sleeping in 20 ms steps. The mutant takes one extra step when the clock reads *exactly* `due` — a nanosecond-level coincidence — and the only consequence is that the next sample can be up to 20 ms later than it would have been. No sample is added or lost, and the sampling quantum is 20 ms, so the series a soak reports is the same series. |
 | `loaddriver.py:130,132,133` | `return False` → `True` on the call budget and on the deadline, and `issued += 1` → `+= 0` | **non-terminating, all three.** Remove the guard that stops a run and the run does not stop, so the test that drives it never returns within the 45 s per-mutant timeout. Reported as timeouts, never as kills — same family as the `merkle_root` mutants above. |
-| `ledger.py:664-672` | ten mutants in the Windows process-liveness probe `_pid_alive`: the two `WinDLL`/`OpenProcess` arguments (`:664`, `:665`), the two `if not …` guards (`:666`, `:670`), what each guard returns in both spellings (`:667`, `:671` — the value swapped, the `return` replaced by `None`), `return code.value == still_active` replaced by `None` (`:672`), and that comparison's `==`→`!=` (`:672`) | **unreachable here.** The whole block is under `if os.name == "nt"`, which asks the process table directly instead of calling `os.kill` — on Windows that *is* `TerminateProcess`, so the liveness probe would kill the process holding the lock. The *Windows* bullet under *Not covered, and why* says what that costs. |
+| `ledger.py:676-672` | ten mutants in the Windows process-liveness probe `_pid_alive`: the two `WinDLL`/`OpenProcess` arguments (`:664`, `:665`), the two `if not …` guards (`:666`, `:670`), what each guard returns in both spellings (`:667`, `:671` — the value swapped, the `return` replaced by `None`), `return code.value == still_active` replaced by `None` (`:672`), and that comparison's `==`→`!=` (`:672`) | **unreachable here.** The whole block is under `if os.name == "nt"`, which asks the process table directly instead of calling `os.kill` — on Windows that *is* `TerminateProcess`, so the liveness probe would kill the process holding the lock. The *Windows* bullet under *Not covered, and why* says what that costs. |
 | `resilience.py:76,151,161` | `probes_in_flight = 0` → `1` in the dataclass default, in `record_success` and in `record_failure` | **equivalent, and the file's own test says why.** `allow` sets `probes_in_flight = 0` on the transition from `open` to `half-open` — that is the site the test kills — so the value these three sites leave behind is overwritten before anything reads it. What the test pins instead is the behaviour a reader cares about: an upstream that recovered is admitted again on the *next* outage, not only the first. |
 | `helm_fidelity.py:53` | `if spec is None or spec.loader is None` → `and` | **unreachable, and marked as such.** The guard carries `# pragma: no cover`; `spec` is `None` only when `spec_from_file_location` fails, and for a file that exists the loader it returns is never `None`. Reaching the branch needs an interpreter whose import machinery returns a loaderless spec. |
 | `helm_fidelity.py:105` | `zip(left, right, strict=True)` → `strict=False` | **equivalent.** The line above returns a length mismatch before the `zip` is built, so the two lists are always the same length by then and `strict` can never fire. A belt kept on after the braces. |
-| `ledger.py:680` | `except (ValueError, OverflowError)` → the two mutants of its `return False` | **unreachable on this kernel.** `os.kill` reports a pid no kernel would hand out as `ESRCH`, which is an `OSError` and is handled (and killed) by the branch above; this guard is for the platforms that raise `OverflowError` instead. |
+| `ledger.py:690` | `except (ValueError, OverflowError)` → the two mutants of its `return False` | **unreachable on this kernel.** `os.kill` reports a pid no kernel would hand out as `ESRCH`, which is an `OSError` and is handled (and killed) by the branch above; this guard is for the platforms that raise `OverflowError` instead. |
 | `a11y_check.py:289` | `return []` → `return None`, the fallback of `_native_text_alternative` | **equivalent.** Its only caller is `if native:` — `None` and `[]` are both falsy and the caller never iterates the result, so no page can distinguish them. Deleting the fallback would not help: an early `return None` on every path is the same mutant wearing a different line number |
 | `a11y_check.py:132` | the parser's sentinel node `Node("root", {}, 1)` → line `0` | **equivalent.** The sentinel is not an element any rule reports — every rule walks `root.descendants()`, which starts at the children — so its own line number is read by nothing. It is a marker for the stack's floor, and `Node.line` is a field the sentinel has to fill |
 
@@ -640,11 +640,11 @@ Writing the tests that kill a mutant is where the defects were:
 
 Five of the eight survivors the 237-site sweep first reported were gaps in code that had been
 written hours earlier, and each is closed by a test that names the behaviour: an integral float in
-`by_model` (§3.2 normalises it — `verify.py:648`), the three usage-source counts omitted on a
+`by_model` (§3.2 normalises it — `verify.py:653`), the three usage-source counts omitted on a
 session with no metered calls, where `-1` is the only thing separating "absent" from "stated as
-zero" (`verify.py:757`–`:759`), and a `mixed` basis over rows that are all one kind, weakened to
+zero" (`verify.py:762`–`:764`), and a `mixed` basis over rows that are all one kind, weakened to
 `or` so that the claim is unfalsifiable in exactly the case the sentence exists for
-(`verify.py:799`). The worst of them is the last: it is not a crash and not a wrong sentence, but a
+(`verify.py:804`). The worst of them is the last: it is not a crash and not a wrong sentence, but a
 **pass** where the receipt's own classification is contradicted by its rows. They were found by
 mutation after the tests were green, which is the only reason they were found at all.
 

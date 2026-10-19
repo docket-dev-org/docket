@@ -717,21 +717,20 @@ def _resilience_from(raw: dict[str, Any]) -> Resilience:
             f"unknown key(s) in [resilience]: {', '.join(unknown)}. Known keys: {', '.join(sorted(known))}"
         )
     defaults = Resilience()
+
+    # `_whole_key` returns `int | None` because some keys are genuinely optional. These four are
+    # not: `Resilience` gives each a default that is never None, so `_whole_key` handed that
+    # default cannot return None. The helper cannot see that, so the calls state it.
+    def required(section: str, key: str, fallback: int) -> int:
+        value = _whole_key(section, key, raw.get(key), fallback)
+        assert value is not None, f"{section}.{key} has a default and cannot resolve to None"
+        return value
+
     resilience = Resilience(
-        breaker_threshold=_whole_key(
-            "resilience", "breaker_threshold", raw.get("breaker_threshold"), defaults.breaker_threshold
-        ),
-        breaker_cooldown_seconds=_whole_key(
-            "resilience",
-            "breaker_cooldown_seconds",
-            raw.get("breaker_cooldown_seconds"),
-            defaults.breaker_cooldown_seconds,
-        ),
-        breaker_max_cooldown_seconds=_whole_key(
-            "resilience",
-            "breaker_max_cooldown_seconds",
-            raw.get("breaker_max_cooldown_seconds"),
-            defaults.breaker_max_cooldown_seconds,
+        breaker_threshold=required("resilience", "breaker_threshold", defaults.breaker_threshold),
+        breaker_cooldown_seconds=required("resilience", "breaker_cooldown_seconds", defaults.breaker_cooldown_seconds),
+        breaker_max_cooldown_seconds=required(
+            "resilience", "breaker_max_cooldown_seconds", defaults.breaker_max_cooldown_seconds
         ),
         max_calls_per_minute=_whole_key("resilience", "max_calls_per_minute", raw.get("max_calls_per_minute"), None),
         max_calls_per_second=_amount_key("resilience", "max_calls_per_second", raw.get("max_calls_per_second"), None),
@@ -748,7 +747,7 @@ def _resilience_from(raw: dict[str, Any]) -> Resilience:
         fail_fast_evidence=_bool_key(
             "resilience", "fail_fast_evidence", raw.get("fail_fast_evidence"), defaults.fail_fast_evidence
         ),
-        min_free_bytes=_whole_key("resilience", "min_free_bytes", raw.get("min_free_bytes"), defaults.min_free_bytes),
+        min_free_bytes=required("resilience", "min_free_bytes", defaults.min_free_bytes),
     )
     if resilience.breaker_threshold < 1:
         raise ValueError("resilience.breaker_threshold must be at least 1")

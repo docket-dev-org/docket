@@ -24,7 +24,7 @@ import urllib.error
 import urllib.request
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from . import events as ev
 from .canon import digest_of, usd
@@ -186,7 +186,7 @@ class Session:
         _state.session = self
         return self
 
-    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> Literal[False]:
         try:
             if not (self.recorder is not None):
                 raise RuntimeError(
@@ -209,7 +209,8 @@ class Session:
                 # The supervisor owns the ledger and the receipt; this session only added
                 # labelled, agent-asserted events to its chain. Building a second receipt
                 # from a ledger we do not own would be wrong (and impossible: we never
-                # read the file).
+                # read the file). Returning here skips the block below; `__exit__` still
+                # returns False, so nothing is suppressed.
                 return False
             if self.auto_receipt and self.ledger is not None:
                 receipt = build_receipt(

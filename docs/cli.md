@@ -318,6 +318,33 @@ directory writability, price table load, optional signing support. First line of
 
 ---
 
+## `docket keygen [PATH] [--force]`
+
+Writes an Ed25519 keypair, so `docket run --sign` has a key to use.
+
+```
+$ docket keygen ./signing.key
+private key  ./signing.key  (mode 0600; keep it secret, keep it backed up)
+public key   a286152bccf73fe0a5b1456c52f060d6a5790332d0fdf24039ec0bd7b341610e
+
+sign a receipt with it:
+  docket run --sign ./signing.key -- <your agent>
+a verifier needs the receipt's embedded public key, so no second file travels with it; publish the key above if readers should be able to check a signature against it
+```
+
+The default path is `docket-signing.key` in the working directory. An existing file is refused
+rather than overwritten, because replacing a signing key invalidates every receipt signed with the
+old one; `--force` says you meant to.
+
+Signing needs the optional `cryptography` package: `pip install 'docket[sign]'`. Without it the
+command exits `70` and names the install, rather than failing later with an import error.
+
+The public key travels *inside* the receipt (`signature.public_key`), so a verifier needs no second
+file. Publish the key only if a reader should be able to check a signature against a key you have
+declared in advance.
+
+---
+
 ## Other entry points
 
 There are three ways to run Docket's own components without `docket run` driving them, and they are

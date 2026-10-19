@@ -257,6 +257,7 @@ def verify_receipt(
         if chain_ok:
             add("ledger-chain", "pass", f"{len(events)} events, every hash and link recomputed")
         else:
+            assert chain_problem is not None, "chain_ok is False exactly when chain_problem is not None"
             seq, reason = chain_problem
             add("ledger-chain", "fail", f"broken at event #{seq}: {reason}")
         # Every downstream comparison uses *recomputed* hashes, never the hashes stored
@@ -270,7 +271,7 @@ def verify_receipt(
             # receipt's, because a later event's own bytes were not rewritten.
             # Reporting "pass" here would be technically true and materially
             # misleading, so it is reported as unchecked.
-            add("head", "skip", f"not checked: the chain is broken at event #{chain_problem[0]}")
+            add("head", "skip", f"not checked: the chain is broken at event #{seq}")
         elif head == ledger_meta.get("head"):
             add("head", "pass", f"head matches receipt ({str(head)[:16]}…)")
         else:
@@ -421,20 +422,24 @@ def verify_receipt(
                         "usage-inclusion-proofs", index, f"usage row {index} carries a malformed inclusion proof: {exc}"
                     )
             if events is not None:
-                seq = row.get("seq")
-                if isinstance(seq, int) and not isinstance(seq, bool) and 0 <= seq < len(events):
-                    if row.get("event_hash") == recomputed_hashes[seq]:
+                # A fresh name per row: `seq` is narrowed to `int` in the branch above, and mypy
+                # would otherwise carry that narrowing into the next row's `Any | None`.
+                row_seq = row.get("seq")
+                if isinstance(row_seq, int) and not isinstance(row_seq, bool) and 0 <= row_seq < len(events):
+                    if row.get("event_hash") == recomputed_hashes[row_seq]:
                         rebound += 1
                     else:
                         rebind_failures += 1
                         report_row(
                             "usage-rows-rebound",
                             index,
-                            f"usage row {index} (seq {seq}) does not match the recomputed ledger event",
+                            f"usage row {index} (seq {row_seq}) does not match the recomputed ledger event",
                         )
                 else:
                     rebind_failures += 1
-                    report_row("usage-rows-rebound", index, f"usage row {index} cites seq {seq!r}, outside the ledger")
+                    report_row(
+                        "usage-rows-rebound", index, f"usage row {index} cites seq {row_seq!r}, outside the ledger"
+                    )
         if proven == len(rows):
             add(
                 "usage-inclusion-proofs",
@@ -915,9 +920,9 @@ def verify_receipt(
         for row in rows:
             if not isinstance(row, dict):
                 continue
-            seq = row.get("seq")
-            if isinstance(seq, int) and not isinstance(seq, bool):
-                rows_by_seq[seq] = row
+            row_seq = row.get("seq")
+            if isinstance(row_seq, int) and not isinstance(row_seq, bool):
+                rows_by_seq[row_seq] = row
         for index, group in enumerate(groups_raw):
             if not isinstance(group, dict):
                 savings_problems.append(f"cache group {index} is not an object: {type(group).__name__}")
@@ -1097,8 +1102,10 @@ def verify_receipt(
             event_problems: list[str] = []
             for event in hit_events:
                 data = event.data if isinstance(event.data, dict) else {}
-                origin = data.get("origin") if isinstance(data.get("origin"), dict) else {}
-                usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+                _raw = data.get("origin")
+                origin = _raw if isinstance(_raw, dict) else {}
+                _raw = data.get("usage")
+                usage = _raw if isinstance(_raw, dict) else {}
                 identity = (
                     origin.get("seq"),
                     origin.get("hash"),
@@ -1110,36 +1117,48 @@ def verify_receipt(
                     str(data.get("avoided_cost_usd") or ""),
                 )
                 tally[identity] = tally.get(identity, 0) + 1
-                seq = origin.get("seq")
-                if not isinstance(seq, int) or isinstance(seq, bool) or not 0 <= seq < len(events):
+                # A fresh name: `seq` is already bound in this function by the chain-problem
+                # unpacking above, where it is an `int`. This one comes out of a ledger record,
+                # so it is `Any` until the isinstance below narrows it.
+                hit_origin_seq = origin.get("seq")
+                if (
+                    not isinstance(hit_origin_seq, int)
+                    or isinstance(hit_origin_seq, bool)
+                    or not 0 <= hit_origin_seq < len(events)
+                ):
                     event_problems.append(
-                        f"the hit at seq {event.seq} cites origin seq {seq!r}, which is not an event in this ledger"
+                        f"the hit at seq {event.seq} cites origin seq {hit_origin_seq!r}, "
+                        f"which is not an event in this ledger"
                     )
                     continue
-                origin_event = events[seq]
+                origin_event = events[hit_origin_seq]
                 if getattr(origin_event, "type", "") != "model.response":
                     event_problems.append(
-                        f"the hit at seq {event.seq} replays seq {seq}, which is a "
+                        f"the hit at seq {event.seq} replays seq {hit_origin_seq}, which is a "
                         f"{getattr(origin_event, 'type', '?')} event, not a response"
                     )
                     continue
                 origin_data = origin_event.data if isinstance(origin_event.data, dict) else {}
-                meta = origin_data.get("cache") if isinstance(origin_data.get("cache"), dict) else {}
+                _raw = origin_data.get("cache")
+                meta = _raw if isinstance(_raw, dict) else {}
                 if meta.get("stored") is not True:
                     event_problems.append(
-                        f"the hit at seq {event.seq} replays seq {seq}, which was not recorded as a stored response"
+                        f"the hit at seq {event.seq} replays seq {hit_origin_seq}, which was not "
+                        f"recorded as a stored response"
                     )
                 if meta.get("key") != data.get("key"):
                     event_problems.append(
                         f"the hit at seq {event.seq} carries key {str(data.get('key'))[:12]}…, but the response "
-                        f"at seq {seq} was stored under {str(meta.get('key'))[:12]}…"
+                        f"at seq {hit_origin_seq} was stored under {str(meta.get('key'))[:12]}…"
                     )
                 if origin.get("hash") != getattr(origin_event, "hash", None):
                     event_problems.append(
                         f"the hit at seq {event.seq} cites origin hash {str(origin.get('hash'))[:12]}…, but the "
-                        f"event at seq {seq} hashes to {str(getattr(origin_event, 'hash', ''))[:12]}…"
+                        f"event at seq {hit_origin_seq} hashes to "
+                        f"{str(getattr(origin_event, 'hash', ''))[:12]}…"
                     )
-                origin_usage = origin_data.get("usage") if isinstance(origin_data.get("usage"), dict) else {}
+                _raw = origin_data.get("usage")
+                origin_usage = _raw if isinstance(_raw, dict) else {}
                 for field in ("input_tokens", "cached_input_tokens", "output_tokens"):
                     if int(usage.get(field) or 0) != int(origin_usage.get(field) or 0):
                         event_problems.append(
@@ -1154,7 +1173,8 @@ def verify_receipt(
             for index, group in enumerate(groups_raw):
                 if not isinstance(group, dict):
                     continue
-                usage = group.get("usage") if isinstance(group.get("usage"), dict) else {}
+                _raw = group.get("usage")
+                usage = _raw if isinstance(_raw, dict) else {}
                 identity = (
                     group.get("origin_seq"),
                     group.get("origin_hash"),

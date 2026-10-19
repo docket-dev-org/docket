@@ -43,6 +43,58 @@ def test_prices_json_is_machine_readable(capsys):
     assert document["_meta"]["unit"] == "per_million_tokens"
 
 
+def test_keygen_writes_a_keypair_the_receipt_signs_with(tmp_path, monkeypatch, capsys):
+    """`docket keygen` -> `docket run --sign` -> `docket verify`, end to end.
+
+    `generate_keypair` existed in `src/docket/signing.py` from the first release and nothing
+    called it: no command, no documentation. The only way to sign a receipt was to already know
+    the library function, which makes `--sign` a flag nobody could use. This test drives the
+    whole path a reader would, from the command that writes the key to the verification that
+    checks the signature it produced.
+    """
+    pytest.importorskip("cryptography")
+    monkeypatch.chdir(tmp_path)
+    key = tmp_path / "signing.key"
+
+    assert main(["keygen", str(key)]) == 0
+    assert key.is_file(), "keygen wrote no key"
+    assert oct(key.stat().st_mode)[-3:] == "600", "the private key is not mode 0600"
+    out = capsys.readouterr().out
+    public_hex = re.search(r"public key\s+([0-9a-f]{64})", out)
+    assert public_hex, out
+
+    # The key signs a real receipt, and the signature verifies.
+    assert main(["init", "--name", "signed", "--max-usd", "1"]) == 0
+    assert main(["run", "--policy", "docket.toml", "--sign", str(key), "--", sys.executable, "-c", "print(1)"]) == 0
+    result = verify_receipt(load_receipt(Path(".docket/latest.receipt.json")))
+    assert result.ok, list(result.failures)
+    signature = load_receipt(Path(".docket/latest.receipt.json"))["signature"]
+    assert signature["public_key"] == public_hex.group(1), "the receipt embeds a different key"
+    assert signature["value"], "the receipt carries no signature value"
+
+    # And a receipt edited after the fact fails the signature check, not only the totals.
+    tampered = tmp_path / "tampered.json"
+    document = json.loads(Path(".docket/latest.receipt.json").read_text(encoding="utf-8"))
+    document["totals"]["cost_usd"] = "0.000001"
+    tampered.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    assert not verify_receipt(load_receipt(tampered)).ok, "an edited receipt still verifies"
+
+
+def test_keygen_refuses_to_replace_a_key_without_force(tmp_path, monkeypatch, capsys):
+    """Refusing is the point: replacing a signing key invalidates every receipt signed with the old one."""
+    pytest.importorskip("cryptography")
+    monkeypatch.chdir(tmp_path)
+    key = tmp_path / "signing.key"
+
+    assert main(["keygen", str(key)]) == 0
+    capsys.readouterr()
+    assert main(["keygen", str(key)]) == 1, "an existing key was overwritten"
+    assert "exists" in capsys.readouterr().err, "the refusal does not say the file exists"
+    assert key.read_bytes(), "the key was truncated by the refusal"
+
+    assert main(["keygen", str(key), "--force"]) == 0, "--force did not replace the key"
+
+
 def test_doctor_reports_the_environment(capsys):
     assert main(["doctor"]) == 0
     out = capsys.readouterr().out

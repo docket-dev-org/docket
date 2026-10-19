@@ -52,12 +52,22 @@ from .policy import DENIAL_TYPE, Policy
 from .pricing import CostMeter, PriceTable, estimate_tokens_from_text
 from .resilience import (
     CircuitBreaker,
+    Fault,
     FaultInjector,
     HealthState,
     RateLimiter,
     readiness,
 )
 from .util import NonStandardJSONError, loads_json
+
+
+class UpstreamConfigurationError(ValueError):
+    """An upstream override that cannot be connected to, named at the point it is used.
+
+    A ``ValueError`` because that is what every other malformed flag raises, so the CLI's
+    existing handling reports it the same way: the message names the override and the reason.
+    """
+
 
 #: Free-space floor for the volume holding the ledger. A run that fills a disk turns a
 #: budget problem into an outage, so readiness reports it before it happens.
@@ -285,7 +295,8 @@ def _parse_sse_usage(
             # A stream frame is read after the call has happened, so it is disclosed rather than
             # refused: the numbers in it are unusable and the tokens fall back to an estimate,
             # which the caller records as exactly that.
-            problems.append(str(exc))
+            if problems is not None:
+                problems.append(str(exc))
             continue
         usage = _extract_usage(provider, payload, problems)
         if usage is None:
@@ -1000,8 +1011,8 @@ class _Handler(BaseHTTPRequestHandler):
         # -- chaos engineering: fault injection, when explicitly configured ---- #
         if proxy.injector is not None and proxy.injector.enabled:
             delay, delays = proxy.injector.next_delay()
-            for fault in delays:
-                proxy.record("x-docket.fault", {"kind": fault.kind, "detail": fault.describe()})
+            for queued in delays:
+                proxy.record("x-docket.fault", {"kind": queued.kind, "detail": queued.describe()})
             if delay:
                 time.sleep(delay)
             dropped = proxy.injector.before_forward()
@@ -1072,11 +1083,15 @@ class _Handler(BaseHTTPRequestHandler):
         proxy.record(ev.MODEL_REQUEST, request_data)
 
         # -- forward ------------------------------------------------------ #
+        status: int | None
         status, headers, payload = self._forward(provider, upstream_path, body_bytes, streaming)
         latency_ms = int((time.time() - started) * 1000)
+        # `status` is `int | None`: the chaos "slow" fault withholds the response entirely, and
+        # that is a different state from "the provider answered with a status".
 
         # -- chaos engineering: rewrite the response, when configured ------ #
         injected: str | None = None
+        fault: Fault | None = None
         if proxy.injector is not None and proxy.injector.enabled:
             fault = proxy.injector.after_response(status or 0)
             if fault is not None:
@@ -1391,10 +1406,11 @@ class _Handler(BaseHTTPRequestHandler):
             nested = data.pop("data", None)
             data = dict(nested) if isinstance(nested, dict) else data
         else:
-            event_type = mapping.get(kind)
-            if event_type is None:
+            found = mapping.get(kind)
+            if found is None:
                 self._send_json(404, {"error": {"type": "docket_unknown_route", "message": self.path}})
                 return
+            event_type = found
         data["reported_by"] = "agent"
         event = self.proxy.ledger.append(event_type, data)
         self._send_json(200, {"ok": True, "seq": event.seq, "session": self.proxy.session_id})
@@ -1427,6 +1443,10 @@ class _Handler(BaseHTTPRequestHandler):
         # connection and then says nothing must not hold the agent (and the ledger) open
         # forever. It is configurable because slow models are legitimate; 300s is the
         # default ceiling, not a target.
+        if parts.hostname is None:
+            # An override like `--upstream openai=notaurl` parses but has no host to connect to.
+            # Refusing here names the override; an http.client built on None would fail deeper in.
+            raise UpstreamConfigurationError(f"the upstream for {provider!r} has no host: {base!r}")
         conn = conn_cls(parts.hostname, parts.port or (443 if secure else 80), timeout=self.proxy.upstream_timeout)
         target = (parts.path.rstrip("/") + path) if parts.path and parts.path != "/" else path
         headers = {
@@ -1722,7 +1742,9 @@ class RecordingProxy:
         for name, value in counters.items():
             lines.append(f"# TYPE {name} counter")
             lines.append(f"{name} {int(value)}")
-        gauges = {
+        # Prometheus's text exposition accepts an int, a float or a string here. `docket_cost_usd`
+        # is a decimal string on purpose: a float would round the money a run spent.
+        gauges: dict[str, int | float | str] = {
             "docket_in_flight": self.health.in_flight,
             "docket_breaker_open": 1 if (self.breaker and self.breaker.opened()) else 0,
             "docket_ledger_degraded": 1 if self.ledger.degraded else 0,
@@ -1733,9 +1755,9 @@ class RecordingProxy:
             gauges["docket_cache_enabled"] = 1
             gauges["docket_cache_entries"] = cache_view["entries"]
             gauges["docket_cache_saved_usd"] = cache_view["saved_usd"]
-        for name, value in gauges.items():
+        for name, gauge in gauges.items():
             lines.append(f"# TYPE {name} gauge")
-            lines.append(f"{name} {value}")
+            lines.append(f"{name} {gauge}")
         breaker = self.breaker.snapshot() if self.breaker else {}
         for key, state in breaker.items():
             lines.append(f'docket_breaker_state{{upstream="{key}"}} {1 if state["state"] != "closed" else 0}')
@@ -1760,8 +1782,8 @@ class RecordingProxy:
         self._server.daemon_threads = True
         self._thread = threading.Thread(target=self._server.serve_forever, name="docket-proxy", daemon=True)
         self._thread.start()
-        host, port = self._server.server_address[0], self._server.server_address[1]
-        return host, port
+        address = self._server.server_address
+        return str(address[0]), int(address[1])
 
     def stop(self) -> None:
         self.stopping.set()

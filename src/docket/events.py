@@ -113,8 +113,10 @@ def request_fingerprint(data: dict[str, Any]) -> str:
     import json
 
     body = data.get("body")
+    # `cleaned` is `Any` because a request body is whatever JSON the client sent: a
+    # non-dict passes through unchanged rather than being reshaped into one.
     if isinstance(body, dict):
-        cleaned = {
+        cleaned: Any = {
             k: v
             for k, v in body.items()
             if k
