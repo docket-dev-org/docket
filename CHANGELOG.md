@@ -180,6 +180,23 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   navigation does not list. `docs.yml` triggers on `assets/**` and `overrides/**`, so an
   asset-only change redeploys instead of leaving the previous mark on the live site.
 
+## [0.1.7] - 2026-10-19
+
+### Fixed
+
+- **The race the 0.1.6 release gate found, shipped under a number that carries the fix.** The
+  0.1.6 wheel and sdist were uploaded before the race was closed, so the published 0.1.6 is the
+  one whose receipt could claim 62 events over a ledger holding 64. PyPI reserves a filename once
+  it is published, so the only way to ship the fix is a release built from the commit that holds
+  it — which is what this is. The remote `v0.1.6` tag pointed at that same commit, its release
+  workflow had failed, and no release existed for it; the tag was deleted rather than left
+  naming a version whose artifacts did not match it.
+
+  Nothing else changed. The tree is the one `d8992ca` describes: the drain that stops the receipt
+  racing the boundary's last recording call, the build-from-ref tooling that keeps an artifact
+  from predating its tag, and the publishing guide corrected to name the two distributions
+  rather than the whole of `dist/`.
+
 ## [0.1.6] - 2026-10-19
 ### Fixed
 
