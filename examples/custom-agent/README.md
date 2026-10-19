@@ -24,7 +24,9 @@ $ PYTHONPATH=src python3 -m docket run --max-usd 0.10 -- python3 examples/custom
 | `session.record_model_call(...)` | a model call the agent made **through the boundary** — the SDK adds the meaning, the boundary supplies the observed usage |
 | `session.record_tool(...)` / `record_note(...)` | an assertion by the agent, labelled `reported_by: "agent"` in the ledger |
 | `session.would_exceed(usd=…)` | a pre-flight check against the policy, so an agent can degrade gracefully instead of being killed |
-| `session.ledger.path`, `session._docket_number` | where the evidence is, and what it will be called |
+| `session.docket_number` | what the run is called, and the identifier its events are filed under |
+| `session.ledger_path` | where the evidence is — or `None` when a supervisor owns the ledger, which is the honest answer rather than a path this session does not write to |
+| `session.attached` | whether this session attached to a supervised run or opened a ledger of its own |
 
 ## Testimony vs evidence
 
@@ -47,6 +49,16 @@ Inside `docket run`, the session detects `DOCKET_PROXY_URL` and `DOCKET_SESSION`
 through the boundary's `/docket/event` endpoint — one writer per ledger, so the hash chain stays
 valid. Standalone, it owns its ledger and writes its own receipt. Same API either way; check
 `session.attached` if your code needs to care.
+
+Two consequences of the attached case are worth stating, because code that ignores them crashes:
+
+- `session.ledger_path` is `None`. The supervisor owns that file, so there is no path this session
+  can honestly name. It used to be `session.ledger.path`, which raised `AttributeError` the first
+  time anyone ran the example under `docket run` — the command this README has always advertised.
+  `tests/test_examples.py` now drives both paths, so the crash cannot come back unnoticed.
+- `session.receipt` is `None`. The supervisor writes the receipt for the whole run, and it commits
+  to a ledger this session never read. Verify `.docket/latest.receipt.json` from the run, not one
+  this session could have written.
 
 ```python
 with docket.Session() as session:

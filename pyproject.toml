@@ -74,7 +74,7 @@ docket = "docket.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/docket-dev-org/docket"
-Documentation = "https://github.com/docket-dev-org/docket/tree/main/docs"
+Documentation = "https://docket-dev-org.github.io/docket/"
 Specification = "https://github.com/docket-dev-org/docket/blob/main/spec/docket-receipt-1.md"
 Issues = "https://github.com/docket-dev-org/docket/issues"
 Changelog = "https://github.com/docket-dev-org/docket/blob/main/CHANGELOG.md"

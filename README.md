@@ -1,8 +1,8 @@
 # docket
 
 [![CI](https://github.com/docket-dev-org/docket/actions/workflows/ci.yml/badge.svg)](https://github.com/docket-dev-org/docket/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.1.2-blue)](CHANGELOG.md)
-[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![version](https://img.shields.io/badge/version-0.1.2-blue)](https://docket-dev-org.github.io/docket/CHANGELOG/)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/docket-dev-org/docket/blob/main/LICENSE)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 
 A local budget-and-evidence layer for AI agents: it caps what a run can spend, records every model call, tool call, and file change in a hash-chained ledger, and emits a receipt that a third party verifies offline, without the ledger, the tool, or network access.
@@ -10,7 +10,7 @@ A local budget-and-evidence layer for AI agents: it caps what a run can spend, r
 Docket wraps the agent you already run. It needs no account, no server, no telemetry, and no API keys of its own.
 
 > [!NOTE]
-> Docket 0.1.2 is on PyPI and installs with `pip install docket-ai`. The `docket/receipt/v1` format is versioned and frozen: the specification in `spec/` and its 44 committed conformance vectors define it, and three implementations that share no code are held to that contract, so a receipt written by 0.1.0 verifies under any later release. The command line follows semantic versioning. Exit codes, flags, and the JSON shape of every command are part of the interface and stay stable across 0.1.x; the format tag changes only under the process in [CONTRIBUTING.md](CONTRIBUTING.md#changing-the-format), and never silently.
+> Docket 0.1.2 is on PyPI and installs with `pip install docket-ai`. The `docket/receipt/v1` format is versioned and frozen: the specification in `spec/` and its 44 committed conformance vectors define it, and three implementations that share no code are held to that contract, so a receipt written by 0.1.0 verifies under any later release. The command line follows semantic versioning. Exit codes, flags, and the JSON shape of every command are part of the interface and stay stable across 0.1.x; the format tag changes only under the process in [CONTRIBUTING.md](https://docket-dev-org.github.io/docket/CONTRIBUTING/#changing-the-format), and never silently.
 
 ---
 
@@ -33,9 +33,9 @@ Existing tooling covers parts of this problem. None of it covers the seam betwee
 
 Docket is designed around five commitments that follow from those gaps:
 
-1. **Account, do not pretend to sandbox.** Docket proves what happened. For prevention, use a container, and read [the threat model](docs/threat-model.md) for the line between the two.
+1. **Account, do not pretend to sandbox.** Docket proves what happened. For prevention, use a container, and read [the threat model](https://docket-dev-org.github.io/docket/docs/threat-model/) for the line between the two.
 2. **Caps bind outside the agent.** The boundary refuses the request that would cross the cap, and the supervisor terminates the process group. The agent cannot be prompted out of it.
-3. **Verification must not require trust.** A receipt is checked by recomputing hashes and costs from the file itself, by three independent implementations, under a written [format specification](spec/docket-receipt-1.md).
+3. **Verification must not require trust.** A receipt is checked by recomputing hashes and costs from the file itself, by three independent implementations, under a written [format specification](https://docket-dev-org.github.io/docket/spec/docket-receipt-1/).
 4. **The record states its own limits.** Every receipt carries `limits_disclosure`: what Docket could see in that run and what it could not. Silence is never the default.
 5. **The money must be recomputable.** Costs are recomputed by the verifier from raw token counts and the embedded price table, so a stranger does not have to believe your arithmetic.
 
@@ -91,20 +91,20 @@ $ make conformance
 
 | page | what it answers |
 | --- | --- |
-| [Quickstart](docs/quickstart.md) | install, first capped run, and verification in five minutes |
-| [Concepts](docs/concepts.md) | boundary, ledger, receipt, findings, and caps |
-| [CLI reference](docs/cli.md) | every command and flag, with exit codes and environment variables |
-| [Policy reference](docs/policy-reference.md) | the complete `docket.toml` schema |
-| [Verification](docs/verification.md) | what each check means and how to run it in CI |
-| [Integrations](docs/integrations.md) | Claude Code, Codex, Gemini CLI, opencode, aider, the SDKs, and HTTP proxying |
-| [Threat model and limits](docs/threat-model.md) | what Docket does not defend against |
-| [Comparison](docs/comparison.md) | Docket against gateways, observability, sandboxes, and record/replay tools |
-| [Response cache](docs/caching.md) | what a cache hit is, the brake it needs, and the measured cost |
-| [Testing](docs/testing.md) | what is tested, by kind, and what is deliberately not |
-| [Format specification](spec/docket-receipt-1.md) and [Conformance](spec/conformance.md) | the normative `docket/receipt/v1` contract and the corpus that holds implementations to it |
-| [Production coverage](docs/production-coverage.md) | 77 production-engineering concepts, each with what exists here and where |
-| [Resilience practice](docs/sre-coverage.md) | 22 resilience practices, covering stress, fuzzing, chaos, game days, FMEA, and post-mortems, and which ones are practised |
-| [Evidence](docs/evidence.md) | every problem claim with its source and its strength grade |
+| [Quickstart](https://docket-dev-org.github.io/docket/docs/quickstart/) | install, first capped run, and verification in five minutes |
+| [Concepts](https://docket-dev-org.github.io/docket/docs/concepts/) | boundary, ledger, receipt, findings, and caps |
+| [CLI reference](https://docket-dev-org.github.io/docket/docs/cli/) | every command and flag, with exit codes and environment variables |
+| [Policy reference](https://docket-dev-org.github.io/docket/docs/policy-reference/) | the complete `docket.toml` schema |
+| [Verification](https://docket-dev-org.github.io/docket/docs/verification/) | what each check means and how to run it in CI |
+| [Integrations](https://docket-dev-org.github.io/docket/docs/integrations/) | Claude Code, Codex, Gemini CLI, opencode, aider, the SDKs, and HTTP proxying |
+| [Threat model and limits](https://docket-dev-org.github.io/docket/docs/threat-model/) | what Docket does not defend against |
+| [Comparison](https://docket-dev-org.github.io/docket/docs/comparison/) | Docket against gateways, observability, sandboxes, and record/replay tools |
+| [Response cache](https://docket-dev-org.github.io/docket/docs/caching/) | what a cache hit is, the brake it needs, and the measured cost |
+| [Testing](https://docket-dev-org.github.io/docket/docs/testing/) | what is tested, by kind, and what is deliberately not |
+| [Format specification](https://docket-dev-org.github.io/docket/spec/docket-receipt-1/) and [Conformance](https://docket-dev-org.github.io/docket/spec/conformance/) | the normative `docket/receipt/v1` contract and the corpus that holds implementations to it |
+| [Production coverage](https://docket-dev-org.github.io/docket/docs/production-coverage/) | 77 production-engineering concepts, each with what exists here and where |
+| [Resilience practice](https://docket-dev-org.github.io/docket/docs/sre-coverage/) | 22 resilience practices, covering stress, fuzzing, chaos, game days, FMEA, and post-mortems, and which ones are practised |
+| [Evidence](https://docket-dev-org.github.io/docket/docs/evidence/) | every problem claim with its source and its strength grade |
 
 ## Prerequisites
 
@@ -265,8 +265,8 @@ Exit codes are part of the interface:
 
 Four workflows cover most of the work:
 
-1. **Cap a coding agent.** Run `docket run --max-usd 5 -- claude` and read the receipt when the task ends. The table of agents and their flags is in [Integrations](docs/integrations.md).
-2. **Gate a pipeline on evidence.** Run `docket verify .docket/latest.receipt.json --json` in CI; a non-zero exit fails the job, and the JSON names the check that failed. The ledger beside the receipt is checked too, so a chain break fails the gate. See [Verification](docs/verification.md).
+1. **Cap a coding agent.** Run `docket run --max-usd 5 -- claude` and read the receipt when the task ends. The table of agents and their flags is in [Integrations](https://docket-dev-org.github.io/docket/docs/integrations/).
+2. **Gate a pipeline on evidence.** Run `docket verify .docket/latest.receipt.json --json` in CI; a non-zero exit fails the job, and the JSON names the check that failed. The ledger beside the receipt is checked too, so a chain break fails the gate. See [Verification](https://docket-dev-org.github.io/docket/docs/verification/).
 3. **Check for drift after a prompt change.** Run `docket diff old.receipt.json new.receipt.json` and compare cost, call count, and models before you ship the change.
 4. **Answer "why should I believe you?" without a clone.** Run `docket verify --impl node receipt.json` and get a verdict from a program that shares no code with this one.
 
@@ -304,7 +304,7 @@ Precedence runs command-line flag, then policy file, then built-in default. Thre
 
 - `--docket-dir` (default `.docket`) sets where ledgers and receipts live; `DOCKET_DOCKET_DIR` overrides it.
 - Docket exports `DOCKET_PROXY_URL`, `DOCKET_SESSION`, `DOCKET_POLICY_DIGEST`, and `DOCKET_TOOL_VERSION` to the child process, so an instrumented agent can cite its own run.
-- The full schema, including the resilience and cache sections, is in the [policy reference](docs/policy-reference.md).
+- The full schema, including the resilience and cache sections, is in the [policy reference](https://docket-dev-org.github.io/docket/docs/policy-reference/).
 
 ## AI agent integration
 
@@ -348,19 +348,19 @@ cd docket
 PYTHONPATH=src python3 -m pytest tests -ra
 ```
 
-That is 1198 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1198 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
+That is 1201 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1201 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
 
 Two rules matter more than style:
 
 - **The suite stays offline.** A test that needs the network is a test that will fail in someone else's CI.
 - **Nothing that hashes a structure changes without a spec change.** A format break invalidates every receipt ever issued.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and the review bar, [SUPPORT.md](SUPPORT.md) for where to ask questions and what to include in a report, [SECURITY.md](SECURITY.md) for vulnerability reports, and [GOVERNANCE.md](GOVERNANCE.md) for how decisions are made.
+Read [CONTRIBUTING.md](https://docket-dev-org.github.io/docket/CONTRIBUTING/) for the workflow and the review bar, [SUPPORT.md](https://docket-dev-org.github.io/docket/SUPPORT/) for where to ask questions and what to include in a report, [SECURITY.md](https://docket-dev-org.github.io/docket/SECURITY/) for vulnerability reports, and [GOVERNANCE.md](https://docket-dev-org.github.io/docket/GOVERNANCE/) for how decisions are made.
 
 ## License
 
-Docket is licensed under the **Apache License 2.0** (SPDX: `Apache-2.0`); the full text is in [LICENSE](LICENSE). The specification text in `spec/` is licensed **CC BY 4.0** so that other implementations can copy it freely.
+Docket is licensed under the **Apache License 2.0** (SPDX: `Apache-2.0`); the full text is in [LICENSE](https://github.com/docket-dev-org/docket/blob/main/LICENSE). The specification text in `spec/` is licensed **CC BY 4.0** so that other implementations can copy it freely.
 
-Docket is free and Apache-2.0, with no hosted tier; [SPONSORS.md](SPONSORS.md) says what support pays for and what it does not buy.
+Docket is free and Apache-2.0, with no hosted tier; [SPONSORS.md](https://docket-dev-org.github.io/docket/SPONSORS/) says what support pays for and what it does not buy.
 
 Receipts, ledgers, reports, snapshots, and restores that Docket writes are **yours**. The license covers Docket's source code; it makes no claim on the data you record with it, and the format is published so that a record outlives this tool.

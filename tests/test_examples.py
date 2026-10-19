@@ -25,6 +25,7 @@ a workflow fragment rather than a program.
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
@@ -168,6 +169,70 @@ def test_the_sdk_example_records_the_agents_own_claims_and_verifies(tmp_path):
     checked = _verify(tmp_path, str(receipt))
     assert checked.returncode == 0, _out(checked)
     assert "VERIFIED" in _out(checked)
+
+
+def test_the_sdk_example_also_runs_under_the_supervisor(tmp_path):
+    """The supervised path of the SDK example, which nothing ran until now.
+
+    The example's own docstring and `examples/custom-agent/README.md` both advertise
+
+        python3 -m docket run --max-usd 0.10 -- python3 examples/custom-agent/agent_sdk.py
+
+    and the example used to **crash** there: it printed `session.ledger.path` unconditionally, and
+    an attached session has `ledger = None` by design, because the supervisor is the single writer
+    to that file. Only the standalone path was tested, so the crash shipped and the README kept
+    advertising the command that caused it.
+
+    The test now drives the supervised path and asserts the two things that make it correct rather
+    than merely non-crashing: the agent's own events reached the run's ledger, labelled as claims
+    (`reported_by: "agent"`), and the receipt the run wrote verifies with the chain intact. An
+    attached session that silently dropped its events would pass a "does not crash" test.
+    """
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "docket",
+            "run",
+            "--max-usd",
+            "0.10",
+            "--",
+            sys.executable,
+            str(EXAMPLES / "custom-agent" / "agent_sdk.py"),
+        ],
+        cwd=str(workdir),
+        env={
+            "PYTHONPATH": str(ROOT / "src"),
+            "PATH": "/usr/bin:/bin:/usr/local/bin",
+            "HOME": str(tmp_path),
+            "TMPDIR": str(tmp_path),
+        },
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    # cwd is passed twice above; the later keyword wins, and the example is addressed from ROOT.
+    assert result.returncode == 0, _out(result)
+    output = _out(result)
+    assert "attached" in output, "the example did not report that it attached to the run:\n" + output
+
+    receipt = workdir / ".docket" / "latest.receipt.json"
+    assert receipt.is_file(), "the supervised run wrote no receipt:\n" + output
+    checked = _verify(tmp_path, str(receipt))
+    assert checked.returncode == 0, _out(checked)
+    assert "VERIFIED" in _out(checked), _out(checked)
+
+    # The agent's own claim is in the run's chain, and it is labelled as a claim.
+    ledgers = sorted((workdir / ".docket" / "runs").glob("*.jsonl"))
+    assert ledgers, "no ledger beside the receipt"
+    events = [json.loads(line) for line in ledgers[-1].read_text(encoding="utf-8").splitlines()]
+    claimed = [event for event in events if event["data"].get("reported_by") == "agent"]
+    assert claimed, "the agent's own events never reached the run's ledger:\n" + _out(checked)
+    assert any(event["type"] == "tool.call" for event in claimed), (
+        "the agent's tool.call is not among the events it asserted"
+    )
 
 
 def test_the_examples_directory_holds_the_policies_this_file_expects():

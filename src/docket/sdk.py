@@ -349,6 +349,28 @@ class Session:
 
     # -- introspection ----------------------------------------------------- #
     @property
+    def docket_number(self) -> str:
+        """The docket number this session's events are filed under.
+
+        Public because an example reached into `_docket_number` and a user copying the example
+        would too; a leading underscore is not a stable interface, and an instrumentation API
+        whose identifier is private is an API nobody can call.
+        """
+        return self._docket_number
+
+    @property
+    def ledger_path(self) -> Path | None:
+        """Where this session's events are written, or `None` when a supervisor owns the ledger.
+
+        Attached to a supervised run, the supervisor is the only writer to that file — two
+        writers would produce two competing hash chains — so this session has no file of its
+        own and the honest answer is `None`, not a path it does not write to. Callers that need
+        to show the evidence should ask the run that owns it (`docket verify` finds the ledger
+        beside the receipt without being told).
+        """
+        return self.ledger.path if self.ledger is not None else None
+
+    @property
     def cost(self) -> Decimal:
         return self.meter.cost
 

@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[1]
 
 #: Text files that may legitimately reference a document by path. Anything else (ledgers, reports,
@@ -208,6 +210,82 @@ def test_every_relative_link_in_the_docs_resolves_inside_the_staged_site(tmp_pat
     # a matcher that has stopped matching, not a count to keep in step with the documentation.
     assert seen >= 40, f"only {seen} relative links were scanned; the matcher has stopped working"
     assert not missing, "links that the staged site cannot resolve: " + repr(missing)
+
+
+def test_the_readme_carries_no_relative_link_the_pypi_page_cannot_resolve() -> None:
+    """`README.md` is the PyPI long description, and PyPI does not rewrite relative links.
+
+    PyPI renders the description with no repository around it and resolves a relative target
+    against `https://pypi.org/project/docket-ai/`, so every one of them lands on a 404 there
+    while resolving perfectly on GitHub. That is invisible from the repository, which is exactly
+    why it survived three releases: `README.md` carried 29 relative links, and the first reader
+    to notice was a user arriving from `pip install`.
+
+    The property is "absolute, or an in-page anchor", not "absolute GitHub URL": a target that
+    names a page the documentation site publishes is pointed at the site, so a reader who
+    arrives from PyPI lands in the documentation rather than in raw markdown. `LICENSE` is the
+    exception the rule permits, because no site publishes a licence file.
+
+    The offline half — no relative target — is checked without the network. The online half,
+    that every absolute target answers 200, is `test_every_url_the_readme_links_to_answers_200`.
+    """
+    readme = REPO / "README.md"
+    text = readme.read_text(encoding="utf-8")
+    relative = sorted(
+        target for target in INLINE_LINK.findall(text) if not target.startswith(EXTERNAL) and not target.startswith("#")
+    )
+    assert not relative, (
+        "README.md is the PyPI long description; these relative targets 404 on the package page: " + repr(relative)
+    )
+
+
+def test_every_url_the_readme_links_to_answers_200() -> None:
+    """Every absolute URL in `README.md` answers 200, from this machine, right now.
+
+    This is the half that needs the network, so it is a separate test: a contributor with no
+    network can still run the suite, and a link that rots is reported as a link that rots
+    rather than as a suite that cannot start. `requests` is not a dependency of the package,
+    so this uses `urllib` from the standard library.
+
+    Skipped, not failed, when there is no network: "could not check" is not "broken", and a
+    red suite on a plane teaches people to ignore red suites.
+    """
+    import urllib.error
+    import urllib.request
+
+    readme = REPO / "README.md"
+    targets = sorted(
+        {
+            target.split("#", 1)[0]
+            for target in INLINE_LINK.findall(readme.read_text(encoding="utf-8"))
+            if target.startswith(("http://", "https://"))
+        }
+    )
+    assert targets, "no absolute links found in README.md; the matcher has stopped working"
+
+    # shields.io answers 403 to `Python-urllib/3.x` and 200 to a browser. The page these links
+    # sit on is read by browsers, so the check asks the question a browser asks. Without the
+    # header the badge images fail and the test reports three links that are not broken.
+    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
+
+    probe = urllib.request.Request("https://pypi.org/pypi/docket-ai/json", method="HEAD", headers=headers)
+    try:
+        with urllib.request.urlopen(probe, timeout=20) as response:
+            response.read(1)
+    except (TimeoutError, urllib.error.URLError, OSError):
+        pytest.skip("no network: the link check needs to reach pypi.org")
+
+    broken: list[str] = []
+    for url in targets:
+        request = urllib.request.Request(url, method="GET", headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                response.read(1)
+        except urllib.error.HTTPError as error:
+            broken.append(f"{error.code} {url}")
+        except (TimeoutError, urllib.error.URLError, OSError) as error:
+            broken.append(f"{type(error).__name__} {url}")
+    assert not broken, "URLs in README.md that do not answer 200: " + repr(broken)
 
 
 def _collected_test_counts() -> dict[str, int]:

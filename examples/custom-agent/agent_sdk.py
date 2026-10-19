@@ -10,9 +10,15 @@ Run it standalone (it writes its own ledger and receipt):
 
     PYTHONPATH=src python3 examples/custom-agent/agent_sdk.py
 
-or under the supervisor, where it attaches to the run's ledger instead:
+or under the supervisor, where it attaches to the run's ledger instead of opening its own:
 
-    PYTHONPATH=src docket run --max-usd 0.10 -- python3 examples/custom-agent/agent_sdk.py
+    PYTHONPATH=src python3 -m docket run --max-usd 0.10 -- python3 examples/custom-agent/agent_sdk.py
+
+Both paths are the same code. The difference is who owns the ledger file: standalone, this
+process opens one and writes the receipt; attached, the supervisor is the only writer to that
+file, because two writers would produce two competing hash chains and the chain would not
+verify. So an attached session reports `ledger_path is None` — there is no file of its own to
+name — and lets the run that owns it carry the receipt.
 """
 
 from __future__ import annotations
@@ -32,10 +38,19 @@ POLICY = Policy.from_dict({"policy": {"name": "sdk-example"}, "caps": {"max_usd"
 
 
 def main() -> int:
-    # A throwaway docket dir keeps the example from leaving artifacts in your checkout.
+    # A throwaway docket dir keeps the standalone run from leaving artifacts in your checkout.
+    # Under the supervisor this is ignored: DOCKET_DOCKET_DIR points at the run's own evidence
+    # directory, and the supervisor owns the ledger inside it.
     docket_dir = Path(tempfile.mkdtemp(prefix="docket-sdk-")) / ".docket"
     with docket.Session(policy=POLICY, docket_dir=docket_dir) as session:
-        print(f"session   {session._docket_number} · ledger {session.ledger.path}")
+        print(f"session   {session.docket_number}")
+
+        if session.attached:
+            # Attached: the supervisor owns the ledger and will write the receipt for the whole
+            # run. There is no path here to name, and inventing one would be a lie.
+            print("attached  yes — writing through the boundary; the run owns the ledger")
+        else:
+            print(f"ledger    {session.ledger_path}")
 
         # 1. A model call the agent made through the boundary: the SDK adds the *meaning*
         #    (which step of the plan this was for), while usage and cost come from the
@@ -71,17 +86,26 @@ def main() -> int:
 
         print(f"recorded  {session.calls} model call(s), {session.tokens:,} tokens, ${session.cost} attributed")
 
-    receipt = session.receipt
-    print(
-        f"receipt   {receipt['docket_number']} · {receipt['totals']['calls']} calls · ${receipt['totals']['cost_usd']}"
-    )
-    print("\nevent types in this ledger:")
-    for event_type, count in sorted(receipt["event_counts"].items()):
-        print(f"  {count:>3}  {event_type}")
-    print("\nverify it:")
-    print(f"  docket verify {session.receipt_path}")
+    if session.attached:
+        # The supervisor writes the receipt for the run, and it commits to the whole ledger —
+        # including these events. Verify the run's receipt, not one this session could not have
+        # written without reading a file it does not own.
+        print("\nreceipt   written by the run that owns this ledger")
+        print("verify    docket verify .docket/latest.receipt.json")
+    else:
+        receipt = session.receipt
+        print(
+            f"receipt   {receipt['docket_number']} · {receipt['totals']['calls']} calls · "
+            f"${receipt['totals']['cost_usd']}"
+        )
+        print("\nevent types in this ledger:")
+        for event_type, count in sorted(receipt["event_counts"].items()):
+            print(f"  {count:>3}  {event_type}")
+        print("\nverify it:")
+        print(f"  docket verify {session.receipt_path}")
+
     print("\nnote how the receipt distinguishes what the agent claimed from what the boundary saw:")
-    for record in session.ledger.events:
+    for record in session.ledger.events if session.ledger is not None else []:
         if record.type == "tool.call":
             print("  " + json.dumps({"type": record.type, "reported_by": record.data.get("reported_by")}))
     return 0
