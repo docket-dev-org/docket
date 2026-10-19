@@ -23,6 +23,7 @@ from typing import Any
 
 from . import cache as response_cache
 from . import events as ev
+from ._version import FORMAT_VERSION, __version__
 from .canon import digest_of, merkle_proof, usd
 from .explain import analyse
 from .latency import is_latency
@@ -35,8 +36,10 @@ from .signing import seal as make_seal
 from .signing import sign as make_signature
 from .util import atomic_write, loads_json
 
-FORMAT = "docket/receipt/v1"
-TOOL_VERSION = "0.1.0"
+FORMAT = FORMAT_VERSION
+# Derived, not written: this is the receipt's own claim about the tool that produced it, and a
+# literal here named 0.1.0 in every receipt written by 0.1.1 and 0.1.2. See `_version.py`.
+TOOL_VERSION = __version__
 MAX_PROVEN_USAGE_ROWS = 4000
 
 

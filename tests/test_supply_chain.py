@@ -196,20 +196,26 @@ def test_the_node_verifier_in_the_wheel_is_the_one_in_the_repository():
     assert resolved.read_bytes() == (root / "verify-js" / "verify.mjs").read_bytes()
 
 
-def test_the_module_version_is_not_written_twice() -> None:
-    """`docket --version` must report the distribution that is actually installed.
+def test_the_version_is_written_in_exactly_one_place() -> None:
+    """Every claim about which version is running must come from one derivation.
 
-    `src/docket/__init__.py` used to carry a literal `__version__ = "0.1.0"` while
-    `pyproject.toml` moved to 0.1.1. Nothing compared the two, so the drift was invisible: the
-    published page, `pip show` and `importlib.metadata` all said 0.1.1, while every receipt's
-    `tool.version` field and `docket --version` said 0.1.0. A receipt that misreports the tool
-    that wrote it makes a false claim about provenance, which is the one thing a receipt exists
-    to make checkable.
+    The version was written three times — `__init__.py`'s `__version__`, `receipt.py`'s
+    `TOOL_VERSION`, and `supervisor.py`'s `DOCKET_TOOL_VERSION` — and each had to be edited by
+    hand on every release. Two of the three were still `0.1.0` when the distribution installed
+    0.1.2, so `docket --version` said one thing, `pip show` said another, and every receipt
+    written since 0.1.0 named a tool version that was not the one running. A receipt that
+    misreports the tool that wrote it makes a false claim about provenance, which is the one
+    thing a receipt exists to make checkable.
 
-    The version is now derived from the installed distribution, falling back to the
-    `pyproject.toml` of a source tree and then to `unknown`. This test pins the derivation: the
-    module must not hard-code a version, and when it can be determined it must match
-    `pyproject.toml`.
+    All three now import `__version__` from `src/docket/_version.py`, which derives it from the
+    installed distribution, falls back to the nearest `pyproject.toml`, and then to `unknown`.
+    This test pins the property that made the bug possible: **no module under `src/` may carry a
+    version literal**. Scanning only `__init__.py` is what let the other two literals survive
+    the first fix.
+
+    It also asserts the derivation answers with `pyproject.toml`'s version when run from a source
+    tree, because that is the case a contributor hits and the one where a wrong answer is least
+    visible.
     """
     import os
     import re
@@ -218,9 +224,26 @@ def test_the_module_version_is_not_written_twice() -> None:
     root = Path(__file__).resolve().parents[1]
     declared = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 
-    source = (root / "src" / "docket" / "__init__.py").read_text(encoding="utf-8")
-    literal = re.search(r'^__version__\s*=\s*"', source, flags=re.MULTILINE)
-    assert literal is None, "__version__ is a literal again; it must be derived so it cannot drift from pyproject.toml"
+    # No module under src/ may carry a version literal. The pattern matches a name containing
+    # "version" bound to a quoted semver-looking string, by either `=` or `:`, so it catches the
+    # assignment form (`TOOL_VERSION = "0.1.0"`) and the dict-entry form the supervisor used
+    # (`"DOCKET_TOOL_VERSION": "0.1.0"`). Scanning only `__init__.py`, or only assignments, is
+    # what let the other two literals survive the first fix.
+    # The name may be quoted (a dict key) or bare (an assignment), so the closing quote is
+    # optional. Both forms were in use: `TOOL_VERSION = "0.1.0"` and `"DOCKET_TOOL_VERSION":
+    # "0.1.0"`.
+    version_binding = re.compile(
+        r'(?P<name>[A-Za-z_][A-Za-z0-9_]*)"?\s*[:=]\s*"(?P<value>[0-9]+\.[0-9]+\.[0-9]+[^"]*)"'
+    )
+    literals: list[str] = []
+    for module in sorted((root / "src" / "docket").rglob("*.py")):
+        for number, line in enumerate(module.read_text(encoding="utf-8").splitlines(), start=1):
+            match = version_binding.search(line)
+            if match and "version" in match.group("name").lower():
+                literals.append(f"{module.relative_to(root).as_posix()}:{number}: {line.strip()}")
+    assert not literals, "a version literal is written in the source again; it must come from _version.py: " + repr(
+        literals
+    )
 
     # In a source tree the version comes from pyproject.toml, so it must equal the declared one.
     # The probe runs in a subprocess so that this test process's own imports cannot answer.

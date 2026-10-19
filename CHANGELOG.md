@@ -38,6 +38,52 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every receipt since 0.1.0 named a tool version that was not running.** The version was written
+  three times — `src/docket/__init__.py`'s `__version__`, `src/docket/receipt.py`'s
+  `TOOL_VERSION`, and `src/docket/supervisor.py`'s `DOCKET_TOOL_VERSION` — and each had to be
+  edited by hand on every release. Two of the three were still `0.1.0` when the distribution
+  installed 0.1.2, so `docket --version` said one thing, `pip show` said another, and the
+  `tool.version` field in every receipt named a release that was not the one that wrote it. A
+  receipt that misreports its author makes a false claim about provenance, which is the one thing
+  a receipt exists to make checkable. All three now import from a new `src/docket/_version.py`,
+  which derives the version from the installed distribution, falls back to the nearest
+  `pyproject.toml`, and then to `unknown`. `FORMAT_VERSION` moved there for the same reason. The
+  guard that had checked only `__init__.py` now scans every module under `src/` for a version
+  literal, in both the assignment and the dict-entry form, because scanning one file is what let
+  the other two literals survive the first fix.
+
+- **`examples/custom-agent/agent_sdk.py` crashed on the command its own README advertised.** Under
+  `docket run`, the session attaches to the supervised run and `session.ledger` is `None` by
+  design — the supervisor is the only writer to that file, because two writers would produce two
+  competing hash chains. The example printed `session.ledger.path` unconditionally, so the
+  supervised command raised `AttributeError` while the standalone one worked. Only the standalone
+  path was tested. The example now branches on `session.attached` and says what is true in each
+  case, and `tests/test_examples.py` drives the supervised path and asserts the agent's own events
+  reached the run's ledger labelled `reported_by: "agent"` and that the receipt verifies.
+
+- **Every link in the README was broken on the PyPI page.** `README.md` is the package's long
+  description, and PyPI renders it with no repository around it, resolving a relative target
+  against `https://pypi.org/project/docket-ai/`. All 29 relative links therefore 404ed there while
+  resolving perfectly on GitHub — invisible from the repository, which is why it survived three
+  releases. They are now absolute: a target the documentation site publishes points at the site,
+  so a reader arriving from PyPI lands in the documentation rather than in raw markdown, and
+  `LICENSE` points at the repository. Two guards were added: one fails on any relative target, one
+  fetches every absolute URL and fails on a non-200.
+
+### Changed
+
+- `Documentation` in `[project.urls]` pointed at a GitHub directory listing. It now points at the
+  live documentation site, which is what a reader arriving from PyPI is looking for.
+
+- The conformance vectors were regenerated, because they carry `tool.version` and the spec states
+  that vectors move with the implementation in the same commit. Only the version string and the
+  two `receipt_core_sha256` digests that cover it changed; all three implementations still agree
+  (Python and Node: 88 correct, 0 wrong; Node's own suite: 100/100).
+
+## [Unreleased]
+
 ### Added
 
 - **Published to PyPI as `docket-ai` 0.1.0.** `pip install docket-ai` installs the same

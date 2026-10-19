@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from . import events as ev
+from ._version import __version__
 from .canon import num
 from .fsdiff import deny_write_violations, diff, snapshot, tree_digest
 from .ledger import Ledger, LedgerFullError, _now_rfc3339
@@ -638,7 +639,7 @@ class Supervisor:
                 "DOCKET_SESSION": self.session_id,
                 "DOCKET_DOCKET_DIR": str(self.docket_dir),
                 "DOCKET_POLICY_DIGEST": self.policy.digest(),
-                "DOCKET_TOOL_VERSION": "0.1.0",
+                "DOCKET_TOOL_VERSION": __version__,
             }
         )
         env.update(self.env_extra)
