@@ -335,6 +335,24 @@ def test_the_guide_never_feeds_the_whole_of_dist_to_twine() -> None:
         assert "dist/*.whl" in command and "dist/*.tar.gz" in command, f"{command!r} does not name both distributions"
 
 
+def test_the_guide_sends_the_token_as_the_username_token() -> None:
+    """PyPI withdrew username and password authentication from the upload endpoint.
+
+    A token sent under the account name is refused with a 403 that names authentication rather
+    than the username, so the guide has to say which username to use. This failed on the 0.1.7
+    upload: the token was valid, the account was the right one, and `twine upload` still
+    returned `403 Username/Password authentication is no longer supported`.
+    """
+    guide = (Path(__file__).resolve().parent.parent / "PUBLISHING.md").read_text(encoding="utf-8")
+    block = next(fence for _language, fence in _fences(guide) if "twine upload" in fence)
+    lines = [line.strip() for line in block.splitlines() if line.strip()]
+    assert 'export TWINE_USERNAME="__token__"' in lines, (
+        "PUBLISHING.md does not set TWINE_USERNAME to the literal string __token__; "
+        "PyPI refuses a token sent under any other username"
+    )
+    assert not any(line.startswith("export TWINE_USERNAME=") and "__token__" not in line for line in lines), block
+
+
 def test_the_guide_builds_from_a_ref_before_it_uploads() -> None:
     """The order is the point: build from the ref, check it, then upload."""
     guide = (Path(__file__).resolve().parent.parent / "PUBLISHING.md").read_text(encoding="utf-8")

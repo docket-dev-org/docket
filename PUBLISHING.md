@@ -26,6 +26,8 @@ To ship to PyPI:
 
 ```bash
 # Requires: Python 3.11+, git, build, twine, and a PyPI token for the docket-ai project.
+export TWINE_USERNAME="__token__"
+export TWINE_PASSWORD="$(cat /path/to/your/pypi-token)"
 python3 tools/build_dist.py --ref vX.Y.Z
 python3 tools/build_dist.py --check --ref vX.Y.Z
 twine check dist/*.whl dist/*.tar.gz
@@ -46,6 +48,12 @@ after the build and before `twine upload`, every time.
 
 Both `twine` commands name the two extensions rather than `dist/*`, because `dist/` also holds
 `PROVENANCE.json` and `twine check dist/*` refuses a file it does not recognise.
+
+`TWINE_USERNAME` must be the literal string `__token__`, not your account name. PyPI has
+withdrawn username and password authentication from the upload endpoint entirely, so a token
+sent under any other username is refused with `403 Username/Password authentication is no longer
+supported`. This is easy to get wrong, because the token itself is correct and the error names
+authentication rather than the username.
 
 Do this from a machine whose key never touches CI.
 

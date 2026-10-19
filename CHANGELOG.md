@@ -6,289 +6,6 @@ All notable changes are recorded here. The format follows
 separately by its tag (`docket/receipt/v1`) and changes only under the format process in
 [`CONTRIBUTING.md`](CONTRIBUTING.md#changing-the-format).
 
-## [0.1.1] - 2026-10-18
-
-### Fixed
-
-- **The quickstart linked a wheel filename that does not exist.** It told a reader to install
-  `docket-0.1.0-py3-none-any.whl`, which the rename to the `docket-ai` distribution had turned
-  into `docket_ai-0.1.0-py3-none-any.whl`. The quickstart now installs from PyPI like the
-  README does, keeps the clone path for a contributor, and links to `PUBLISHING.md` for why the
-  distribution name differs from the command.
-
-- **The PyPI long description quoted a stale test count.** The 0.1.0 wheel was built before the
-  supply-chain guard was added, so its rendered page said 1196 tests where the repository said
-  1197. The wheels are otherwise byte-identical.
-
-## [0.1.2] - 2026-10-18
-
-### Fixed
-
-- **`docket --version` reported a version the package was not.** `src/docket/__init__.py` carried a
-  literal `__version__ = "0.1.0"` while `pyproject.toml` moved to 0.1.1, and nothing compared the
-  two. Every receipt's `tool.version` field and the output of `docket --version`, `docket
-  selftest` and `docket doctor` said 0.1.0 while `pip show`, the PyPI page and
-  `importlib.metadata` said 0.1.1. A receipt that names the wrong tool makes a false claim about
-  provenance, which is the one thing a receipt exists to make checkable.
-
-  The version is now read from the installed distribution, falling back to the `pyproject.toml`
-  of a source tree and then to `unknown`. The distribution name is not written into the module,
-  so renaming it cannot desynchronise the two again. `tests/test_supply_chain.py` asserts the
-  derivation and fails if the literal returns.
-
-## [0.1.3] - 2026-10-19
-
-### Fixed
-
-- **Every receipt since 0.1.0 named a tool version that was not running.** The version was written
-  three times — `src/docket/__init__.py`'s `__version__`, `src/docket/receipt.py`'s
-  `TOOL_VERSION`, and `src/docket/supervisor.py`'s `DOCKET_TOOL_VERSION` — and each had to be
-  edited by hand on every release. Two of the three were still `0.1.0` when the distribution
-  installed 0.1.2, so `docket --version` said one thing, `pip show` said another, and the
-  `tool.version` field in every receipt named a release that was not the one that wrote it. A
-  receipt that misreports its author makes a false claim about provenance, which is the one thing
-  a receipt exists to make checkable. All three now import from a new `src/docket/_version.py`,
-  which derives the version from the installed distribution, falls back to the nearest
-  `pyproject.toml`, and then to `unknown`. `FORMAT_VERSION` moved there for the same reason. The
-  guard that had checked only `__init__.py` now scans every module under `src/` for a version
-  literal, in both the assignment and the dict-entry form, because scanning one file is what let
-  the other two literals survive the first fix.
-
-- **`examples/custom-agent/agent_sdk.py` crashed on the command its own README advertised.** Under
-  `docket run`, the session attaches to the supervised run and `session.ledger` is `None` by
-  design — the supervisor is the only writer to that file, because two writers would produce two
-  competing hash chains. The example printed `session.ledger.path` unconditionally, so the
-  supervised command raised `AttributeError` while the standalone one worked. Only the standalone
-  path was tested. The example now branches on `session.attached` and says what is true in each
-  case, and `tests/test_examples.py` drives the supervised path and asserts the agent's own events
-  reached the run's ledger labelled `reported_by: "agent"` and that the receipt verifies.
-
-- **The `Typing :: Typed` classifier was a claim with nothing behind it.** `pyproject.toml`
-  declared the classifier and the wheel shipped no `py.typed`, so no consumer's type checker
-  would read the package's annotations at all. The package was annotated all along — and 65 of
-  those annotations were wrong, which nobody could see because nothing asked. `py.typed` now
-  ships, mypy runs in the lint job, and the 65 errors are fixed: narrowing that did not survive
-  a second method call, `__exit__` annotated `bool` where it always returns `False`, a signing
-  key accepted and then used as any key type, a metrics dict annotated `dict[str, int]` that
-  holds a decimal string, and the rest. A guard test fails if the marker disappears while the
-  classifier stays.
-
-- **`docket keygen` did not exist, so `docket run --sign` had no way to produce a key.**
-  `src/docket/signing.py` could generate an Ed25519 keypair from the first release and nothing
-  called it: no command, no documentation. The only way to sign a receipt was to already know
-  the library function. `docket keygen [PATH] [--force]` writes the keypair at mode 0600, prints
-  the public key, refuses to replace an existing key without `--force` (replacing a signing key
-  invalidates every receipt signed with the old one), and exits 70 naming the install when the
-  optional `cryptography` package is absent. Documented in the CLI reference, and tested end to
-  end: keygen, sign, verify, and a tampered receipt that fails both the totals and the signature.
-
-- **Two `assert`s were added to narrow a type, and `bandit` refused them.** An `assert` is
-  removed under `python -O`, and a tool whose whole claim is that it does not skip checks cannot
-  rest one on a statement the interpreter is entitled to delete. `verify.py` now tests
-  `chain_problem` directly — which is the narrowing that was wanted anyway, and drops the
-  `chain_ok` alias that made the tuple unreachable — and `policy.py` raises for the case that
-  cannot happen rather than asserting it. The line citations in `docs/testing.md` moved with the
-  code and were re-checked against the harness's site list again.
-
-- **Eight definitions in the package were dead code.** `generate_keypair` was the visible one —
-  `docket run --sign` was a flag with no way to produce a key, and the function that could have
-  produced one was invisible. Seven more had the same shape: `short_hash`, `mb`,
-  `money_or_zero`, `stable_seed`, `is_known`, `default_price_table`, `price_document_digest`
-  and `_gzip_bytes`, each a one- or two-line helper with no caller anywhere in the tree. Dead
-  code is not harmless in a project whose pitch is that a receipt says what the tool did: a
-  package that carries functions nothing runs is making the same kind of claim about itself. All
-  eight are deleted, and `tests/test_supply_chain.py` now fails when a top-level definition in
-  `src/` appears nowhere else in `src/`, `tests/`, `tools/`, `examples/` or `verify-js/`.
-
-- **A signing key of the wrong type produced an `AttributeError` from inside `cryptography`.**
-  `load_pem_private_key` returns a union of every key type the library supports, and most of
-  them have no `.sign(data)`. The call now refuses a non-Ed25519 key with a message naming the
-  file and the key it holds.
-
-- **Every link in the README was broken on the PyPI page.** `README.md` is the package's long
-  description, and PyPI renders it with no repository around it, resolving a relative target
-  against `https://pypi.org/project/docket-ai/`. All 29 relative links therefore 404ed there while
-  resolving perfectly on GitHub — invisible from the repository, which is why it survived three
-  releases. They are now absolute: a target the documentation site publishes points at the site,
-  so a reader arriving from PyPI lands in the documentation rather than in raw markdown, and
-  `LICENSE` points at the repository. Two guards were added: one fails on any relative target, one
-  fetches every absolute URL and fails on a non-200.
-
-### Changed
-
-- `Documentation` in `[project.urls]` pointed at a GitHub directory listing. It now points at the
-  live documentation site, which is what a reader arriving from PyPI is looking for.
-
-- Two public properties replace a private attribute an example reached into:
-  `Session.docket_number` and `Session.ledger_path`, the latter returning `None` when a
-  supervisor owns the ledger rather than a path this session does not write to.
-
-- The line citations in `docs/testing.md` were re-based onto the code as it now stands. Each one
-  was re-checked against `tools/mutate.py`'s site list, so every number the page quotes is a
-  line the mutation harness would actually mutate.
-
-- The conformance vectors were regenerated, because they carry `tool.version` and the spec states
-  that vectors move with the implementation in the same commit. Only the version string and the
-  two `receipt_core_sha256` digests that cover it changed; all three implementations still agree
-  (Python and Node: 88 correct, 0 wrong; Node's own suite: 100/100).
-
-## [0.1.4] - 2026-10-19
-
-### Changed
-
-- **The visual identity is the bounded-ledger mark, and the retired one is gone.** The repository
-  carried an indigo-and-teal receipt-with-a-tick logo whose palette names were still selected in
-  `mkdocs.yml` as `primary: indigo` / `accent: teal`, which made the documentation site carry a
-  second, retired identity. `assets/` now holds the approved kit: the color, dark, black and
-  white lockups, the standalone symbol, the 16-24px micro cut, the wordmark, the 512px avatar
-  tile, the 1280x640 social card and their vector sources, with the font notice and a generator
-  that renders both rasters from the SVGs. `theme.logo` is the white micro symbol on the cobalt
-  toolbar and `theme.favicon` is the adaptive micro favicon rather than a shrunken 512px tile.
-
-  Three defects were found by rendering the result rather than by reading the diff, and all three
-  are fixed:
-
-  1. `overrides/main.html` was written without `{% extends "base.html" %}`. `main.html` *is*
-     Material's page template, so the home page and the 404 page rendered as that one fragment —
-     256 bytes where a 50 KB document belongs. The build stayed green and still reported 53 pages,
-     because a page rendered from a fragment is still a page.
-  2. The brand stylesheet used `:root`, and Material puts `data-md-color-primary` on `<body>`.
-     Both selectors are specificity (0,1,0), so the file won on `<html>` and changed nothing
-     anywhere that consumes the variables: Chromium measured the header background as
-     `rgb(32, 148, 243)`, Material's blue, in light mode. The selectors now name `<body>` at
-     (0,2,1).
-  3. The favicon and touch-icon `<link>`s were written as literal strings, which mkdocs does not
-     rewrite per page, so they resolved at the root and 404'd on all 47 pages below it. They now
-     go through `| url`.
-
-  The site also carried three `theme-color` metas, because Material's palette script appends its
-  own and the effective value was `#2094f3`. Deleting the two in the override and fixing the
-  cascade leaves one meta that carries the brand colour.
-
-  `tests/test_brand_assets.py` guards all of it, and each of its guards was proven to fail on the
-  defect it names by injecting that defect into a scratch copy of the tree.
-
-- **The documentation site is themed in the brand palette.** `assets/brand.css` writes the approved
-  cobalt and bright cobalt over the CSS custom properties Material's palette stylesheet sets.
-  Material has no colour named for cobalt, so `primary: blue` remains the closest supported
-  fallback and the file refines it; every hex in it is from the approved palette, and a guard
-  refuses one that is not. `theme-color` follows the same two colours.
-
-- **`assets/` is staged for the site, and the site is rebuilt when it changes.** The stager now
-  carries `.ico` and `.css`, which no file in the tree had before, and skips `assets/BRAND.md` —
-  the in-repository alias map for the artwork, which mkdocs would otherwise publish as a page the
-  navigation does not list. `docs.yml` triggers on `assets/**` and `overrides/**`, so an
-  asset-only change redeploys instead of leaving the previous mark on the live site.
-
-## [0.1.7] - 2026-10-19
-
-### Fixed
-
-- **The race the 0.1.6 release gate found, shipped under a number that carries the fix.** The
-  0.1.6 wheel and sdist were uploaded before the race was closed, so the published 0.1.6 is the
-  one whose receipt could claim 62 events over a ledger holding 64. PyPI reserves a filename once
-  it is published, so the only way to ship the fix is a release built from the commit that holds
-  it — which is what this is. The remote `v0.1.6` tag pointed at that same commit, its release
-  workflow had failed, and no release existed for it; the tag was deleted rather than left
-  naming a version whose artifacts did not match it.
-
-  Nothing else changed. The tree is the one `d8992ca` describes: the drain that stops the receipt
-  racing the boundary's last recording call, the build-from-ref tooling that keeps an artifact
-  from predating its tag, and the publishing guide corrected to name the two distributions
-  rather than the whole of `dist/`.
-
-## [0.1.6] - 2026-10-19
-### Fixed
-
-- **The receipt no longer races the boundary's last recording call.** The 0.1.6 release gate
-  failed on `test_demo_stops_a_runaway_agent_and_verifies` with the receipt claiming 62 events
-  over a ledger holding 64, and `event-count` and `merkle-root` refusing a run whose evidence
-  was otherwise intact. The cause is a race, not a logic error: the proxy records events from
-  its own handler threads, an agent's last act before it exits is a recording call, and the
-  supervisor terminated the agent on the cap breach without waiting for that call to land. The
-  receipt was built from a ledger snapshot taken before the append, so it described a ledger
-  that no longer existed.
-
-  It could not be reproduced locally — 30 serial runs and 96 runs under eight-way contention on
-  a two-core box, all clean — because the window is milliseconds wide and depends on a loaded
-  runner. It was reproduced by holding the recording handler for 600 ms, which fails every
-  time, and that reproduction is now the regression test.
-
-  `RecordingProxy.quiesce` waits for the boundary to have no request in hand, and `run` calls it
-  before it takes the filesystem snapshot and builds the receipt. The counter it waits on is
-  `active_requests`, taken in `_guarded` around every request on every path and released in a
-  `finally`, because the existing `in_flight` counter only moves on the model-call path and the
-  recording endpoints are exactly the ones that were racing. If the drain times out the run
-  records a control note saying the receipt may under-count, rather than producing a silently
-  wrong receipt. Three guards pin it: the demo with a held recording handler still verifies,
-  `quiesce` refuses to report success while a request is in hand, and `quiesce` reports a
-  timeout rather than hanging. Each was proven to fire by disabling the drain, removing the
-  wait, and dropping the counter's release.
-
-- **The publishing guide no longer tells the reader to run a command that fails.** It shipped
-  `twine check dist/*` and `twine upload dist/*`, and `dist/` now also holds `PROVENANCE.json`,
-  which twine refuses with *"Unknown distribution format: 'PROVENANCE.json'"*. The commands were
-  measured before the guide shipped them, which is how the break was found: the first run of
-  `twine check dist/*` on a freshly built `dist/` failed. Both now name the two extensions, and
-  three guards hold the guide to it — every `bash` block parses, no twine command is handed a
-  path that is not a distribution, and nothing reaches twine before the provenance check. Each
-  was proven to fire by injecting the defect it names.
-
-
-
-- **The release build comes from a git ref, so an artifact can no longer predate its tag.** The
-  0.1.4 wheel and sdist were built with `python -m build` from a working tree, two commits
-  landed before the upload, and the published long description lacked the README logo the
-  repository had. The 0.1.5 sdist repeated the same mistake at a smaller scale: it was built one
-  commit before the `.gitignore` that tags it, so the tarball on PyPI carries a `.gitignore` the
-  tag does not. Neither could be corrected in place, because PyPI reserves a filename once it is
-  published.
-
-  `tools/build_dist.py` now exports the ref with `git archive` and builds from that export, so
-  an untracked file cannot leak in and a dirty tracked file exports at the committed version.
-  `--check` then reads `dist/PROVENANCE.json` and refuses a mismatch, which makes "the artifact
-  matches the tag" true by construction rather than by discipline. `PUBLISHING.md` ships the
-  commands in the order that keeps it true.
-
-  Thirteen guards cover it, and each was proven to fire by injecting the defect it names:
-  building from the working tree, deleting the tar-slip guard, ignoring a mismatched commit,
-  and ignoring an artifact that changed after the build. Two of those guards initially passed
-  for the wrong reason — one recorded a commit that could not resolve and so failed on the
-  commit mismatch rather than the digest it claimed to test, and nothing exercised the build
-  path at all, so "build from the working tree" survived. Both are fixed.
-
-## [0.1.5] - 2026-10-19
-
-### Fixed
-
-- **The published long description carries the mark.** The 0.1.4 wheel and sdist were built from
-  the commit before the README logo was committed, so the package page rendered the version and
-  the badges but no artwork. `README.md` is the long description, and the two distributions of
-  0.1.4 froze it at that commit; re-uploading them under the same filenames is not possible,
-  because PyPI reserves a filename once it is published. 0.1.5 is built from the commit that
-  holds the logo, and the package page and the repository now agree.
-
-### Added
-
-- **The README carries the horizontal lockup, in both schemes.** A `<picture>` with a
-  dark-mode `<source>` and a light `<img>`, 250x80, sitting above `## Why Docket?`. Both
-  targets are absolute and point at the documentation site, which is where the rest of the
-  README already points: `README.md` is the PyPI long description, and PyPI resolves a relative
-  target against `https://pypi.org/project/docket-ai/`, so a repo-relative logo would 404 on
-  the package page while resolving correctly on GitHub. That is the same defect the 29
-  markdown links already carried, and it took three releases to notice.
-
-- **The PyPI link guard now sees raw HTML.** `INLINE_LINK` matches `](target)` only, so a raw
-  `src` or `srcset` was invisible to both halves of `tests/test_doc_links.py`; a logo pointed
-  at a relative path would have 404'd on PyPI unreported. `HTML_ASSET` reads the `src`,
-  `srcset` and `href` attributes of any `img`, `source` or `link` tag, and both guards use it.
-  Both halves were proven to fire on the defect they now name by injecting a relative logo
-  path and a dead absolute one into the README and watching the right guard fail.
-
-  Measured on the published description rather than on the source: rendered through PyPI's own
-  `readme_renderer` and nh3 sanitiser, the 0.1.5 description carries 52 `href` and `src`
-  attributes, 36 of them absolute, 0 relative, and all 30 distinct URLs answer 200.
-
 ## [Unreleased]
 
 ### Added
@@ -1434,6 +1151,307 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   assigned `data["model"] = data` — a self-referencing dict that made `json.dumps` raise. It
   now tampers with the first `model.response` and reports nothing to tamper with if there is
   none.
+
+## [0.1.8] - 2026-10-19
+
+### Fixed
+
+- **`PUBLISHING.md` told the reader to run a command PyPI now refuses.** The guide shipped
+  `twine upload dist/*.whl dist/*.tar.gz` with no username, and PyPI has withdrawn username and
+  password authentication from the upload endpoint entirely. Setting `TWINE_USERNAME` to the
+  account name, which is the obvious thing to do, is refused with
+  `403 Username/Password authentication is no longer supported` — an error that names
+  authentication rather than the username, so a correct token and a correct account both look
+  like the problem. The guide now exports `TWINE_USERNAME=__token__` beside the token and says
+  why the literal string is required. This cost one failed upload while shipping 0.1.7.
+
+- **The suite size quoted in four documents was one test behind.** Adding the guard above moved
+  the collected count from 1235 to 1236, and the README, `CONTRIBUTING.md`, `docs/testing.md` and
+  `docs/sre-coverage.md` each promise the reader a total. The per-file row for
+  `test_build_dist.py` moved from 16 to 17 with it.
+
+## [0.1.7] - 2026-10-19
+
+### Fixed
+
+- **The race the 0.1.6 release gate found, shipped under a number that carries the fix.** The
+  0.1.6 wheel and sdist were uploaded before the race was closed, so the published 0.1.6 is the
+  one whose receipt could claim 62 events over a ledger holding 64. PyPI reserves a filename once
+  it is published, so the only way to ship the fix is a release built from the commit that holds
+  it — which is what this is. The remote `v0.1.6` tag pointed at that same commit, its release
+  workflow had failed, and no release existed for it; the tag was deleted rather than left
+  naming a version whose artifacts did not match it.
+
+  Nothing else changed. The tree is the one `d8992ca` describes: the drain that stops the receipt
+  racing the boundary's last recording call, the build-from-ref tooling that keeps an artifact
+  from predating its tag, and the publishing guide corrected to name the two distributions
+  rather than the whole of `dist/`.
+
+## [0.1.6] - 2026-10-19
+### Fixed
+
+- **The receipt no longer races the boundary's last recording call.** The 0.1.6 release gate
+  failed on `test_demo_stops_a_runaway_agent_and_verifies` with the receipt claiming 62 events
+  over a ledger holding 64, and `event-count` and `merkle-root` refusing a run whose evidence
+  was otherwise intact. The cause is a race, not a logic error: the proxy records events from
+  its own handler threads, an agent's last act before it exits is a recording call, and the
+  supervisor terminated the agent on the cap breach without waiting for that call to land. The
+  receipt was built from a ledger snapshot taken before the append, so it described a ledger
+  that no longer existed.
+
+  It could not be reproduced locally — 30 serial runs and 96 runs under eight-way contention on
+  a two-core box, all clean — because the window is milliseconds wide and depends on a loaded
+  runner. It was reproduced by holding the recording handler for 600 ms, which fails every
+  time, and that reproduction is now the regression test.
+
+  `RecordingProxy.quiesce` waits for the boundary to have no request in hand, and `run` calls it
+  before it takes the filesystem snapshot and builds the receipt. The counter it waits on is
+  `active_requests`, taken in `_guarded` around every request on every path and released in a
+  `finally`, because the existing `in_flight` counter only moves on the model-call path and the
+  recording endpoints are exactly the ones that were racing. If the drain times out the run
+  records a control note saying the receipt may under-count, rather than producing a silently
+  wrong receipt. Three guards pin it: the demo with a held recording handler still verifies,
+  `quiesce` refuses to report success while a request is in hand, and `quiesce` reports a
+  timeout rather than hanging. Each was proven to fire by disabling the drain, removing the
+  wait, and dropping the counter's release.
+
+- **The publishing guide no longer tells the reader to run a command that fails.** It shipped
+  `twine check dist/*` and `twine upload dist/*`, and `dist/` now also holds `PROVENANCE.json`,
+  which twine refuses with *"Unknown distribution format: 'PROVENANCE.json'"*. The commands were
+  measured before the guide shipped them, which is how the break was found: the first run of
+  `twine check dist/*` on a freshly built `dist/` failed. Both now name the two extensions, and
+  three guards hold the guide to it — every `bash` block parses, no twine command is handed a
+  path that is not a distribution, and nothing reaches twine before the provenance check. Each
+  was proven to fire by injecting the defect it names.
+
+
+
+- **The release build comes from a git ref, so an artifact can no longer predate its tag.** The
+  0.1.4 wheel and sdist were built with `python -m build` from a working tree, two commits
+  landed before the upload, and the published long description lacked the README logo the
+  repository had. The 0.1.5 sdist repeated the same mistake at a smaller scale: it was built one
+  commit before the `.gitignore` that tags it, so the tarball on PyPI carries a `.gitignore` the
+  tag does not. Neither could be corrected in place, because PyPI reserves a filename once it is
+  published.
+
+  `tools/build_dist.py` now exports the ref with `git archive` and builds from that export, so
+  an untracked file cannot leak in and a dirty tracked file exports at the committed version.
+  `--check` then reads `dist/PROVENANCE.json` and refuses a mismatch, which makes "the artifact
+  matches the tag" true by construction rather than by discipline. `PUBLISHING.md` ships the
+  commands in the order that keeps it true.
+
+  Thirteen guards cover it, and each was proven to fire by injecting the defect it names:
+  building from the working tree, deleting the tar-slip guard, ignoring a mismatched commit,
+  and ignoring an artifact that changed after the build. Two of those guards initially passed
+  for the wrong reason — one recorded a commit that could not resolve and so failed on the
+  commit mismatch rather than the digest it claimed to test, and nothing exercised the build
+  path at all, so "build from the working tree" survived. Both are fixed.
+
+## [0.1.5] - 2026-10-19
+
+### Fixed
+
+- **The published long description carries the mark.** The 0.1.4 wheel and sdist were built from
+  the commit before the README logo was committed, so the package page rendered the version and
+  the badges but no artwork. `README.md` is the long description, and the two distributions of
+  0.1.4 froze it at that commit; re-uploading them under the same filenames is not possible,
+  because PyPI reserves a filename once it is published. 0.1.5 is built from the commit that
+  holds the logo, and the package page and the repository now agree.
+
+### Added
+
+- **The README carries the horizontal lockup, in both schemes.** A `<picture>` with a
+  dark-mode `<source>` and a light `<img>`, 250x80, sitting above `## Why Docket?`. Both
+  targets are absolute and point at the documentation site, which is where the rest of the
+  README already points: `README.md` is the PyPI long description, and PyPI resolves a relative
+  target against `https://pypi.org/project/docket-ai/`, so a repo-relative logo would 404 on
+  the package page while resolving correctly on GitHub. That is the same defect the 29
+  markdown links already carried, and it took three releases to notice.
+
+- **The PyPI link guard now sees raw HTML.** `INLINE_LINK` matches `](target)` only, so a raw
+  `src` or `srcset` was invisible to both halves of `tests/test_doc_links.py`; a logo pointed
+  at a relative path would have 404'd on PyPI unreported. `HTML_ASSET` reads the `src`,
+  `srcset` and `href` attributes of any `img`, `source` or `link` tag, and both guards use it.
+  Both halves were proven to fire on the defect they now name by injecting a relative logo
+  path and a dead absolute one into the README and watching the right guard fail.
+
+  Measured on the published description rather than on the source: rendered through PyPI's own
+  `readme_renderer` and nh3 sanitiser, the 0.1.5 description carries 52 `href` and `src`
+  attributes, 36 of them absolute, 0 relative, and all 30 distinct URLs answer 200.
+
+## [0.1.4] - 2026-10-19
+
+### Changed
+
+- **The visual identity is the bounded-ledger mark, and the retired one is gone.** The repository
+  carried an indigo-and-teal receipt-with-a-tick logo whose palette names were still selected in
+  `mkdocs.yml` as `primary: indigo` / `accent: teal`, which made the documentation site carry a
+  second, retired identity. `assets/` now holds the approved kit: the color, dark, black and
+  white lockups, the standalone symbol, the 16-24px micro cut, the wordmark, the 512px avatar
+  tile, the 1280x640 social card and their vector sources, with the font notice and a generator
+  that renders both rasters from the SVGs. `theme.logo` is the white micro symbol on the cobalt
+  toolbar and `theme.favicon` is the adaptive micro favicon rather than a shrunken 512px tile.
+
+  Three defects were found by rendering the result rather than by reading the diff, and all three
+  are fixed:
+
+  1. `overrides/main.html` was written without `{% extends "base.html" %}`. `main.html` *is*
+     Material's page template, so the home page and the 404 page rendered as that one fragment —
+     256 bytes where a 50 KB document belongs. The build stayed green and still reported 53 pages,
+     because a page rendered from a fragment is still a page.
+  2. The brand stylesheet used `:root`, and Material puts `data-md-color-primary` on `<body>`.
+     Both selectors are specificity (0,1,0), so the file won on `<html>` and changed nothing
+     anywhere that consumes the variables: Chromium measured the header background as
+     `rgb(32, 148, 243)`, Material's blue, in light mode. The selectors now name `<body>` at
+     (0,2,1).
+  3. The favicon and touch-icon `<link>`s were written as literal strings, which mkdocs does not
+     rewrite per page, so they resolved at the root and 404'd on all 47 pages below it. They now
+     go through `| url`.
+
+  The site also carried three `theme-color` metas, because Material's palette script appends its
+  own and the effective value was `#2094f3`. Deleting the two in the override and fixing the
+  cascade leaves one meta that carries the brand colour.
+
+  `tests/test_brand_assets.py` guards all of it, and each of its guards was proven to fail on the
+  defect it names by injecting that defect into a scratch copy of the tree.
+
+- **The documentation site is themed in the brand palette.** `assets/brand.css` writes the approved
+  cobalt and bright cobalt over the CSS custom properties Material's palette stylesheet sets.
+  Material has no colour named for cobalt, so `primary: blue` remains the closest supported
+  fallback and the file refines it; every hex in it is from the approved palette, and a guard
+  refuses one that is not. `theme-color` follows the same two colours.
+
+- **`assets/` is staged for the site, and the site is rebuilt when it changes.** The stager now
+  carries `.ico` and `.css`, which no file in the tree had before, and skips `assets/BRAND.md` —
+  the in-repository alias map for the artwork, which mkdocs would otherwise publish as a page the
+  navigation does not list. `docs.yml` triggers on `assets/**` and `overrides/**`, so an
+  asset-only change redeploys instead of leaving the previous mark on the live site.
+
+## [0.1.3] - 2026-10-19
+
+### Fixed
+
+- **Every receipt since 0.1.0 named a tool version that was not running.** The version was written
+  three times — `src/docket/__init__.py`'s `__version__`, `src/docket/receipt.py`'s
+  `TOOL_VERSION`, and `src/docket/supervisor.py`'s `DOCKET_TOOL_VERSION` — and each had to be
+  edited by hand on every release. Two of the three were still `0.1.0` when the distribution
+  installed 0.1.2, so `docket --version` said one thing, `pip show` said another, and the
+  `tool.version` field in every receipt named a release that was not the one that wrote it. A
+  receipt that misreports its author makes a false claim about provenance, which is the one thing
+  a receipt exists to make checkable. All three now import from a new `src/docket/_version.py`,
+  which derives the version from the installed distribution, falls back to the nearest
+  `pyproject.toml`, and then to `unknown`. `FORMAT_VERSION` moved there for the same reason. The
+  guard that had checked only `__init__.py` now scans every module under `src/` for a version
+  literal, in both the assignment and the dict-entry form, because scanning one file is what let
+  the other two literals survive the first fix.
+
+- **`examples/custom-agent/agent_sdk.py` crashed on the command its own README advertised.** Under
+  `docket run`, the session attaches to the supervised run and `session.ledger` is `None` by
+  design — the supervisor is the only writer to that file, because two writers would produce two
+  competing hash chains. The example printed `session.ledger.path` unconditionally, so the
+  supervised command raised `AttributeError` while the standalone one worked. Only the standalone
+  path was tested. The example now branches on `session.attached` and says what is true in each
+  case, and `tests/test_examples.py` drives the supervised path and asserts the agent's own events
+  reached the run's ledger labelled `reported_by: "agent"` and that the receipt verifies.
+
+- **The `Typing :: Typed` classifier was a claim with nothing behind it.** `pyproject.toml`
+  declared the classifier and the wheel shipped no `py.typed`, so no consumer's type checker
+  would read the package's annotations at all. The package was annotated all along — and 65 of
+  those annotations were wrong, which nobody could see because nothing asked. `py.typed` now
+  ships, mypy runs in the lint job, and the 65 errors are fixed: narrowing that did not survive
+  a second method call, `__exit__` annotated `bool` where it always returns `False`, a signing
+  key accepted and then used as any key type, a metrics dict annotated `dict[str, int]` that
+  holds a decimal string, and the rest. A guard test fails if the marker disappears while the
+  classifier stays.
+
+- **`docket keygen` did not exist, so `docket run --sign` had no way to produce a key.**
+  `src/docket/signing.py` could generate an Ed25519 keypair from the first release and nothing
+  called it: no command, no documentation. The only way to sign a receipt was to already know
+  the library function. `docket keygen [PATH] [--force]` writes the keypair at mode 0600, prints
+  the public key, refuses to replace an existing key without `--force` (replacing a signing key
+  invalidates every receipt signed with the old one), and exits 70 naming the install when the
+  optional `cryptography` package is absent. Documented in the CLI reference, and tested end to
+  end: keygen, sign, verify, and a tampered receipt that fails both the totals and the signature.
+
+- **Two `assert`s were added to narrow a type, and `bandit` refused them.** An `assert` is
+  removed under `python -O`, and a tool whose whole claim is that it does not skip checks cannot
+  rest one on a statement the interpreter is entitled to delete. `verify.py` now tests
+  `chain_problem` directly — which is the narrowing that was wanted anyway, and drops the
+  `chain_ok` alias that made the tuple unreachable — and `policy.py` raises for the case that
+  cannot happen rather than asserting it. The line citations in `docs/testing.md` moved with the
+  code and were re-checked against the harness's site list again.
+
+- **Eight definitions in the package were dead code.** `generate_keypair` was the visible one —
+  `docket run --sign` was a flag with no way to produce a key, and the function that could have
+  produced one was invisible. Seven more had the same shape: `short_hash`, `mb`,
+  `money_or_zero`, `stable_seed`, `is_known`, `default_price_table`, `price_document_digest`
+  and `_gzip_bytes`, each a one- or two-line helper with no caller anywhere in the tree. Dead
+  code is not harmless in a project whose pitch is that a receipt says what the tool did: a
+  package that carries functions nothing runs is making the same kind of claim about itself. All
+  eight are deleted, and `tests/test_supply_chain.py` now fails when a top-level definition in
+  `src/` appears nowhere else in `src/`, `tests/`, `tools/`, `examples/` or `verify-js/`.
+
+- **A signing key of the wrong type produced an `AttributeError` from inside `cryptography`.**
+  `load_pem_private_key` returns a union of every key type the library supports, and most of
+  them have no `.sign(data)`. The call now refuses a non-Ed25519 key with a message naming the
+  file and the key it holds.
+
+- **Every link in the README was broken on the PyPI page.** `README.md` is the package's long
+  description, and PyPI renders it with no repository around it, resolving a relative target
+  against `https://pypi.org/project/docket-ai/`. All 29 relative links therefore 404ed there while
+  resolving perfectly on GitHub — invisible from the repository, which is why it survived three
+  releases. They are now absolute: a target the documentation site publishes points at the site,
+  so a reader arriving from PyPI lands in the documentation rather than in raw markdown, and
+  `LICENSE` points at the repository. Two guards were added: one fails on any relative target, one
+  fetches every absolute URL and fails on a non-200.
+
+### Changed
+
+- `Documentation` in `[project.urls]` pointed at a GitHub directory listing. It now points at the
+  live documentation site, which is what a reader arriving from PyPI is looking for.
+
+- Two public properties replace a private attribute an example reached into:
+  `Session.docket_number` and `Session.ledger_path`, the latter returning `None` when a
+  supervisor owns the ledger rather than a path this session does not write to.
+
+- The line citations in `docs/testing.md` were re-based onto the code as it now stands. Each one
+  was re-checked against `tools/mutate.py`'s site list, so every number the page quotes is a
+  line the mutation harness would actually mutate.
+
+- The conformance vectors were regenerated, because they carry `tool.version` and the spec states
+  that vectors move with the implementation in the same commit. Only the version string and the
+  two `receipt_core_sha256` digests that cover it changed; all three implementations still agree
+  (Python and Node: 88 correct, 0 wrong; Node's own suite: 100/100).
+
+## [0.1.2] - 2026-10-18
+
+### Fixed
+
+- **`docket --version` reported a version the package was not.** `src/docket/__init__.py` carried a
+  literal `__version__ = "0.1.0"` while `pyproject.toml` moved to 0.1.1, and nothing compared the
+  two. Every receipt's `tool.version` field and the output of `docket --version`, `docket
+  selftest` and `docket doctor` said 0.1.0 while `pip show`, the PyPI page and
+  `importlib.metadata` said 0.1.1. A receipt that names the wrong tool makes a false claim about
+  provenance, which is the one thing a receipt exists to make checkable.
+
+  The version is now read from the installed distribution, falling back to the `pyproject.toml`
+  of a source tree and then to `unknown`. The distribution name is not written into the module,
+  so renaming it cannot desynchronise the two again. `tests/test_supply_chain.py` asserts the
+  derivation and fails if the literal returns.
+
+## [0.1.1] - 2026-10-18
+
+### Fixed
+
+- **The quickstart linked a wheel filename that does not exist.** It told a reader to install
+  `docket-0.1.0-py3-none-any.whl`, which the rename to the `docket-ai` distribution had turned
+  into `docket_ai-0.1.0-py3-none-any.whl`. The quickstart now installs from PyPI like the
+  README does, keeps the clone path for a contributor, and links to `PUBLISHING.md` for why the
+  distribution name differs from the command.
+
+- **The PyPI long description quoted a stale test count.** The 0.1.0 wheel was built before the
+  supply-chain guard was added, so its rendered page said 1196 tests where the repository said
+  1197. The wheels are otherwise byte-identical.
 
 ## [0.1.0] — 2026-10-13
 
