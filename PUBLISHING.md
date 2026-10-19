@@ -25,11 +25,24 @@ with it, which is why the GitHub release is automated and the PyPI upload is not
 To ship to PyPI:
 
 ```bash
-# Requires: Python 3.11+, build, twine, and a PyPI token for the docket-ai project.
-python3 -m build
+# Requires: Python 3.11+, git, build, twine, and a PyPI token for the docket-ai project.
+python3 tools/build_dist.py --ref vX.Y.Z
+python3 tools/build_dist.py --check --ref vX.Y.Z
 twine check dist/*
 twine upload dist/*
 ```
+
+Build from the ref, never from the working tree. This is not a style preference: the 0.1.4
+wheel and sdist were built from a working tree, two commits landed before the upload, and the
+published long description lacked the README logo the repository already had. The 0.1.5 sdist
+did it again one commit behind its `.gitignore`. Neither could be fixed, because PyPI reserves
+a filename once it is published.
+
+`tools/build_dist.py` exports the ref with `git archive` and builds from that export, so an
+untracked file cannot leak in and a dirty tracked file exports at the committed version. It
+writes `dist/PROVENANCE.json` recording the ref, the commit and each artifact's digest, and
+`--check` refuses to pass when `dist/` does not match the ref you are about to release. Run it
+after the build and before `twine upload`, every time.
 
 Do this from a machine whose key never touches CI.
 

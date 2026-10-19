@@ -1,7 +1,7 @@
 # docket
 
 [![CI](https://github.com/docket-dev-org/docket/actions/workflows/ci.yml/badge.svg)](https://github.com/docket-dev-org/docket/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.1.5-blue)](https://docket-dev-org.github.io/docket/CHANGELOG/)
+[![version](https://img.shields.io/badge/version-0.1.6-blue)](https://docket-dev-org.github.io/docket/CHANGELOG/)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/docket-dev-org/docket/blob/main/LICENSE)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 
@@ -10,7 +10,7 @@ A local budget-and-evidence layer for AI agents: it caps what a run can spend, r
 Docket wraps the agent you already run. It needs no account, no server, no telemetry, and no API keys of its own.
 
 > [!NOTE]
-> Docket 0.1.5 is on PyPI and installs with `pip install docket-ai`. The `docket/receipt/v1` format is versioned and frozen: the specification in `spec/` and its 44 committed conformance vectors define it, and three implementations that share no code are held to that contract, so a receipt written by 0.1.0 verifies under any later release. The command line follows semantic versioning. Exit codes, flags, and the JSON shape of every command are part of the interface and stay stable across 0.1.x; the format tag changes only under the process in [CONTRIBUTING.md](https://docket-dev-org.github.io/docket/CONTRIBUTING/#changing-the-format), and never silently.
+> Docket 0.1.6 is on PyPI and installs with `pip install docket-ai`. The `docket/receipt/v1` format is versioned and frozen: the specification in `spec/` and its 44 committed conformance vectors define it, and three implementations that share no code are held to that contract, so a receipt written by 0.1.0 verifies under any later release. The command line follows semantic versioning. Exit codes, flags, and the JSON shape of every command are part of the interface and stay stable across 0.1.x; the format tag changes only under the process in [CONTRIBUTING.md](https://docket-dev-org.github.io/docket/CONTRIBUTING/#changing-the-format), and never silently.
 
 ---
 
@@ -353,7 +353,7 @@ cd docket
 PYTHONPATH=src python3 -m pytest tests -ra
 ```
 
-That is 1216 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1216 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
+That is 1229 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1229 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
 
 Two rules matter more than style:
 

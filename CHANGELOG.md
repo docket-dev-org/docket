@@ -180,6 +180,31 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   navigation does not list. `docs.yml` triggers on `assets/**` and `overrides/**`, so an
   asset-only change redeploys instead of leaving the previous mark on the live site.
 
+## [0.1.6] - 2026-10-19
+
+### Fixed
+
+- **The release build comes from a git ref, so an artifact can no longer predate its tag.** The
+  0.1.4 wheel and sdist were built with `python -m build` from a working tree, two commits
+  landed before the upload, and the published long description lacked the README logo the
+  repository had. The 0.1.5 sdist repeated the same mistake at a smaller scale: it was built one
+  commit before the `.gitignore` that tags it, so the tarball on PyPI carries a `.gitignore` the
+  tag does not. Neither could be corrected in place, because PyPI reserves a filename once it is
+  published.
+
+  `tools/build_dist.py` now exports the ref with `git archive` and builds from that export, so
+  an untracked file cannot leak in and a dirty tracked file exports at the committed version.
+  `--check` then reads `dist/PROVENANCE.json` and refuses a mismatch, which makes "the artifact
+  matches the tag" true by construction rather than by discipline. `PUBLISHING.md` ships the
+  commands in the order that keeps it true.
+
+  Thirteen guards cover it, and each was proven to fire by injecting the defect it names:
+  building from the working tree, deleting the tar-slip guard, ignoring a mismatched commit,
+  and ignoring an artifact that changed after the build. Two of those guards initially passed
+  for the wrong reason — one recorded a commit that could not resolve and so failed on the
+  commit mismatch rather than the digest it claimed to test, and nothing exercised the build
+  path at all, so "build from the working tree" survived. Both are fixed.
+
 ## [0.1.5] - 2026-10-19
 
 ### Fixed
