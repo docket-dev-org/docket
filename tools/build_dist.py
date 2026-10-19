@@ -149,6 +149,18 @@ def describe(path: Path) -> dict[str, Any]:
     }
 
 
+def distributions_in_dist() -> list[Path]:
+    """Every wheel and sdist currently sitting in ``dist/``.
+
+    The documented upload command is ``twine upload dist/*.whl dist/*.tar.gz``, so anything in
+    ``dist/`` with one of those two extensions is something the reader is about to send to PyPI.
+    PyPI reserves a filename once it is published, so a stale wheel from an earlier release does
+    not merely fail: it fails *after* the current release's files have been accepted, which leaves
+    a half-uploaded state and a confusing error.
+    """
+    return sorted(path for path in DIST.glob("*") if path.suffix in {".whl", ".tar.gz"})
+
+
 def read_provenance() -> dict[str, Any]:
     """The provenance record in ``dist/``, or an error saying there is none."""
     if not PROVENANCE.is_file():
@@ -174,6 +186,7 @@ def check(reference: str) -> int:
         problems.append(f"the artifacts were built from {record.get('commit')!r}, but {reference!r} is {expected!r}")
 
     artifacts = record.get("artifacts") or []
+    recorded = {artifact.get("filename") for artifact in artifacts}
     for artifact in artifacts:
         path = DIST / artifact.get("filename", "")
         if not path.is_file():
@@ -184,6 +197,16 @@ def check(reference: str) -> int:
             problems.append(
                 f"{artifact['filename']} has changed since it was built: "
                 f"{artifact.get('sha256')} recorded, {actual} on disk"
+            )
+
+    # The other direction: a distribution in dist/ that the record does not name. The build for
+    # an earlier release leaves its wheel and sdist behind, and `twine upload dist/*.whl
+    # dist/*.tar.gz` then hands PyPI a filename it already holds.
+    for path in distributions_in_dist():
+        if path.name not in recorded:
+            problems.append(
+                f"{path.name!r} is in dist/ but is not part of {reference!r}; "
+                "the documented upload command would send it to PyPI"
             )
 
     if problems:
@@ -218,6 +241,16 @@ def build(reference: str, no_isolation: bool) -> int:
         for artifact in produced:
             shutil.copy2(artifact, DIST / artifact.name)
         copied = [DIST / artifact.name for artifact in produced]
+
+        # dist/ is a build-output directory, and the previous release's wheel and sdist are still
+        # sitting in it. The documented upload command names both extensions rather than dist/*,
+        # so without this a second release would try to re-upload the first release's files. Only
+        # the two extensions the upload command reaches are touched, and each removal is printed.
+        kept = {path.name for path in copied}
+        for stale in distributions_in_dist():
+            if stale.name not in kept:
+                stale.unlink()
+                print(f"  removed {stale.name}, superseded by this build")
 
     record: dict[str, Any] = {
         "ref": reference,

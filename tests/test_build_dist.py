@@ -266,6 +266,75 @@ def test_a_dirty_working_tree_cannot_reach_the_artifact(
     assert bd.check("HEAD") == 0
 
 
+def _stand_in_for_build(source: Path, outdir: Path, no_isolation: bool) -> list[Path]:
+    """Package whatever the exported source says, so no real backend is needed.
+
+    The scratch repository has no `pyproject.toml`, and the property under test is where the
+    bytes in `dist/` come from rather than what the build backend does with them.
+    """
+    assert not no_isolation
+    artifact = outdir / "docket_ai-0.0.0-py3-none-any.whl"
+    artifact.write_text((source / "README.md").read_text(encoding="utf-8"), encoding="utf-8")
+    return [artifact]
+
+
+def test_a_distribution_the_record_does_not_name_is_refused(
+    scratch_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The other direction, and the one that breaks the upload.
+
+    A build for an earlier release leaves its wheel and sdist in `dist/`. The documented upload
+    command names both extensions rather than `dist/*`, so a second release hands PyPI a filename
+    it already holds, and it fails *after* the current release's files have been accepted. This
+    was found while shipping 0.1.8, where `dist/` still held the 0.1.7 wheel and `twine check`
+    ran over four files.
+
+    The stale file is given a version this build did not produce. Naming the produced filename
+    instead would overwrite the artifact itself and make the check refuse on the digest, which is
+    a different defect, and the guard would pass for the wrong reason.
+    """
+    monkeypatch.setattr(bd, "build_distributions", _stand_in_for_build)
+    monkeypatch.setattr(bd, "REPO", scratch_repo)
+    monkeypatch.setattr(bd, "DIST", tmp_path / "dist")
+    monkeypatch.setattr(bd, "PROVENANCE", tmp_path / "dist" / "PROVENANCE.json")
+    assert bd.build("HEAD", no_isolation=False) == 0
+
+    stale = bd.DIST / "docket_ai-0.0.1-py3-none-any.whl"
+    stale.write_bytes(b"an earlier release, still sitting in dist/\n")
+
+    assert bd.check("HEAD") == 1, "dist/ holds a distribution the record does not name and the check still passed"
+    assert "docket_ai-0.0.1-py3-none-any.whl" in capsys.readouterr().err, (
+        "the check refused, but not for the reason this guard exists"
+    )
+
+
+def test_a_build_clears_the_distributions_it_supersedes(
+    scratch_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`dist/` is build output, so a rebuild leaves it holding exactly one release.
+
+    Without this the reader has to know to delete the previous wheel by hand before running the
+    command the guide gives them. Only the two extensions the upload command reaches are touched,
+    and `PROVENANCE.json` is left alone.
+    """
+    monkeypatch.setattr(bd, "build_distributions", _stand_in_for_build)
+    monkeypatch.setattr(bd, "REPO", scratch_repo)
+    monkeypatch.setattr(bd, "DIST", tmp_path / "dist")
+    monkeypatch.setattr(bd, "PROVENANCE", tmp_path / "dist" / "PROVENANCE.json")
+    assert bd.build("HEAD", no_isolation=False) == 0
+
+    # A different version, so it is a genuinely superseded release rather than the file this
+    # build is about to overwrite.
+    stale = bd.DIST / "docket_ai-0.0.1-py3-none-any.whl"
+    stale.write_bytes(b"an earlier release, still sitting in dist/\n")
+    (bd.DIST / "notes.txt").write_text("not a distribution\n", encoding="utf-8")
+
+    assert bd.build("HEAD", no_isolation=False) == 0
+    assert not stale.exists(), "the superseded distribution survived the rebuild"
+    assert (bd.DIST / "notes.txt").is_file(), "a file the upload command does not reach was removed"
+    assert bd.check("HEAD") == 0
+
+
 def _fences(markdown: str) -> list[tuple[str, str]]:
     """Every fenced block in a document, as (language, body), in order.
 

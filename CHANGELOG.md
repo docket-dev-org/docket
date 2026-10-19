@@ -1165,10 +1165,19 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   like the problem. The guide now exports `TWINE_USERNAME=__token__` beside the token and says
   why the literal string is required. This cost one failed upload while shipping 0.1.7.
 
-- **The suite size quoted in four documents was one test behind.** Adding the guard above moved
-  the collected count from 1235 to 1236, and the README, `CONTRIBUTING.md`, `docs/testing.md` and
+- **The release build left the previous release's artifacts in `dist/`, so the documented upload
+  command was one release away from breaking.** `tools/build_dist.py` copied the new wheel and
+  sdist beside the old ones and stopped there, and the command `PUBLISHING.md` gives the reader
+  names both extensions rather than `dist/*`. Shipping a second release therefore handed PyPI a
+  filename it already holds, which fails *after* the current release's files have been accepted.
+  A rebuild now clears the distributions it supersedes and prints each removal, and `--check`
+  refuses a `dist/` holding a distribution the provenance record does not name. Only the two
+  extensions the upload command reaches are touched.
+
+- **The suite size quoted in four documents was two tests behind.** Adding the guards above moved
+  the collected count from 1236 to 1238, and the README, `CONTRIBUTING.md`, `docs/testing.md` and
   `docs/sre-coverage.md` each promise the reader a total. The per-file row for
-  `test_build_dist.py` moved from 16 to 17 with it.
+  `test_build_dist.py` moved from 16 to 19.
 
 ## [0.1.7] - 2026-10-19
 
