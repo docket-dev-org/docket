@@ -221,15 +221,68 @@ def _read_lines(path: Path) -> list[dict]:
 
 
 def test_demo_stops_a_runaway_agent_and_verifies(tmp_path, monkeypatch):
+    """The demo's whole claim, in one test: the cap fired and the receipt verifies.
+
+    `verify_ok` is asserted against the rendered verdict rather than a bare boolean, because a
+    failure that says only `assert False is True` tells a maintainer nothing about which of the
+    twenty-odd checks refused. The demo supervises a real child process and a real boundary, so
+    this is the one test in the suite whose outcome depends on a subprocess exiting in time; when
+    it fails, the failing check has to be in the output.
+    """
     monkeypatch.chdir(tmp_path)
     out = io.StringIO()
     outcome = run_demo(max_usd=__import__("decimal").Decimal("2.00"), color=False, out=out)
     text = out.getvalue()
     assert outcome["stopped_as_expected"] is True
-    assert outcome["verify_ok"] is True
     assert "Runaway loop" in text, "the demo must show why the run was stopped"
-    assert "VERIFIED" in text
     assert "deny-write violation" in text
+
+    if outcome["verify_ok"] is not True:
+        # `VerifyResult.render` prints one line per check as "  FAIL  <name>: <detail>", so the
+        # verdicts are the lines that carry the mark at a fixed offset. Matching on the word
+        # "fail" instead would also match the demo's own prose, which says "failing test".
+        reported = "\n".join(line for line in text.splitlines() if line.lstrip().startswith(("FAIL", "SKIP")))
+        raise AssertionError("the demo's receipt did not verify; the checks that refused:\n" + (reported or text))
+    assert "VERIFIED" in text
+
+
+def test_a_slow_recording_call_cannot_desync_the_receipt_from_the_ledger(tmp_path, monkeypatch):
+    """The race that failed the 0.1.6 release gate, reproduced deterministically.
+
+    An agent's last act before it exits is a recording call. That call runs on one of the
+    boundary's handler threads, and the supervisor terminates the agent on the cap breach
+    without waiting for it, so the receipt used to be built before the handler's ledger append
+    landed: the receipt claimed 62 events over a ledger holding 64, and `event-count` and
+    `merkle-root` refused a run whose evidence was otherwise intact. The failure is
+    timing-shaped, which is why it survived 96 local runs and then appeared once on a loaded
+    runner.
+
+    Holding the recording handler for 600 ms makes it fail every time, so the drain that closes
+    the window is pinned by a test rather than by luck. The delay is inside `_handle`, so the
+    in-flight counter has already been taken and `quiesce` has something to wait for.
+    """
+    import time
+
+    from docket.proxy import _Handler
+
+    original = _Handler._handle
+
+    def held(self, with_body):  # noqa: ANN001 - mirrors the signature it stands in for
+        if "/docket/note" in self.path:
+            time.sleep(0.6)
+        return original(self, with_body)
+
+    monkeypatch.setattr(_Handler, "_handle", held)
+
+    monkeypatch.chdir(tmp_path)
+    out = __import__("io").StringIO()
+    outcome = run_demo(max_usd=__import__("decimal").Decimal("2.00"), color=False, out=out)
+    text = out.getvalue()
+    assert outcome["stopped_as_expected"] is True
+    assert outcome["verify_ok"] is True, "the receipt and the ledger disagree; the checks that refused:\n" + "\n".join(
+        line for line in text.splitlines() if line.lstrip().startswith(("FAIL", "SKIP"))
+    )
+    assert "VERIFIED" in text
 
 
 def test_a_tighter_cap_stops_the_run_earlier(tmp_path, monkeypatch):

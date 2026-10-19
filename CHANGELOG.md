@@ -183,6 +183,31 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 ## [0.1.6] - 2026-10-19
 ### Fixed
 
+- **The receipt no longer races the boundary's last recording call.** The 0.1.6 release gate
+  failed on `test_demo_stops_a_runaway_agent_and_verifies` with the receipt claiming 62 events
+  over a ledger holding 64, and `event-count` and `merkle-root` refusing a run whose evidence
+  was otherwise intact. The cause is a race, not a logic error: the proxy records events from
+  its own handler threads, an agent's last act before it exits is a recording call, and the
+  supervisor terminated the agent on the cap breach without waiting for that call to land. The
+  receipt was built from a ledger snapshot taken before the append, so it described a ledger
+  that no longer existed.
+
+  It could not be reproduced locally — 30 serial runs and 96 runs under eight-way contention on
+  a two-core box, all clean — because the window is milliseconds wide and depends on a loaded
+  runner. It was reproduced by holding the recording handler for 600 ms, which fails every
+  time, and that reproduction is now the regression test.
+
+  `RecordingProxy.quiesce` waits for the boundary to have no request in hand, and `run` calls it
+  before it takes the filesystem snapshot and builds the receipt. The counter it waits on is
+  `active_requests`, taken in `_guarded` around every request on every path and released in a
+  `finally`, because the existing `in_flight` counter only moves on the model-call path and the
+  recording endpoints are exactly the ones that were racing. If the drain times out the run
+  records a control note saying the receipt may under-count, rather than producing a silently
+  wrong receipt. Three guards pin it: the demo with a held recording handler still verifies,
+  `quiesce` refuses to report success while a request is in hand, and `quiesce` reports a
+  timeout rather than hanging. Each was proven to fire by disabling the drain, removing the
+  wait, and dropping the counter's release.
+
 - **The publishing guide no longer tells the reader to run a command that fails.** It shipped
   `twine check dist/*` and `twine upload dist/*`, and `dist/` now also holds `PROVENANCE.json`,
   which twine refuses with *"Unknown distribution format: 'PROVENANCE.json'"*. The commands were
@@ -193,7 +218,6 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   was proven to fire by injecting the defect it names.
 
 
-### Fixed
 
 - **The release build comes from a git ref, so an artifact can no longer predate its tag.** The
   0.1.4 wheel and sdist were built with `python -m build` from a working tree, two commits

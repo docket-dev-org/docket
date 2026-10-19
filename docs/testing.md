@@ -12,7 +12,7 @@ and can be told to fail on cue.
 ## The suite
 
 ```console
-$ make test          # 1232 tests, no network (2-4 min on a 2-vCPU box)
+$ make test          # 1235 tests, no network (2-4 min on a 2-vCPU box)
 $ make check         # + ruff, + bandit, + the independent Node verifier
 ```
 
@@ -29,7 +29,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | `test_ledger_concurrency.py` | 4 | one ledger, eight writer threads: order, chain, agreement, file digest |
 | `test_latency.py` | 21 | the percentile rule, hostile row values, the verifier's recomputation, the report's tail line |
 | `test_receipt_verify.py` | 121 | the receipt and every verification check, plus one name to one verdict |
-| `test_proxy.py` | 16 | pass-through, streaming, policy enforcement, what is never recorded |
+| `test_proxy.py` | 18 | the boundary: pass-through, streaming, policy enforcement, what is never recorded, and `quiesce` — the drain that stops the receipt racing the boundary's last recording call, proven to refuse success while a request is in hand and to report a timeout rather than hang |
 | `test_cache.py` | 74 | the response cache: what may be stored and what may never be, hit/miss/TTL/LRU/ceiling behaviour, the key covering the request as sent, an open breaker not blocking a hit, concurrency, every receipt-level attack on a saving, and twenty-five tests written to kill survivors of a mutation sweep — nine for the cache itself and sixteen for the verifier that recomputes a stated saving |
 | `test_proxy_concurrency.py` | 6 | parallel calls through the real boundary: chain, totals, limiter, breaker, cap |
 | `test_resilience.py` | 60 | breaker, limiter, fault injection grammar, evidence guard |
@@ -43,7 +43,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | `test_chaos.py` | 34 | the fault grammar, `audit_run`, the game-day phases (including the cache brake), the reference agent repeating itself on request, and the independence of the phases' policies from one another |
 | `test_security.py` | 40 | red team: forgery, injection, bypass, confinement, secret capture |
 | `test_cli_input.py` | 51 | numeric flags: every cap, every way to spell it wrong |
-| `test_cli_sdk_demo.py` | 25 | the commands end to end, the SDK, the demo |
+| `test_cli_sdk_demo.py` | 26 | the commands end to end, the SDK, the demo, and the race the 0.1.6 release gate hit: a recording handler held for 600 ms must still leave a receipt that verifies against the ledger, because the receipt used to be built before the boundary's last append landed |
 | `test_examples.py` | 10 | the five examples executed rather than described: the quickstart and the SDK program run offline and the receipt each one prints is then verified with the command each one prints, one digit of the quickstart's ledger is edited and the same verification is required to fail, both policy files are accepted by a real supervised run, and every README's links, repository paths and Python files are checked |
 | `test_i18n.py` | 16 | locale independence, Unicode round trips, non-ASCII paths |
 | `test_url_guards.py` | 43 | the two URL guards, and a syntax-tree walk that every `urlopen` uses one |

@@ -33,6 +33,61 @@ def _post(url, payload, timeout=15):
         return response.status, response.read().decode("utf-8"), dict(response.headers)
 
 
+def test_quiesce_waits_for_a_request_that_is_still_in_hand(ledger, fake_upstream, monkeypatch):
+    """`quiesce` must not return while a handler is still recording.
+
+    This is the window that produced the 0.1.6 release-gate failure: an agent's last act before
+    it exits is a recording call, that call runs on a handler thread, and the receipt used to be
+    built without waiting for it. The receipt then claimed fewer events than the ledger held.
+    """
+    import threading
+
+    from docket.proxy import _Handler
+
+    proxy, _meter, base = _start(ledger, Policy(), fake_upstream.url)
+    try:
+        started = threading.Event()
+        release = threading.Event()
+        original = _Handler._handle
+
+        def held(self, with_body):  # noqa: ANN001 - mirrors the signature it stands in for
+            # Blocked *inside* the real `_guarded`, so the in-flight counter has already been
+            # taken. Blocking `_guarded` itself would stand in before the counter moves, and
+            # the assertion below would be measuring nothing.
+            if "/docket/note" in self.path:
+                started.set()
+                release.wait(timeout=10)
+            return original(self, with_body)
+
+        # The server binds a subclass of `_Handler`, so patching the base class reaches it.
+        monkeypatch.setattr(_Handler, "_handle", held)
+
+        thread = threading.Thread(target=lambda: _post(f"{base}/docket/note", {"message": "last words"}), daemon=True)
+        thread.start()
+        assert started.wait(timeout=5), "the recording request never reached the boundary"
+
+        # A drain that ignored an in-flight request would return immediately and report success.
+        assert proxy.health.active_requests > 0, "the boundary did not count the request in hand"
+        assert proxy.quiesce(timeout=0.2) is False, "quiesce reported success while a request was in hand"
+
+        release.set()
+        thread.join(timeout=10)
+        assert proxy.quiesce(timeout=5) is True, "quiesce did not return once the request finished"
+        assert proxy.health.active_requests == 0
+    finally:
+        proxy.stop()
+
+
+def test_quiesce_reports_a_timeout_rather_than_hanging(ledger, fake_upstream):
+    """A caller that cannot drain still has to produce a receipt, so `quiesce` says so."""
+    proxy, _meter, _base = _start(ledger, Policy(), fake_upstream.url)
+    try:
+        proxy.health.active_requests = 1  # a request that will never finish
+        assert proxy.quiesce(timeout=0.05) is False
+    finally:
+        proxy.stop()
+
+
 def test_passthrough_records_a_model_call(ledger, fake_upstream):
     proxy, meter, base = _start(ledger, Policy(), fake_upstream.url)
     try:

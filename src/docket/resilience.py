@@ -641,6 +641,12 @@ class HealthState:
         self.rate_limited = 0
         self.breaker_refusals = 0
         self.in_flight = 0
+        # Every request the boundary is currently handling, on any path. `in_flight` counts
+        # model calls only, so the recording endpoints are invisible to it; this one is what a
+        # caller waits on to know the boundary has nothing left in hand. Deliberately absent
+        # from `to_dict`: it is a transient drain counter, not a fact about the run, and the
+        # receipt is a hashed structure.
+        self.active_requests = 0
         self._lock = threading.Lock()
 
     def counter(self, name: str, amount: int = 1) -> None:

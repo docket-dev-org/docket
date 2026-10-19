@@ -494,6 +494,22 @@ class Supervisor:
                     # `handler` is `Any` because that is what `signal.signal` hands back.
                     signal.signal(sig, handler)
 
+        # -- the boundary has nothing left in hand --------------------------- #
+        # Every event the proxy records comes from its own handler threads, and the receipt
+        # below is built from the ledger. An agent's last act before it exits is usually a
+        # recording call, and that call can still be in flight on a handler thread when the
+        # supervisor's thread has already seen the exit. Draining first means the receipt
+        # describes the ledger as it stands, rather than as it stood a millisecond earlier.
+        if not proxy.quiesce():
+            self._record_control(
+                ledger,
+                ev.NOTE,
+                {
+                    "message": "the boundary still had a request in hand when the run ended, "
+                    "so this receipt may describe fewer events than the ledger holds",
+                },
+            )
+
         # -- filesystem evidence -------------------------------------------- #
         after: dict[str, Any] = {}
         changes: list[dict[str, Any]] = []

@@ -636,6 +636,7 @@ class _Handler(BaseHTTPRequestHandler):
         bug, because a silent boundary is the one failure this tool cannot tolerate in
         itself.
         """
+        self.proxy.health.counter("active_requests")
         try:
             self._handle(with_body=with_body)
         except Exception as exc:  # noqa: BLE001 - the point is to catch everything
@@ -670,6 +671,11 @@ class _Handler(BaseHTTPRequestHandler):
                         }
                     },
                 )
+        finally:
+            # Released on every path out of `_guarded`, including the exception path above and
+            # the CONNECT tunnel: a counter only some paths release is a counter nobody can
+            # wait on, which is the whole point of having it.
+            self.proxy.health.counter("active_requests", -1)
 
     def do_POST(self) -> None:  # noqa: N802
         self._guarded(with_body=True)
@@ -1784,6 +1790,33 @@ class RecordingProxy:
         self._thread.start()
         address = self._server.server_address
         return str(address[0]), int(address[1])
+
+    def quiesce(self, timeout: float = 10.0) -> bool:
+        """Wait until the boundary has no request in hand, and say whether that was achieved.
+
+        The proxy records events from its own threads, and a receipt is built from the ledger
+        after the supervised process has exited. An agent's last act before exiting is usually
+        a recording call — the demo's child posts a note saying it finished — and that call
+        lands on a handler thread while the supervisor's thread has already seen the exit. If
+        the handler's ledger append happens after the receipt was built, the receipt claims
+        fewer events than the ledger holds, and `event-count` and `merkle-root` refuse a run
+        whose evidence is otherwise intact.
+
+        That is not hypothetical: it is what the 0.1.6 release gate hit, with a ledger holding
+        64 events over a receipt claiming 62. The failure is timing-shaped, which is why it
+        survived 96 local runs and then appeared once on a loaded runner. Waiting for the
+        counter to reach zero closes the window instead of hoping the child's last request
+        finished first.
+
+        Returns ``False`` rather than raising when the timeout expires: a caller that cannot
+        drain still has to produce a receipt, and it needs to know the receipt may not match.
+        """
+        deadline = time.monotonic() + timeout
+        while self.health.active_requests > 0:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.002)
+        return True
 
     def stop(self) -> None:
         self.stopping.set()
