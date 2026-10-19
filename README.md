@@ -14,6 +14,11 @@ Docket wraps the agent you already run. It needs no account, no server, no telem
 
 ---
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://docket-dev-org.github.io/docket/assets/logo-horizontal-dark.svg">
+  <img src="https://docket-dev-org.github.io/docket/assets/logo-horizontal.svg" alt="Docket: a local budget-and-evidence layer for AI agents" width="250" height="80">
+</picture>
+
 ## Why Docket?
 
 Agent runs spend money and change files, and neither the spend nor the change arrives with a record you can hand to someone else.

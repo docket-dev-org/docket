@@ -162,6 +162,14 @@ def test_the_reference_scanner_notices_a_missing_document(tmp_path, monkeypatch)
 INLINE_LINK = re.compile(r"\]\(([^)\s]+)\)")
 EXTERNAL = ("http://", "https://", "mailto:", "//", "#")
 
+#: The README carries its logo as raw HTML — a `<picture>` with a dark-mode `<source>` and an
+#: `<img>` — because that is the only way to switch the artwork with the colour scheme. A raw
+#: `src` or `srcset` is invisible to `INLINE_LINK`, which matches `](target)` only, so a logo
+#: pointed at a relative path would 404 on the PyPI page exactly like the 29 markdown links this
+#: guard was written for and would not be reported. This matcher closes that hole: it reads the
+#: `src` and `srcset` attributes of any `img`, `source` or `link` tag in the document.
+HTML_ASSET = re.compile(r"<(?:img|source|link)\b[^>]*?(?:src|srcset|href)\s*=\s*\"([^\"]+)\"")
+
 
 def _staged_site(tmp_path: Path) -> Path:
     """Stage the repository the way `tools/build_docs_site.py` does, and return the staged root.
@@ -231,8 +239,16 @@ def test_the_readme_carries_no_relative_link_the_pypi_page_cannot_resolve() -> N
     """
     readme = REPO / "README.md"
     text = readme.read_text(encoding="utf-8")
+    markdown_targets = INLINE_LINK.findall(text)
+    html_targets = [
+        target.split()[0] for match in HTML_ASSET.findall(text) for target in match.split(",") if target.strip()
+    ]
     relative = sorted(
-        target for target in INLINE_LINK.findall(text) if not target.startswith(EXTERNAL) and not target.startswith("#")
+        {
+            target
+            for target in markdown_targets + html_targets
+            if not target.startswith(EXTERNAL) and not target.startswith("#")
+        }
     )
     assert not relative, (
         "README.md is the PyPI long description; these relative targets 404 on the package page: " + repr(relative)
@@ -254,10 +270,11 @@ def test_every_url_the_readme_links_to_answers_200() -> None:
     import urllib.request
 
     readme = REPO / "README.md"
+    text = readme.read_text(encoding="utf-8")
     targets = sorted(
         {
             target.split("#", 1)[0]
-            for target in INLINE_LINK.findall(readme.read_text(encoding="utf-8"))
+            for target in INLINE_LINK.findall(text) + HTML_ASSET.findall(text)
             if target.startswith(("http://", "https://"))
         }
     )
