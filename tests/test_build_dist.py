@@ -13,9 +13,12 @@ network, and they fail on the property that matters rather than on the tool's pl
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
+import re
 import subprocess
 import sys
+import types
 from pathlib import Path
 from typing import Literal
 
@@ -23,9 +26,24 @@ import pytest
 
 TOOL = Path(__file__).resolve().parent.parent / "tools" / "build_dist.py"
 
-# Imported by path for the same reason the other tools are: it is a script, not a package.
-sys.path.insert(0, str(TOOL.parent))
-import build_dist as bd  # noqa: E402
+
+def _load_tool() -> types.ModuleType:
+    """Import `tools/build_dist.py` by path, the way the other tool tests do.
+
+    Registered in `sys.modules` before execution for the same reason `test_deploy_check.py`
+    registers its checker: loading a module without registering it is the documented way to
+    break anything that looks its own module up.
+    """
+    name = "build_dist_under_test"
+    spec = importlib.util.spec_from_file_location(name, TOOL)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+bd = _load_tool()
 
 
 def _git(repository: Path, *arguments: str) -> str:
@@ -246,6 +264,87 @@ def test_a_dirty_working_tree_cannot_reach_the_artifact(
     assert [entry["filename"] for entry in record["artifacts"]] == ["fake-0.0.0.tar.gz"]
     assert record["artifacts"][0]["sha256"] == hashlib.sha256(b"one\n").hexdigest()
     assert bd.check("HEAD") == 0
+
+
+def _fences(markdown: str) -> list[tuple[str, str]]:
+    """Every fenced block in a document, as (language, body), in order.
+
+    The language matters to one caller and not to the others. The parse test needs only the
+    blocks that declare `bash`, because the guide also shows twine's own 400 output inside a
+    plain fence and an error message with an unbalanced quote is not a shell script. The twine
+    guards need all of them, because that same plain fence holds a `twine upload` command a
+    bash-only reader would miss.
+    """
+    fences: list[tuple[str, str]] = []
+    current: list[str] = []
+    language = ""
+    inside = False
+    for line in markdown.splitlines():
+        if line.strip().startswith("```") and not inside:
+            inside, language, current = True, line.strip().removeprefix("```").strip(), []
+            continue
+        if inside and line.strip() == "```":
+            fences.append((language, "\n".join(current)))
+            inside = False
+            continue
+        if inside:
+            current.append(line)
+    return fences
+
+
+def test_every_bash_block_in_the_publishing_guide_parses() -> None:
+    """A command block that does not parse is a command block nobody can run."""
+    guide = (Path(__file__).resolve().parent.parent / "PUBLISHING.md").read_text(encoding="utf-8")
+    fences = [body for language, body in _fences(guide) if language == "bash"]
+    assert fences, "no ```bash blocks found in PUBLISHING.md; the matcher has stopped working"
+    for index, fence in enumerate(fences, start=1):
+        completed = subprocess.run(  # noqa: S603 - a fixed argv, no shell, no user input
+            ["bash", "-n"],  # noqa: S607 - resolved from PATH by design
+            input=fence,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, f"block {index} of PUBLISHING.md does not parse: {completed.stderr.strip()}"
+
+
+def test_the_guide_never_feeds_the_whole_of_dist_to_twine() -> None:
+    """The regression the provenance file introduced.
+
+    `dist/` now holds `PROVENANCE.json` beside the two distributions, and `twine check dist/*`
+    refuses a file it does not recognise with *"Unknown distribution format"*. The guide told
+    the reader to run exactly that, so the command it shipped was already broken. Both twine
+    commands must name the two extensions.
+    """
+    guide = (Path(__file__).resolve().parent.parent / "PUBLISHING.md").read_text(encoding="utf-8")
+    twine_lines = [
+        line.strip().removeprefix("$ ")
+        for _language, fence in _fences(guide)
+        for line in fence.splitlines()
+        if line.strip().startswith(("twine check", "twine upload", "$ twine"))
+    ]
+    assert twine_lines, "no twine command found in PUBLISHING.md; the matcher has stopped working"
+    for command in twine_lines:
+        # Every path the command hands to twine must be a distribution. The bare wildcard
+        # `dist/*` would hand it PROVENANCE.json as well, and twine refuses a file it does
+        # not recognise as one.
+        for path in re.findall(r"dist/\S*", command):
+            assert path.endswith((".whl", ".tar.gz")), (
+                f"{command!r} passes {path!r} to twine, which is not a distribution"
+            )
+        assert "dist/*.whl" in command and "dist/*.tar.gz" in command, f"{command!r} does not name both distributions"
+
+
+def test_the_guide_builds_from_a_ref_before_it_uploads() -> None:
+    """The order is the point: build from the ref, check it, then upload."""
+    guide = (Path(__file__).resolve().parent.parent / "PUBLISHING.md").read_text(encoding="utf-8")
+    block = next(fence for _language, fence in _fences(guide) if "twine upload" in fence)
+    lines = [line.strip() for line in block.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+    assert any(line.startswith("python3 tools/build_dist.py --ref") for line in lines), block
+    assert any(line == "python3 tools/build_dist.py --check --ref vX.Y.Z" for line in lines), block
+    check = lines.index(next(line for line in lines if line == "python3 tools/build_dist.py --check --ref vX.Y.Z"))
+    for command in lines[:check]:
+        assert not command.startswith("twine"), f"{command!r} runs before the provenance check"
 
 
 def test_the_command_line_reports_a_bad_ref_with_a_nonzero_status() -> None:

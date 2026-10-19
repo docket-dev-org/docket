@@ -28,8 +28,8 @@ To ship to PyPI:
 # Requires: Python 3.11+, git, build, twine, and a PyPI token for the docket-ai project.
 python3 tools/build_dist.py --ref vX.Y.Z
 python3 tools/build_dist.py --check --ref vX.Y.Z
-twine check dist/*
-twine upload dist/*
+twine check dist/*.whl dist/*.tar.gz
+twine upload dist/*.whl dist/*.tar.gz
 ```
 
 Build from the ref, never from the working tree. This is not a style preference: the 0.1.4
@@ -43,6 +43,9 @@ untracked file cannot leak in and a dirty tracked file exports at the committed 
 writes `dist/PROVENANCE.json` recording the ref, the commit and each artifact's digest, and
 `--check` refuses to pass when `dist/` does not match the ref you are about to release. Run it
 after the build and before `twine upload`, every time.
+
+Both `twine` commands name the two extensions rather than `dist/*`, because `dist/` also holds
+`PROVENANCE.json` and `twine check dist/*` refuses a file it does not recognise.
 
 Do this from a machine whose key never touches CI.
 
@@ -58,7 +61,7 @@ $ curl -s -o /dev/null -w '%{http_code}\n' https://pypi.org/pypi/docket/json
 and uploading to it still fails:
 
 ```
-$ twine upload dist/*
+$ twine upload dist/*.whl dist/*.tar.gz
 HTTPError: 400 Bad Request from https://upload.pypi.org/legacy/
      The name 'docket' isn't allowed. See https://pypi.org/help/#project-name
      for more information.

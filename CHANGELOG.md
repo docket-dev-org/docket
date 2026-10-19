@@ -181,6 +181,17 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   asset-only change redeploys instead of leaving the previous mark on the live site.
 
 ## [0.1.6] - 2026-10-19
+### Fixed
+
+- **The publishing guide no longer tells the reader to run a command that fails.** It shipped
+  `twine check dist/*` and `twine upload dist/*`, and `dist/` now also holds `PROVENANCE.json`,
+  which twine refuses with *"Unknown distribution format: 'PROVENANCE.json'"*. The commands were
+  measured before the guide shipped them, which is how the break was found: the first run of
+  `twine check dist/*` on a freshly built `dist/` failed. Both now name the two extensions, and
+  three guards hold the guide to it — every `bash` block parses, no twine command is handed a
+  path that is not a distribution, and nothing reaches twine before the provenance check. Each
+  was proven to fire by injecting the defect it names.
+
 
 ### Fixed
 
