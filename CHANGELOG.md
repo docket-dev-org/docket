@@ -180,6 +180,38 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   navigation does not list. `docs.yml` triggers on `assets/**` and `overrides/**`, so an
   asset-only change redeploys instead of leaving the previous mark on the live site.
 
+## [0.1.5] - 2026-10-19
+
+### Fixed
+
+- **The published long description carries the mark.** The 0.1.4 wheel and sdist were built from
+  the commit before the README logo was committed, so the package page rendered the version and
+  the badges but no artwork. `README.md` is the long description, and the two distributions of
+  0.1.4 froze it at that commit; re-uploading them under the same filenames is not possible,
+  because PyPI reserves a filename once it is published. 0.1.5 is built from the commit that
+  holds the logo, and the package page and the repository now agree.
+
+### Added
+
+- **The README carries the horizontal lockup, in both schemes.** A `<picture>` with a
+  dark-mode `<source>` and a light `<img>`, 250x80, sitting above `## Why Docket?`. Both
+  targets are absolute and point at the documentation site, which is where the rest of the
+  README already points: `README.md` is the PyPI long description, and PyPI resolves a relative
+  target against `https://pypi.org/project/docket-ai/`, so a repo-relative logo would 404 on
+  the package page while resolving correctly on GitHub. That is the same defect the 29
+  markdown links already carried, and it took three releases to notice.
+
+- **The PyPI link guard now sees raw HTML.** `INLINE_LINK` matches `](target)` only, so a raw
+  `src` or `srcset` was invisible to both halves of `tests/test_doc_links.py`; a logo pointed
+  at a relative path would have 404'd on PyPI unreported. `HTML_ASSET` reads the `src`,
+  `srcset` and `href` attributes of any `img`, `source` or `link` tag, and both guards use it.
+  Both halves were proven to fire on the defect they now name by injecting a relative logo
+  path and a dead absolute one into the README and watching the right guard fail.
+
+  Measured on the published description rather than on the source: rendered through PyPI's own
+  `readme_renderer` and nh3 sanitiser, the 0.1.5 description carries 52 `href` and `src`
+  attributes, 36 of them absolute, 0 relative, and all 30 distinct URLs answer 200.
+
 ## [Unreleased]
 
 ### Added

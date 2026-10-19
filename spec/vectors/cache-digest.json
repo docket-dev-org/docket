@@ -1,7 +1,7 @@
 {
   "schema": "docket/vectors/cache-digest/v1",
   "note": "sha256 of the canonical JSON of the cached receipt with seal and signature removed",
-  "receipt_core_sha256": "08f985937b8afeec1cb5735ed5b22978b3cc1d2ed4e64f22ec832b02ad271517",
+  "receipt_core_sha256": "7b0225f0ee3c63ccfec009c45b589f9d414c1f1dc97513769b3f6c91536f8659",
   "expected": {
     "hits": 2,
     "saved_usd": "0.012000",

@@ -52,3 +52,4 @@ mutation-report.md
 
 # the Go verifier's build product
 verify-go/docket-verify
+verify-go/verify-go
