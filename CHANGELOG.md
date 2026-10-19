@@ -132,6 +132,54 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   two `receipt_core_sha256` digests that cover it changed; all three implementations still agree
   (Python and Node: 88 correct, 0 wrong; Node's own suite: 100/100).
 
+## [0.1.4] - 2026-10-19
+
+### Changed
+
+- **The visual identity is the bounded-ledger mark, and the retired one is gone.** The repository
+  carried an indigo-and-teal receipt-with-a-tick logo whose palette names were still selected in
+  `mkdocs.yml` as `primary: indigo` / `accent: teal`, which made the documentation site carry a
+  second, retired identity. `assets/` now holds the approved kit: the color, dark, black and
+  white lockups, the standalone symbol, the 16-24px micro cut, the wordmark, the 512px avatar
+  tile, the 1280x640 social card and their vector sources, with the font notice and a generator
+  that renders both rasters from the SVGs. `theme.logo` is the white micro symbol on the cobalt
+  toolbar and `theme.favicon` is the adaptive micro favicon rather than a shrunken 512px tile.
+
+  Three defects were found by rendering the result rather than by reading the diff, and all three
+  are fixed:
+
+  1. `overrides/main.html` was written without `{% extends "base.html" %}`. `main.html` *is*
+     Material's page template, so the home page and the 404 page rendered as that one fragment —
+     256 bytes where a 50 KB document belongs. The build stayed green and still reported 53 pages,
+     because a page rendered from a fragment is still a page.
+  2. The brand stylesheet used `:root`, and Material puts `data-md-color-primary` on `<body>`.
+     Both selectors are specificity (0,1,0), so the file won on `<html>` and changed nothing
+     anywhere that consumes the variables: Chromium measured the header background as
+     `rgb(32, 148, 243)`, Material's blue, in light mode. The selectors now name `<body>` at
+     (0,2,1).
+  3. The favicon and touch-icon `<link>`s were written as literal strings, which mkdocs does not
+     rewrite per page, so they resolved at the root and 404'd on all 47 pages below it. They now
+     go through `| url`.
+
+  The site also carried three `theme-color` metas, because Material's palette script appends its
+  own and the effective value was `#2094f3`. Deleting the two in the override and fixing the
+  cascade leaves one meta that carries the brand colour.
+
+  `tests/test_brand_assets.py` guards all of it, and each of its guards was proven to fail on the
+  defect it names by injecting that defect into a scratch copy of the tree.
+
+- **The documentation site is themed in the brand palette.** `assets/brand.css` writes the approved
+  cobalt and bright cobalt over the CSS custom properties Material's palette stylesheet sets.
+  Material has no colour named for cobalt, so `primary: blue` remains the closest supported
+  fallback and the file refines it; every hex in it is from the approved palette, and a guard
+  refuses one that is not. `theme-color` follows the same two colours.
+
+- **`assets/` is staged for the site, and the site is rebuilt when it changes.** The stager now
+  carries `.ico` and `.css`, which no file in the tree had before, and skips `assets/BRAND.md` —
+  the in-repository alias map for the artwork, which mkdocs would otherwise publish as a page the
+  navigation does not list. `docs.yml` triggers on `assets/**` and `overrides/**`, so an
+  asset-only change redeploys instead of leaving the previous mark on the live site.
+
 ## [Unreleased]
 
 ### Added

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Docket — app icon">
+<title>Docket — app icon</title>
+<desc>The bounded ledger: three connected records ending at one common boundary. An identifier, not a security or verification guarantee.</desc>
+<rect width="256" height="256" rx="0" fill="#2457F5"/>
+<g transform="translate(24.914 22.914) scale(0.818)"><path id="symbol-bounded-ledger" fill="#F7F5EF" d="M29 31H120C176.89 31 223 73.55 223 126C223 178.45 176.89 221 120 221H29V175H153V149H29V103H169V77H29Z"/></g>
+</svg>

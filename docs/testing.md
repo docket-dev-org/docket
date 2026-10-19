@@ -12,7 +12,7 @@ and can be told to fail on cue.
 ## The suite
 
 ```console
-$ make test          # 1205 tests, no network (2-4 min on a 2-vCPU box)
+$ make test          # 1216 tests, no network (2-4 min on a 2-vCPU box)
 $ make check         # + ruff, + bandit, + the independent Node verifier
 ```
 
@@ -56,6 +56,7 @@ $ make check         # + ruff, + bandit, + the independent Node verifier
 | `test_helm_fidelity.py` | 17 | the comparison between the checker's chart render and a real Helm render: pairing by kind and name, the block scalar's final newline, the path of the first difference, exit 2 when Helm is absent, and — where Helm is installed — the end-to-end comparison |
 | `test_doc_links.py` | 25 | every `docs/…md` reference in the tree resolves, every page is in the nav, the scanner itself can fail, a staged site copy is not read as a second copy of the documentation, this table's own counts are reconciled against the suite, the counts written beside a test filename in the other pages are reconciled too, the size the README quotes for the whole suite is reconciled, every pytest command the Makefile and the CI jobs ship prints its counts and its skips, no document states a position inside a source list that does not publish one, every row of a graded table carries its grade, every `make` target the workflows and the help text name exists, every flag `docs/cli.md` documents is an option of the command it is filed under, and no document outside the raw measurements carries a path from the machine that wrote it, every source line cited in prose (`verify.py:194`) exists and carries a site the mutation harness would mutate, and the coverage maps have a row for every concept and practice they claim |
 | `test_a11y_check.py` | 71 | the site checker against pages built to break each rule it applies, and against pages built to be clean: every rule proves it can fail, every way a link or a control can be named proves it does not cry wolf, and eighteen of them were written to kill survivors of the checker's own mutation sweep (98.5%, `mut-a11y-release.json`) — the ones that assert what the verdict cannot show: a name, its source, a line number, the tree the parser built |
+| `test_brand_assets.py` | 11 | the brand kit is wired to the surfaces that render it: every asset the site names is checked in, the theme override still extends `base.html` (it did not, and the home page rendered as a 256-byte fragment), the brand stylesheet is the last one Material emits, no retired colour survives in the tree, every hex in it is from the approved palette, no brand SVG sets its wordmark as live text, the rasters are the shapes their host demands (512 square opaque for the avatar, 1280x640 opaque for the social card, 180 square opaque for the touch icon, and 16/32/48 at 32bpp inside the `.ico`), the site stager still carries `.ico` and `.css` and still skips the in-repository brand note, every asset link in every built page resolves on that page, and `make-assets.py` still renders the PNGs that are checked in byte for byte |
 | `test_fuzz_regressions.py` | 98 | one test per defect a fuzzer found (see below) |
 
 Counts are collected (`pytest --collect-only`), not remembered — and "they are checked" is now a

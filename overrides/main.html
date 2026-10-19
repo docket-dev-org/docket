@@ -1,0 +1,45 @@
+{#
+  Head metadata the MkDocs theme does not emit.
+
+  This extends the theme's own base template and fills the `extrahead` block, which is
+  how Material for MkDocs documents adding head tags; a file dropped into `overrides/`
+  without the `extends` silently *replaces* the page template named `main.html`, and
+  the home page and the 404 page (which extends `main.html`) render as that fragment
+  alone.
+
+  `theme.favicon` in `mkdocs.yml` already links the adaptive micro favicon, so this
+  only adds the two things a Material site has no setting for:
+
+    * `favicon.ico` — the legacy multi-size fallback. The single file carries
+      16x16, 32x32 and 48x48 at 32bpp with real transparency, which is why the
+      separate 16/32/48 PNGs in the brand kit are not shipped: they would be
+      three more files describing artwork this one already contains.
+    * `apple-touch-icon.png` — iOS home-screen icon, which must be opaque and
+      square; the kit supplies exactly that and no other variant does.
+
+  There is deliberately no `theme-color` meta here. Material's palette script
+  appends its own `theme-color` and keeps it in step with the active palette, so a
+  second one would be a duplicate that browsers resolve arbitrarily — and the
+  measured defect was exactly that: the site carried three, and the effective
+  value was `#2094f3`, Material's blue, in light mode. Fixing the brand cascade in
+  `assets/brand.css` is what makes Material's own meta carry the brand colour
+  (cobalt on a light surface, bright cobalt on a dark one), so the right fix was
+  to delete these two lines rather than to add a third meta and hope.
+
+  There is also deliberately no `site.webmanifest` link. The brand kit ships one
+  and labels it optional, noting that Docket does not ship a browser app or PWA;
+  adding a manifest with `display: standalone` would make the documentation site
+  installable, which is a behaviour change this project has not made. The
+  maskable icons are left out for the same reason.
+#}
+{% extends "base.html" %}
+
+{# Every asset path goes through mkdocs' `| url` filter, which is what makes it relative to the
+   page being rendered. Written as a literal string it stays `assets/...` on every page, which is
+   correct at the root and a 404 on every page below it: `docs/quickstart/` was measured linking
+   `assets/favicon.ico` and resolving it against `/docket/docs/quickstart/`. `theme.favicon` does
+   this correctly on its own, which is how the difference showed up at all. #}
+{% block extrahead %}
+  <link rel="icon" href="{{ 'assets/favicon.ico' | url }}" sizes="any">
+  <link rel="apple-touch-icon" href="{{ 'assets/apple-touch-icon.png' | url }}">
+{% endblock %}

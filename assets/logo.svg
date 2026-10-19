@@ -1,20 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Docket">
-  <title>Docket</title>
-  <desc>A receipt with a torn edge: the record of an agent run.</desc>
-  <defs>
-    <clipPath id="card">
-      <path d="M12 6h40a6 6 0 0 1 6 6v33.5l-3.5-3.5-3.5 3.5-3.5-3.5-3.5 3.5-3.5-3.5-3.5 3.5-3.5-3.5-3.5 3.5-3.5-3.5-3.5 3.5-3.5-3.5-3.5 3.5H12a6 6 0 0 1-6-6V12a6 6 0 0 1 6-6Z"/>
-    </clipPath>
-  </defs>
-  <!-- receipt body -->
-  <path d="M12 6h40a6 6 0 0 1 6 6v33.5l-3.5-3.5-3.5 3.5-3.5-3.5-3.5 3.5-3.5-3.5-3.5 3.5-3.5-3.5-3.5 3.5-3.5-3.5-3.5 3.5-3.5-3.5-3.5 3.5H12a6 6 0 0 1-6-6V12a6 6 0 0 1 6-6Z"
-        fill="#4f46e5"/>
-  <!-- three record lines, the middle one longer: entries in a ledger -->
-  <g clip-path="url(#card)" stroke="#eef2ff" stroke-width="3.4" stroke-linecap="round">
-    <line x1="15" y1="18" x2="35" y2="18"/>
-    <line x1="15" y1="26" x2="49" y2="26"/>
-    <line x1="15" y1="34" x2="41" y2="34"/>
-  </g>
-  <!-- the verified tick, outside the torn edge so it stays legible at 16px -->
-  <path d="M40 44.5l5 5 11-11.5" fill="none" stroke="#2dd4bf" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+<svg fill="#ffffff" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Docket — micro (color)"><title>Docket</title>
+
+<desc>The bounded ledger: three connected records ending at one common boundary. An identifier, not a security or verification guarantee.</desc>
+<path id="docket-bounded-ledger" fill="#ffffff" d="M16 16H112C173.856 16 224 62.56 224 120C224 177.44 173.856 224 112 224H16V176H148V144H16V96H164V64H16Z"/>
 </svg>

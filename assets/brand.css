@@ -1,0 +1,87 @@
+/* Docket brand tokens for the documentation site.
+ *
+ * Material for MkDocs themes its chrome from a fixed list of colour *names*
+ * (red, pink, indigo, blue, teal, …) and there is no name for the brand cobalt,
+ * so `primary: blue` in `mkdocs.yml` is the closest supported fallback and this
+ * file writes the real values over the CSS custom properties that palette
+ * stylesheet sets. Every hex below is from the approved palette in
+ * `assets/BRAND.md`; nothing here is invented, and no gradient, glow, bevel or
+ * shadow is applied to the mark.
+ *
+ * Two reasons this file exists rather than a longer one: the documentation
+ * chrome should read as Docket, and the previous `indigo`/`teal` palette was the
+ * colour scheme of the logo this one replaced, which made the site carry a
+ * second, retired identity.
+ *
+ * ## Why the selectors name `body`
+ *
+ * Material's palette script puts `data-md-color-scheme`, `data-md-color-primary`
+ * and `data-md-color-accent` on `<body>`, not on `<html>`, and its own rules are
+ * `[data-md-color-primary=blue]` at specificity (0,1,0). A `:root` rule is also
+ * (0,1,0) and loads later, so it wins on `<html>` — and changes nothing at all,
+ * because every element that consumes these variables is a descendant of `<body>`
+ * and inherits `<body>`'s value instead. That is not a guess: the first version
+ * of this file used `:root`, and Chromium measured the header background as
+ * `rgb(32, 148, 243)`, Material's blue, in light mode while the dark override
+ * happened to win. So the selectors below target `<body>` at (0,2,1), above the
+ * (0,2,0) ceiling of Material's palette stylesheet, and use attribute *presence*
+ * rather than `=blue` so the palette name in `mkdocs.yml` stays free to change.
+ *
+ * `tests/test_brand_assets.py` pins the load order, the values and the fact that
+ * no retired colour survives, because a cascade that silently loses is invisible
+ * in the source.
+ */
+
+:root {
+  /* The approved palette, named once so the rest of the file reads as roles. */
+  --docket-cobalt: #2457f5;
+  --docket-cobalt-bright: #7fa6ff;
+  --docket-charcoal: #17212b;
+  --docket-ivory: #f7f5ef;
+  --docket-slate: #5f7082;
+  --docket-sand: #e7e0d3;
+
+  /* Values before Material's palette script runs, so the first paint is already
+     the brand colour rather than a frame of indigo. */
+  --md-primary-fg-color: var(--docket-cobalt);
+  --md-accent-fg-color: var(--docket-cobalt);
+  --md-typeset-a-color: var(--docket-cobalt);
+}
+
+/* Light surface: vivid cobalt is the identity colour, white text on it. */
+body[data-md-color-scheme][data-md-color-primary] {
+  --md-primary-fg-color: var(--docket-cobalt);
+  --md-primary-fg-color--light: var(--docket-cobalt-bright);
+  --md-primary-fg-color--dark: var(--docket-cobalt);
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: var(--docket-ivory);
+  --md-accent-fg-color: var(--docket-cobalt);
+  --md-accent-fg-color--light: var(--docket-cobalt-bright);
+  --md-accent-bg-color: #ffffff;
+
+  /* Body links carry the accent, which is the one text colour the brand
+     specifies: cobalt on ivory is 5.13:1 and on white 5.59:1. */
+  --md-typeset-a-color: var(--docket-cobalt);
+}
+
+/* Dark surface: bright cobalt is the documented dark-mode derivative of the
+ * same hue, never a separate colour. It is the symbol's value on charcoal and
+ * it is not used for small text on a light surface. */
+body[data-md-color-scheme="slate"][data-md-color-primary] {
+  --md-primary-fg-color: var(--docket-cobalt-bright);
+  --md-primary-fg-color--light: var(--docket-cobalt-bright);
+  --md-primary-fg-color--dark: var(--docket-cobalt);
+  --md-primary-bg-color: var(--docket-charcoal);
+  --md-accent-fg-color: var(--docket-cobalt-bright);
+  --md-accent-fg-color--light: var(--docket-cobalt-bright);
+  --md-typeset-a-color: var(--docket-cobalt-bright);
+}
+
+/* Clear space around the header mark. The guidelines ask for at least `u` — one
+ * slot height, an eighth of the mark — on every side, away from other chrome.
+ * Material renders `theme.logo` at 24px in a 48px header, which leaves 12px above
+ * and below; the gap to the right is what this adds, so the mark does not sit
+ * flush against the site title. */
+.md-header__button.md-logo {
+  margin-inline-end: 0.4rem;
+}

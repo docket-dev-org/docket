@@ -27,20 +27,23 @@ docs_dir: .mkdocs-site
 
 theme:
   name: material
+  # `assets/` holds the brand kit; `overrides/main.html` adds the head metadata
+  # the theme has no setting for (see the comment in that file).
+  custom_dir: overrides
   logo: assets/logo.svg
-  favicon: assets/icon.png
+  favicon: assets/favicon.svg
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
-      accent: teal
+      primary: blue
+      accent: blue
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
-      accent: teal
+      primary: blue
+      accent: blue
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
@@ -50,6 +53,12 @@ theme:
     - content.code.copy
     - search.suggest
     - toc.follow
+
+extra_css:
+  # The brand palette, written over Material's own colour variables. Material
+  # emits this after its palette stylesheet, so the values win; see the header
+  # comment in the file for why it exists at all.
+  - assets/brand.css
 
 markdown_extensions:
   - admonition

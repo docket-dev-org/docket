@@ -27,11 +27,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 STAGE = ROOT / ".mkdocs-site"
 SKIP_DIRS = {".git", ".mkdocs-site", "site", "dist", "build", "node_modules", "__pycache__", ".venv"}
-#: Directories that are part of the repository but not part of the site. `tests/golden` holds the
+#: Paths that are part of the repository but not part of the site. `tests/golden` holds the
 #: rendered-output fixtures the golden tests compare against; no document links to them, and mkdocs
 #: reported each one as "a page not in the nav" — which is the right complaint about a fixture that
-#: was staged as documentation.
-SKIP_PATHS = {"tests/golden"}
+#: was staged as documentation. `assets/BRAND.md` is the same shape for a different reason: it is
+#: the in-repository alias map for the brand kit, written for whoever regenerates the artwork, and
+#: it names no document a reader arrives from. Leaving it in the staged tree adds a page to the site
+#: that the navigation does not list, which is the orphan mkdocs is right to complain about.
+SKIP_PATHS = {"tests/golden", "assets/BRAND.md"}
 
 
 def stage(destination: Path) -> None:
@@ -61,6 +64,14 @@ def stage(destination: Path) -> None:
             ".svg",
             ".jpg",
             ".webp",
+            # `assets/favicon.ico` is the legacy multi-size favicon the site links
+            # from `overrides/main.html`, and `assets/brand.css` is the palette it
+            # loads through `extra_css`. Both are referenced by the built pages, so
+            # a stager that dropped them would ship a site with two broken asset
+            # references — and neither suffix was in this set before the brand kit
+            # was adopted, which is exactly how that would have gone unnoticed.
+            ".ico",
+            ".css",
             ".toml",
             ".json",
             ".yml",

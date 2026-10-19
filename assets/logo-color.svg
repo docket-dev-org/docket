@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Docket — symbol (color)">
+<title>Docket — symbol (color)</title>
+<desc>The bounded ledger: three connected records ending at one common boundary. An identifier, not a security or verification guarantee.</desc>
+<path id="docket-bounded-ledger" fill="#2457F5" d="M28 30H120C177.44 30 224 73 224 126C224 179 177.44 222 120 222H28V174H152V150H28V102H168V78H28Z"/>
+</svg>

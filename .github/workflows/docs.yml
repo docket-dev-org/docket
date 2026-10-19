@@ -10,6 +10,12 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      # The logo, favicon, app icon and social artwork live here, and the site
+      # is the only surface that renders them. Without this an asset-only change
+      # leaves the deployed site showing the previous mark until a document
+      # happens to change.
+      - "assets/**"
+      - "overrides/**"
       - "mkdocs.yml"
       - "tools/build_docs_site.py"
       - "README.md"
