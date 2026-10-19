@@ -16,8 +16,6 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from .canon import usd
-
 
 class NonStandardJSONError(ValueError):
     """Base for values a JSON *reader* accepts and a JSON *format* does not define.
@@ -310,30 +308,9 @@ def docket_number(when: float | None = None, rng: secrets.SystemRandom | None = 
     return f"DKT-{stamp}-{suffix}"
 
 
-def short_hash(value: str, length: int = 12) -> str:
-    return value[:length]
-
-
-def mb(nbytes: int) -> str:
-    if nbytes < 1024:
-        return f"{nbytes} B"
-    if nbytes < 1024 * 1024:
-        return f"{nbytes / 1024:.1f} KB"
-    return f"{nbytes / (1024 * 1024):.1f} MB"
-
-
 def within(host: str, allow: Iterable[str]) -> bool:
     hostname = host.split(":")[0].lower()
     return any(hostname == a.lower() or fnmatch.fnmatch(hostname, a.lower()) for a in allow)
-
-
-def stable_seed(*parts: str) -> int:
-    """Deterministic integer seed derived from string parts (for demo/test clocks)."""
-    return int(hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:12], 16)
-
-
-def money_or_zero(value: Decimal | None) -> str:
-    return usd(value) if value is not None else "0.00"
 
 
 def ledger_for_receipt(receipt_path: str | os.PathLike[str]) -> Path | None:

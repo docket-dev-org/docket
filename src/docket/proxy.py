@@ -49,7 +49,7 @@ from . import events as ev
 from .canon import digest_of, num, usd
 from .ledger import Ledger, LedgerFullError
 from .policy import DENIAL_TYPE, Policy
-from .pricing import CostMeter, PriceTable, estimate_tokens_from_text
+from .pricing import CostMeter, estimate_tokens_from_text
 from .resilience import (
     CircuitBreaker,
     Fault,
@@ -1858,7 +1858,3 @@ class RecordingProxy:
                     "limit_usd": usd(caps.max_usd),
                 },
             )
-
-
-def default_price_table() -> PriceTable:
-    return PriceTable.load()

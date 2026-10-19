@@ -24,7 +24,7 @@ from decimal import Context, Decimal, DecimalException, InvalidOperation, localc
 from pathlib import Path
 from typing import Any
 
-from .canon import canonical_bytes, digest_of, sha256_hex, usd
+from .canon import digest_of, usd
 from .util import loads_json
 
 BUNDLED = Path(__file__).with_name("prices.json")
@@ -463,7 +463,3 @@ def recompute_totals(events: Iterable[dict[str, Any]], price_document: dict[str,
         "per_call_mismatches": mismatches,
         "assumed_models": sorted(assumed_models),
     }
-
-
-def price_document_digest(document: dict[str, Any]) -> str:
-    return sha256_hex(canonical_bytes(document))

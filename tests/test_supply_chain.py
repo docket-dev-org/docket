@@ -196,6 +196,66 @@ def test_the_node_verifier_in_the_wheel_is_the_one_in_the_repository():
     assert resolved.read_bytes() == (root / "verify-js" / "verify.mjs").read_bytes()
 
 
+def test_no_definition_in_the_package_is_dead_code() -> None:
+    """Every public definition under `src/docket/` is called from somewhere a reader can reach.
+
+    `generate_keypair` sat in `src/docket/signing.py` from the first release and nothing called
+    it: no command, no test, no documentation. `docket run --sign` was a flag with no way to
+    produce a key, and the function that could have produced one was invisible. Seven more
+    definitions had the same shape — `short_hash`, `mb`, `money_or_zero`, `stable_seed`,
+    `is_known`, `default_price_table`, `price_document_digest`, `_gzip_bytes` — all one- or
+    two-line helpers with no caller anywhere in the tree.
+
+    Dead code is not harmless here. This is a project whose pitch is that a receipt says what the
+    tool did; a package that carries functions nothing runs is making the same kind of claim
+    about itself. The rule is deliberately narrow: a *top-level* function or class in `src/` that
+    appears nowhere else in `src/`, `tests/`, `tools/`, `examples/` or `verify-js/` is dead. A
+    dunder is exempt, and so is a name that appears in `__all__`, because that is a deliberate
+    re-export.
+    """
+    import ast
+    import re
+
+    root = Path(__file__).resolve().parents[1]
+    search_roots = [root / "src", root / "tests", root / "tools", root / "examples", root / "verify-js"]
+    corpus: list[str] = []
+    for directory in search_roots:
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.rglob("*")):
+            if path.is_file() and path.suffix in {".py", ".mjs", ".js"}:
+                corpus.append(path.read_text(encoding="utf-8", errors="replace"))
+    everything = "\n".join(corpus)
+    assert len(corpus) > 50, "the search roots look wrong; too few files were read"
+
+    dead: list[str] = []
+    for module in sorted((root / "src" / "docket").rglob("*.py")):
+        relative = module.relative_to(root).as_posix()
+        text = module.read_text(encoding="utf-8")
+        exported = set()
+        for node in ast.walk(ast.parse(text)):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id == "__all__":
+                        try:
+                            exported = set(ast.literal_eval(node.value))
+                        except (ValueError, TypeError):
+                            exported = set()
+        for node in ast.parse(text).body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            name = node.name
+            if name.startswith("__") or name in exported:
+                continue
+            if len(re.findall(rf"\b{re.escape(name)}\b", everything)) <= 1:
+                dead.append(f"{relative}:{node.lineno} {name}")
+
+    assert not dead, (
+        "definitions in src/docket that nothing calls: " + repr(dead) + ". Either wire them up, "
+        "or delete them: a package that carries functions nothing runs is claiming more than it does."
+    )
+
+
 def test_the_typing_classifier_is_backed_by_a_marker_and_a_clean_check() -> None:
     """`Typing :: Typed` and `py.typed` are a claim, and the claim has three parts.
 

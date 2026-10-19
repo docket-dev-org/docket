@@ -28,7 +28,6 @@ Both are written to be honest about the partial-failure case: a probe that canno
 from __future__ import annotations
 
 import contextlib
-import gzip
 import io
 import json
 import os
@@ -720,7 +719,3 @@ def render_probes(probes: list[Probe], *, color: bool = False) -> str:
     lines.append("")
     lines.append(f"  {passed} passed, {failed} failed, {skipped} skipped")
     return "\n".join(lines)
-
-
-def _gzip_bytes(payload: bytes) -> bytes:  # pragma: no cover - small helper
-    return gzip.compress(payload)

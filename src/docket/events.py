@@ -98,10 +98,6 @@ def describe(event_type: str) -> str:
     return DESCRIPTIONS.get(event_type, event_type)
 
 
-def is_known(event_type: str) -> bool:
-    return event_type in KNOWN_TYPES
-
-
 def request_fingerprint(data: dict[str, Any]) -> str:
     """Stable identity of a model request, ignoring volatile fields.
 

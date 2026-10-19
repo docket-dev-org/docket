@@ -82,6 +82,16 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
   optional `cryptography` package is absent. Documented in the CLI reference, and tested end to
   end: keygen, sign, verify, and a tampered receipt that fails both the totals and the signature.
 
+- **Eight definitions in the package were dead code.** `generate_keypair` was the visible one —
+  `docket run --sign` was a flag with no way to produce a key, and the function that could have
+  produced one was invisible. Seven more had the same shape: `short_hash`, `mb`,
+  `money_or_zero`, `stable_seed`, `is_known`, `default_price_table`, `price_document_digest`
+  and `_gzip_bytes`, each a one- or two-line helper with no caller anywhere in the tree. Dead
+  code is not harmless in a project whose pitch is that a receipt says what the tool did: a
+  package that carries functions nothing runs is making the same kind of claim about itself. All
+  eight are deleted, and `tests/test_supply_chain.py` now fails when a top-level definition in
+  `src/` appears nowhere else in `src/`, `tests/`, `tools/`, `examples/` or `verify-js/`.
+
 - **A signing key of the wrong type produced an `AttributeError` from inside `cryptography`.**
   `load_pem_private_key` returns a union of every key type the library supports, and most of
   them have no `.sign(data)`. The call now refuses a non-Ed25519 key with a message naming the
