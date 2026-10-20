@@ -61,9 +61,18 @@ is deliberately refused with a reason. The short version, as of this commit:
       (unknown providers get recorded, not skipped)
 - [ ] packaging: `pipx`-friendly docs, `uv tool install` snippet, Homebrew formula 💰
 
+**How this page is kept honest.** Every `[x]` above is a claim that something exists, and a claim
+about code that nothing checks is the same failure mode as a stale test count: it was true when
+written and nobody noticed when it stopped being true. `tests/test_roadmap.py` walks every checked
+box on this page and requires it to name a file, a command, or a measurement that exists in the
+tree. An unchecked box is a plan; a checked box is a statement of fact, and it is held to one.
+
 ## 0.3 — verification anyone can run — *target: Q1 2027*
 
-- [ ] Go verifier (single static binary, no dependencies) 💰
+- [x] Go verifier (single static binary, no dependencies). Shipped in 0.1.5: `verify-go/` builds
+      with `go build`, passes `go vet`, `gofmt` and `go test`, and is one of the three
+      implementations held to the 132-vector corpus. It was listed here as unshipped while all of
+      that was true, which is the kind of stale row this page now has a guard against.
 - [ ] Rust verifier (crate + CLI) 💰
 - [ ] TypeScript/browser verifier (verify a receipt by dropping it into a static page, fully
       client-side) 💰
