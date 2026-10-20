@@ -25,6 +25,14 @@ jobs:
       - run: pip install ruff==0.17.0 bandit mypy
       - run: ruff check src tests spec examples tools assets
       - run: ruff format --check src tests spec examples tools assets
+      - name: quoted numbers (make sync-check)
+        # Every number the documentation quotes about the suite and the version is derived, not
+        # typed: `tools/sync_counts.py` reads what pytest collects and rewrites the prose, and this
+        # step refuses a tree where they have drifted. A contributor runs `make sync`; a commit that
+        # forgets fails here rather than shipping a number a reader cannot check.
+        run: |
+          pip install pytest
+          python3 tools/sync_counts.py --check
       - name: mypy (the package is annotated, so the annotations are held to it)
         # The `Typing :: Typed` classifier and the `py.typed` marker are a claim that a
         # consumer's type checker can read this package's annotations. Without this job the

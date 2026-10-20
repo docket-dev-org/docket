@@ -353,7 +353,7 @@ cd docket
 PYTHONPATH=src python3 -m pytest tests -ra
 ```
 
-That is 1238 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1238 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
+That is 1252 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1252 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
 
 Two rules matter more than style:
 

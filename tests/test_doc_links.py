@@ -389,6 +389,7 @@ COUNTED_REFERENCES = (
 #: loose enough to catch all four of these would also rewrite that sentence.
 SUITE_TOTAL_QUOTES = (
     ("README.md", r"make check` \((\d+) tests"),
+    ("README.md", r"That is (\d+) tests in about three minutes"),
     ("CONTRIBUTING.md", r"# (\d+) tests, fully offline"),
     ("docs/testing.md", r"# (\d+) tests, no network"),
     ("docs/sre-coverage.md", r"the whole suite: (\d+) tests"),
@@ -537,7 +538,7 @@ def test_every_count_written_beside_a_test_filename_matches_the_suite():
 
 
 def test_every_place_that_quotes_the_size_of_the_suite_quotes_it_correctly():
-    """Four sentences promise the reader a number for the whole suite, and nothing read any of them.
+    """Five sentences promise the reader a number for the whole suite, and nothing read any of them.
 
     The suite's size is the first quantitative thing a reader of the README meets, and it is the number
     most likely to be quoted onward — in a blog post, a CV, a comparison table. It had no guard for

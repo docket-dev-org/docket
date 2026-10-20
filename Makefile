@@ -1,4 +1,4 @@
-.PHONY: help game-day selftest helm-fidelity test demo lint fmt audit mutation verify-js vectors conformance verify-go wheel clean check site site-check a11y deploy-check load soak cache-load
+.PHONY: help game-day selftest helm-fidelity test demo lint fmt sync sync-check audit mutation verify-js vectors conformance verify-go wheel clean check site site-check a11y deploy-check load soak cache-load
 
 help:
 	@echo "make test       run the full test suite (offline, no API keys)"
@@ -9,6 +9,8 @@ help:
 	@echo "make verify-go  vet, gofmt, test and build the clean-room Go verifier (needs Go 1.27)"
 	@echo "make wheel      build sdist + wheel into dist/"
 	@echo "make lint fmt   ruff check / ruff format"
+	@echo "make sync       rewrite every number the docs quote about the suite and the version"
+	@echo "make sync-check refuse a tree whose quoted numbers have drifted (CI)"
 	@echo "make audit      bandit static analysis (suppressions documented in pyproject.toml)"
 	@echo "make mutation   mutate the source, run the tests, report every survivor (slow)"
 	@echo "make check      lint + audit + tests + verify-js + conformance + deploy-check"
@@ -66,6 +68,13 @@ lint:
 fmt:
 	ruff check --fix src tests spec examples tools assets
 	ruff format src tests spec examples tools assets
+	python3 tools/sync_counts.py
+
+sync:
+	python3 tools/sync_counts.py
+
+sync-check:
+	python3 tools/sync_counts.py --check
 
 audit:
 	bandit -q -c pyproject.toml -r src tools
