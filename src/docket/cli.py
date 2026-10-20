@@ -886,11 +886,86 @@ def cmd_report(args: argparse.Namespace) -> int:
     if receipt is None:
         _out(sys.stderr, f"{PROGRAM}: no receipt found. Pass one, or run something first.")
         return 1
+    if args.redact is not None:
+        return _redact(args, receipt)
     if args.markdown:
         _out(sys.stdout, render_markdown(receipt))
     else:
         _out(sys.stdout, render_receipt(receipt, color=_color_enabled(sys.stdout)))
     return 0
+
+
+def _redact(args: argparse.Namespace, receipt: dict[str, Any]) -> int:
+    """`docket report --redact <profiles>`: a pair you can hand to somebody else."""
+    from .ledger import Ledger
+    from .redact import RedactionError, RedactionReport, parse_profiles, redact_receipt, write_pair
+
+    try:
+        profiles = parse_profiles(args.redact)
+    except RedactionError as error:
+        _out(sys.stderr, f"{PROGRAM}: {error}")
+        return 2
+
+    # The ledger the receipt commits to, found beside it unless one was named. Without it there is
+    # nothing to re-chain, and a receipt redacted on its own is a receipt that no longer verifies.
+    ledger_path = _ledger_for_report(args, receipt)
+    if ledger_path is None:
+        _out(
+            sys.stderr,
+            f"{PROGRAM}: no ledger found for this receipt. Redaction re-chains the ledger, so pass "
+            f"--ledger <file> pointing at the one this receipt was built from.",
+        )
+        return 1
+
+    try:
+        events = Ledger.read(ledger_path)
+    except Exception as error:  # noqa: BLE001 - a damaged ledger is reported, not swallowed
+        _out(sys.stderr, f"{PROGRAM}: cannot read {ledger_path}: {error}")
+        return 1
+
+    report = RedactionReport(profiles=profiles)
+    try:
+        redacted, chained = redact_receipt(dict(receipt), events, profiles, report)
+    except RedactionError as error:
+        _out(sys.stderr, f"{PROGRAM}: {error}")
+        return 1
+
+    out_dir = Path(args.out) if args.out else Path(args.receipt or ".").parent / "redacted"
+    receipt_path = Path(args.receipt) if args.receipt else _latest_receipt_path()
+    if receipt_path is None:
+        _out(sys.stderr, f"{PROGRAM}: no receipt path to name the redacted pair after")
+        return 1
+    try:
+        new_receipt, new_ledger = write_pair(redacted, chained, receipt_path, ledger_path, out_dir)
+    except RedactionError as error:
+        _out(sys.stderr, f"{PROGRAM}: {error}")
+        return 1
+
+    total = sum(report.replaced.values())
+    _out(sys.stdout, f"redacted {total} value(s) across {len(chained)} events with: {', '.join(profiles)}")
+    for profile, count in sorted(report.replaced.items()):
+        _out(sys.stdout, f"  {profile:<8} {count}")
+    _out(sys.stdout)
+    _out(sys.stdout, f"receipt  {new_receipt}")
+    _out(sys.stdout, f"ledger   {new_ledger}")
+    _out(sys.stdout)
+    _out(sys.stdout, "The pair still verifies against each other. Check it:")
+    _out(sys.stdout, f"  {PROGRAM} verify {new_receipt} --ledger {new_ledger}")
+    return 0
+
+
+def _ledger_for_report(args: argparse.Namespace, receipt: dict[str, Any]) -> Path | None:
+    """The ledger this receipt commits to, or `None` when it cannot be found."""
+    named = getattr(args, "ledger", None)
+    if named:
+        candidate = Path(named)
+        return candidate if candidate.exists() else None
+    receipt_path = Path(args.receipt) if args.receipt else _latest_receipt_path()
+    if receipt_path is not None:
+        beside = ledger_for_receipt(receipt_path)
+        if beside is not None and beside.exists():
+            return beside
+    return _newest_ledger()
 
 
 def cmd_explain(args: argparse.Namespace) -> int:
@@ -1435,6 +1510,27 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("receipt", nargs="?")
     report.add_argument("--markdown", action="store_true", help="emit markdown (for PRs and tickets)")
     report.set_defaults(func=cmd_report)
+    report.add_argument(
+        "--redact",
+        metavar="PROFILES",
+        default=None,
+        help=(
+            "write a redacted copy of the receipt and its ledger: paths, argv, hosts, secrets, or "
+            "all. The pair is re-chained so it still verifies; the originals are untouched"
+        ),
+    )
+    report.add_argument(
+        "--out",
+        metavar="DIR",
+        default=None,
+        help="directory for the redacted pair (default: beside the receipt, in a redacted/ subdirectory)",
+    )
+    report.add_argument(
+        "--ledger",
+        metavar="FILE",
+        default=None,
+        help="the ledger to redact alongside the receipt (default: the one found beside it, by digest)",
+    )
 
     explain = sub.add_parser("explain", help="explain where the money and the risk went")
     explain.add_argument("receipt", nargs="?")

@@ -284,6 +284,33 @@ Every preset sets `egress.mode = "deny"` with the default allow-list, so a host 
 name is refused exactly as it was before. An unknown preset exits 2 and names the presets, rather
 than falling back to the generic one.
 
+## `docket report [--markdown] [--redact PROFILES] [--out DIR] [--ledger FILE] [receipt]`
+
+Renders a receipt for a human, or emits it as Markdown for a pull request or a ticket.
+
+`--redact <profiles>` writes a copy of the receipt *and* its ledger with the named surfaces removed,
+for handing evidence to somebody outside your team:
+
+| profile | what it removes |
+| --- | --- |
+| `paths` | `cwd`, path-shaped `argv` entries, `fs.*` paths, `top_paths`. The placeholder keeps the path's depth, so a reader still sees how deep the tree was |
+| `argv` | the whole argument vector |
+| `hosts` | hostnames and ports, including the boundary's own address |
+| `secrets` | anything matching a credential shape, in every string |
+| `all` | all four |
+
+```bash
+# Requires: a receipt and the ledger it was built from.
+docket report --redact paths,argv .docket/latest.receipt.json --out handover/
+docket verify handover/DKT-*.redacted.receipt.json --ledger handover/DKT-*.redacted.jsonl
+```
+
+The pair is re-chained, so it still verifies against each other, and the receipt records what was
+replaced under a `redaction` block. Your originals are byte-identical afterwards. Without a ledger
+there is nothing to re-chain, and a receipt redacted on its own would no longer verify, so the
+command refuses rather than producing one — pass `--ledger` when the ledger is not beside the
+receipt.
+
 ## `docket prices [--path PATH] [--json]`
 
 Prints the price table with its `as_of` date, per-family source notes and the table digest —

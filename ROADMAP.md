@@ -64,7 +64,12 @@ is deliberately refused with a reason. The short version, as of this commit:
       `tests/test_action_smoke.py` covers the scripted provider and smoke agent it depends on.
       `.github/workflows/action-smoke.yml` runs it in Actions on every push.
 - [ ] `docket watch` — tail a live run with a spend meter, safe to leave on a second terminal
-- [ ] receipt `--redact` profiles for circulating evidence externally (paths, argv, secrets)
+- [x] receipt `--redact` profiles for circulating evidence externally (paths, argv, secrets).
+      `docket report --redact paths,argv,hosts,secrets` writes a redacted receipt *and* ledger,
+      re-chains the pair so it still verifies, records what it replaced under a `redaction`
+      block, and never touches the originals. `tests/test_redact.py` asserts every profile on
+      its own leaves a verifying pair, and that the strings a client should not see are absent
+      from both files.
 - [ ] honest coverage: record provider responses the boundary saw *without* parsing them
       (unknown providers get recorded, not skipped)
 - [ ] packaging: `pipx`-friendly docs, `uv tool install` snippet, Homebrew formula 💰
