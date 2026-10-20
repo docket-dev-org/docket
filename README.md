@@ -143,6 +143,15 @@ To keep the package out of your project virtualenv, install it into its own isol
 pipx install docket-ai
 ```
 
+```bash
+# Requires: Python 3.11+, uv, and network access to pypi.org.
+uv tool install docket-ai
+docket --version
+```
+
+`uv` puts the command in `~/.local/bin`, which some shells do not have on `PATH`. If `docket` is not
+found after installing it, run `uv tool update-shell` and start a new shell.
+
 To install straight from the repository rather than the release, which tracks `main` instead of a pinned version, run:
 
 ```bash
@@ -375,6 +384,8 @@ If you need a protocol bridge, whether an MCP server, an internal agent framewor
 
    It runs the agent under the policy, verifies the receipt offline, fails the job on a policy violation, and uploads the evidence from failed jobs too. `receipt`, `exit-code`, `spend`, `calls`, `verified` and `cap-exceeded` come back as step outputs. A run whose cap fires exits `42`, which the action reports as a notice rather than a failure. See [the CI example](https://github.com/docket-dev-org/docket/blob/main/examples/ci/README.md) for the inputs, and for the same pipeline written out step by step.
 
+A scheduled [Freshness](https://github.com/docket-dev-org/docket/actions/workflows/freshness.yml) workflow re-derives the suite size and the version every Monday and opens one issue when a quoted number has drifted, so a stale count becomes a ticket rather than a red build nobody is looking at.
+
 ## Contributing
 
 To run the suite exactly as CI runs it, run:
@@ -386,7 +397,7 @@ cd docket
 PYTHONPATH=src python3 -m pytest tests -ra
 ```
 
-That is 1386 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1386 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
+That is 1399 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1399 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
 
 Two rules matter more than style:
 

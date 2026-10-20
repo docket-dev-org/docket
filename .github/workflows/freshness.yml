@@ -1,0 +1,93 @@
+name: Freshness
+
+# Documentation drift is the failure this repository keeps having: the size of the test suite was
+# typed into five sentences across four documents, and every one of them has been wrong at least
+# once. `make sync-check` refuses a drifted tree on every push, which catches the commit that caused
+# it. This workflow catches drift a *scheduled* run finds, and turns it into an issue rather than a
+# red build nobody is looking at.
+#
+# It runs weekly and on demand. When it finds drift it opens one issue, or comments on the existing
+# one, so a recurring problem is one open issue and not thirty closed ones.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"   # Mondays at 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: freshness
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: quoted numbers match the tree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Collect the test suite and compare it with what the documents claim
+        id: drift
+        run: |
+          set +e
+          pip install --quiet pytest
+          python3 tools/sync_counts.py --check
+          code=$?
+          set -e
+          echo "exit-code=${code}" >> "$GITHUB_OUTPUT"
+          if [ "${code}" -eq 0 ]; then
+            echo "every quoted number matches the tree"
+          fi
+
+      - name: Write the report
+        if: steps.drift.outputs.exit-code != '0'
+        run: |
+          set -euo pipefail
+          {
+            echo '`make sync-check` failed on the scheduled freshness run.'
+            echo
+            echo 'Run `make sync` and commit the result:'
+            echo
+            echo '```bash'
+            echo 'make sync'
+            echo '```'
+            echo
+            echo 'What it would change:'
+            echo
+            echo '```text'
+            python3 tools/sync_counts.py --dry-run 2>&1 || true
+            echo '```'
+            echo
+            echo 'The numbers the documentation quotes about the test suite and the version are'
+            echo 'derived, not typed. This issue exists because something changed the tree without'
+            echo 're-deriving them.'
+          } > drift.md
+
+      - name: Open or update the issue
+        if: steps.drift.outputs.exit-code != '0'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          existing="$(gh issue list --state open --search 'Documentation drift in:title' --json number --jq '.[0].number // empty')"
+          if [ -n "${existing}" ]; then
+            gh issue comment "${existing}" --body-file drift.md
+            echo "commented on #${existing}"
+          else
+            gh issue create --title 'Documentation drift: a quoted number no longer matches the tree' --body-file drift.md --label documentation
+            echo "opened a new issue"
+          fi
+
+      - name: Fail so the run is visible
+        if: steps.drift.outputs.exit-code != '0'
+        run: |
+          echo "::error::the documentation quotes a number the tree does not have; an issue was opened"
+          exit 1
