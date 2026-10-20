@@ -87,8 +87,13 @@ def test_uv_tool_install_produces_a_working_command() -> None:
     home = Path(tempfile.mkdtemp(prefix="docket-uv-"))
     # A throwaway HOME, so the isolated environment cannot collide with one already on this machine,
     # with the real PATH kept so `uv` itself is still findable.
+    # `--refresh` because `uv` keeps its own index cache with a different lifetime from PyPI's, and
+    # the guard above reads PyPI's. Without it the two disagree in the minutes after an upload: the
+    # guard says the version is published and `uv` says there is no such version, so the test fails
+    # on a cache rather than on the package. Measured on 0.2.2: the simple index served the file
+    # immediately while `uv tool install` resolved "no version of docket-ai==0.2.2" until refreshed.
     completed = _run(
-        ["uv", "tool", "install", "--python", sys.executable, f"docket-ai=={VERSION}"],
+        ["uv", "tool", "install", "--python", sys.executable, "--refresh", f"docket-ai=={VERSION}"],
         env={**os.environ, "HOME": str(home)},
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
@@ -97,7 +102,7 @@ def test_uv_tool_install_produces_a_working_command() -> None:
 
     # `uv tool run` does not depend on where the executable landed, which is the half of the install
     # the README warns about.
-    ran = _run(["uv", "tool", "run", "--from", f"docket-ai=={VERSION}", "docket", "--version"])
+    ran = _run(["uv", "tool", "run", "--refresh", "--from", f"docket-ai=={VERSION}", "docket", "--version"])
     assert ran.returncode == 0, ran.stdout + ran.stderr
     assert f"docket {VERSION}" in ran.stdout, ran.stdout
 

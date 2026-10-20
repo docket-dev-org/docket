@@ -1,5 +1,19 @@
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-20
+
+### Fixed
+
+- **The `uv` install path asks the index rather than its own cache.** `uv` keeps an index
+  cache with a different lifetime from PyPI's, and the packaging guard reads PyPI's. Measured
+  on 0.2.2: the simple index served the file immediately while `uv tool install
+  docket-ai==0.2.2` resolved *no version of docket-ai==0.2.2* until `--refresh` was passed.
+  The test now passes it. This fix is not provable by mutation here: removing both flags
+  leaves the test green, because the cache has since populated and the failure window has
+  closed. The evidence is the direct measurement taken in the window.
+
+No change to the shipped code: `git diff 0.2.2..0.2.3 -- src/` is empty.
+
 ## [0.2.2] - 2026-10-20
 
 ### Fixed
