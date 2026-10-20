@@ -1,4 +1,39 @@
 ## [Unreleased]
+- **The tamper demo test no longer leaves its workspace behind.** `test_the_tamper_demo_is_reproducible_by_the_command_it_prints`
+  calls `run_demo(..., keep=True, ...)` so it can assert on the receipt and ledger, and never removed
+  them, so every run left a directory under `/tmp`. It now reads the path the demo prints for a kept
+  workspace and registers a finalizer. Measured: one directory per run before, zero after.
+
+  **A correction to something this round got wrong.** The same leftover was first read as a leak in
+  shipped code, in `run_demo` itself. It is not: `run_demo` removes the workspace unless `keep` is
+  set, and prints where it kept one when it does. The leak was in the test that opts in and forgets
+  to clean up. Checking the source before concluding would have found that; concluding from a
+  directory left in `/tmp` did not.
+
+- **The packaging tests no longer fill the disk they run on.** `tests/test_packaging.py` created
+  four throwaway environments per run with `mkdtemp` and never removed them. Measured: **149
+  directories** named `docket-uv-*`, `docket-pipx-*`, `docket-venv-*` and `docket-journey-*` under
+  `/tmp`, **636 MB**, with a 1 GB tmpfs at **100%** — which turned a full gate run into
+  `OSError: [Errno 28] No space left on device` at *setup*, inside `test_mutate.py`'s fixture, a long
+  way from the tests that caused it. A suite that fills the disk it runs on reports the failure
+  somewhere unrelated, and nothing connected the two because nothing counted the directories.
+
+  All four sites now register a finalizer. Two guards hold it closed: one reads the source with `ast`
+  and fails any test that creates a throwaway environment without removing it, the other creates one
+  and checks it is gone. Five mutations are caught — each of the four removals dropped, and a removal
+  that stops actually deleting. The behavioural guard earned its place during the mutation run: the
+  mutant that replaced `rmtree` with `pass` left a real directory behind, and the next run failed on
+  it.
+
+  The structural guard's first version counted `mkdtemp` against `addfinalizer` across the whole file
+  and reported 7 against 6 — the seventh being its own test's inline `rmtree`, which is a removal. A
+  guard that fires on correct code gets switched off, so it reads with `ast` and asks per function.
+
+Suite 1487 -> 1489.
+
+
+## [0.2.6] - 2026-10-20
+
 - **Two defects in the shipped mutation harnesses, found by running them rather than reading them.**
 
   `tools/mutation/mutate_release_version.py` applied its mutation and returned: it wrote the mutated
@@ -19,6 +54,7 @@
   nothing in the documentation named them or said how to run them. `docs/testing.md` now carries their
   commands, their mutation counts and scores, and both repairs above.
 
+No change to the shipped code: `git diff 0.2.5..0.2.6 -- src/` is empty.
 
 ## [0.2.5] - 2026-10-20
 

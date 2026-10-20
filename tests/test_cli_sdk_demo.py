@@ -302,7 +302,7 @@ def test_demo_tamper_mode_is_detected(tmp_path, monkeypatch):
     assert any("ledger-chain" in failure for failure in outcome["tamper_failures"])
 
 
-def test_the_tamper_demo_is_reproducible_by_the_command_it_prints(tmp_path, monkeypatch, capsys):
+def test_the_tamper_demo_is_reproducible_by_the_command_it_prints(request, tmp_path, monkeypatch, capsys):
     """The demo must end with a command that produces the verdict it just showed.
 
     `demo --tamper` doctored the ledger and printed NOT VERIFIED, then told the reader
@@ -315,6 +315,13 @@ def test_the_tamper_demo_is_reproducible_by_the_command_it_prints(tmp_path, monk
     monkeypatch.chdir(tmp_path)
     out = io.StringIO()
     run_demo(max_usd=__import__("decimal").Decimal("2.00"), tamper=True, keep=True, color=False, out=out)
+    # `keep=True` is the point of the test — the receipt and ledger have to survive so the assertions
+    # below can read them — but the demo prints where it kept them, so the test knows and can remove
+    # them. Without this, every run leaves a directory under `/tmp`, which is the same defect the
+    # packaging tests had and a much slower way to fill a disk.
+    kept = re.search(r"^  Workspace kept at (\S+)$", out.getvalue(), re.MULTILINE)
+    assert kept is not None, "the demo kept a workspace and did not say where"
+    request.addfinalizer(lambda: shutil.rmtree(kept.group(1), ignore_errors=True))
     printed = re.search(r"^    docket verify (\S+) --ledger (\S+)$", out.getvalue(), re.MULTILINE)
     assert printed is not None, "the demo does not print the command that reproduces its verdict"
     receipt = Path(printed.group(1))

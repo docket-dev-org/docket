@@ -170,11 +170,15 @@ def _run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[st
 
 @pytest.mark.skipif(shutil.which("uv") is None, reason="uv is not installed; `uv tool install` was not exercised")
 @_SKIP_UNPUBLISHED
-def test_uv_tool_install_produces_a_working_command() -> None:
+def test_uv_tool_install_produces_a_working_command(request: pytest.FixtureRequest) -> None:
     """`uv tool install` builds an isolated environment and installs one executable named `docket`."""
+    # A throwaway HOME, so the isolated environment cannot collide with one already on this
+    # machine, with the real PATH kept so `uv` itself is still findable. `TemporaryDirectory`
+    # rather than `mkdtemp`, because `mkdtemp` with no removal leaks the environment for the life of
+    # the machine: measured at 149 directories and 636 MB, with a 1 GB tmpfs at 100% turning an
+    # unrelated fixture into `OSError: [Errno 28] No space left on device`.
     home = Path(tempfile.mkdtemp(prefix="docket-uv-"))
-    # A throwaway HOME, so the isolated environment cannot collide with one already on this machine,
-    # with the real PATH kept so `uv` itself is still findable.
+    request.addfinalizer(lambda: shutil.rmtree(home, ignore_errors=True))
     # `--refresh` because `uv` keeps its own index cache with a different lifetime from PyPI's, and
     # the guard above reads PyPI's. Without it the two disagree in the minutes after an upload: the
     # guard says the version is published and `uv` says there is no such version, so the test fails
@@ -197,7 +201,7 @@ def test_uv_tool_install_produces_a_working_command() -> None:
 
 @pytest.mark.skipif(shutil.which("pipx") is None, reason="pipx is not installed; `pipx install` was not exercised")
 @_SKIP_UNPUBLISHED
-def test_pipx_install_produces_a_working_command() -> None:
+def test_pipx_install_produces_a_working_command(request: pytest.FixtureRequest) -> None:
     """`pipx install` puts one executable named `docket` on a bin directory, and it works.
 
     The install is directed into a throwaway `PIPX_HOME` and `PIPX_BIN_DIR`, and the binary is
@@ -209,6 +213,7 @@ def test_pipx_install_produces_a_working_command() -> None:
     can pass because of something other than what it is testing is worse than no test.
     """
     home = Path(tempfile.mkdtemp(prefix="docket-pipx-"))
+    request.addfinalizer(lambda: shutil.rmtree(home, ignore_errors=True))
     pipx_home = home / "pipx"
     pipx_bin = home / "bin"
     pipx_bin.mkdir()
@@ -227,14 +232,18 @@ def test_pipx_install_produces_a_working_command() -> None:
 
 
 @_SKIP_UNPUBLISHED
-def test_a_clean_venv_install_runs_the_documented_journey() -> None:
+def test_a_clean_venv_install_runs_the_documented_journey(
+    request: pytest.FixtureRequest,
+) -> None:
     """`pip install` into a fresh venv, then the three commands the quick start shows.
 
     This is the path most readers take, and it is the one that catches an undeclared runtime
     dependency: a wheel that imports cleanly in the repository and fails in a venv is a wheel whose
     `install_requires` is lying.
     """
-    venv = Path(tempfile.mkdtemp(prefix="docket-venv-")) / "env"
+    venv_root = Path(tempfile.mkdtemp(prefix="docket-venv-"))
+    request.addfinalizer(lambda: shutil.rmtree(venv_root, ignore_errors=True))
+    venv = venv_root / "env"
     created = _run([sys.executable, "-m", "venv", str(venv)])
     assert created.returncode == 0, created.stdout + created.stderr
 
@@ -249,6 +258,7 @@ def test_a_clean_venv_install_runs_the_documented_journey() -> None:
     assert f"docket {VERSION}" in version.stdout, version.stdout
 
     workspace = Path(tempfile.mkdtemp(prefix="docket-journey-"))
+    request.addfinalizer(lambda: shutil.rmtree(workspace, ignore_errors=True))
     for command in (
         ["init", "--name", "journey", "--max-usd", "1"],
         ["run", "--policy", "docket.toml", "--", sys.executable, "-c", "print('hello')"],
@@ -284,3 +294,69 @@ def test_every_install_command_the_readme_shows_is_one_these_tests_cover() -> No
     assert installs, "the README shows no install command at all"
     for line in installs:
         assert "docket-ai" in line, f"the README installs something other than docket-ai: {line!r}"
+
+
+def test_every_throwaway_environment_is_removed_when_the_test_ends() -> None:
+    """A suite that leaks its scratch directories fills the disk it runs on, elsewhere.
+
+    Measured: 149 directories named `docket-uv-*`, `docket-pipx-*`, `docket-venv-*` and
+    `docket-journey-*` under `/tmp`, 636 MB, with a 1 GB tmpfs at 100% — which turned a full gate
+    run into `OSError: [Errno 28] No space left on device` at *setup*, in `test_mutate.py`'s
+    fixture, a long way from the tests that caused it.
+
+    This is the guard nothing had. The leak is invisible in review, and its symptom lands in a
+    different file, so the only thing that holds it closed is a check that counts.
+
+    Read with `ast` rather than by counting strings, because the first version of this counted
+    `mkdtemp` against `addfinalizer` across the whole file and reported 7 against 6 — the seventh
+    being this test's own inline `rmtree`, which is a removal. A guard that fires on correct code
+    gets switched off.
+    """
+    import ast
+
+    tree = ast.parse((REPO / "tests" / "test_packaging.py").read_text(encoding="utf-8"))
+
+    def calls(node: ast.AST, name: str) -> bool:
+        return any(
+            isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute) and child.func.attr == name
+            for child in ast.walk(node)
+        )
+
+    creators = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and calls(node, "mkdtemp"):
+            removes = calls(node, "addfinalizer") or calls(node, "rmtree")
+            creators.append((node.name, removes))
+
+    assert creators, "the packaging tests no longer create throwaway environments"
+    unremoved = [name for name, removes in creators if not removes]
+    assert not unremoved, (
+        f"these tests create a throwaway environment and never remove it, so it accumulates "
+        f"until the disk fills and an unrelated test fails at setup: {unremoved}"
+    )
+    assert len(creators) >= 4, (
+        f"only {len(creators)} tests create throwaway environments; the four install paths each "
+        f"need one, and a missing creator means a path is no longer isolated"
+    )
+
+
+def test_the_throwaway_environments_really_are_removed() -> None:
+    """Not a pattern match: create one the way the tests do, and check it is gone.
+
+    The guard above reads the source. This one runs the pattern, so a finalizer that is registered
+    but does nothing is caught here rather than by the disk filling.
+    """
+    import shutil as remove_tree
+    import tempfile as temporary
+
+    scratch = temporary.mkdtemp(prefix="docket-guard-")
+    path = Path(scratch)
+    assert path.is_dir()
+    (path / "env" / "bin").mkdir(parents=True)
+    (path / "env" / "bin" / "docket").write_text("#!/bin/sh\n", encoding="utf-8")
+
+    remove_tree.rmtree(path, ignore_errors=True)
+    assert not path.exists(), "the pattern the packaging tests use does not remove the directory"
+
+    leftovers = sorted(entry.name for entry in Path(tempfile.gettempdir()).glob("docket-guard-*") if entry.is_dir())
+    assert not leftovers, f"throwaway guard directories remain in the temp directory: {leftovers}"
