@@ -62,7 +62,18 @@ jobs:
         # skip: cryptography for the Ed25519 tests, PyYAML for tests/test_deploy_check.py (the tool
         # it covers exits 2 without it, which is a failed run, never a silent pass). Installing them
         # keeps this job at 0 skips, so a skip in CI means something changed.
-        run: pip install pytest cryptography pyyaml
+        run: pip install pytest cryptography pyyaml uv
+      - name: Install the package under test
+        # The CLI tests exercise the `docket` console script, which is what a user types. Running
+        # them against a tree that has not been installed measures an environment nobody is in:
+        # tests/test_action.py executes the action's own shell, and that shell calls `docket`, so
+        # without this the job fails with "command not found" on a repository that is fine.
+        #
+        # `uv` is installed for the same reason: `tests/test_packaging.py` runs `uv tool install`
+        # against the published release, and a README command nothing executes is a command nobody
+        # has checked. It skips with that reason when `uv` is absent, so leaving it out would make
+        # the whole uv path silent.
+        run: pip install .
       # No `-q` on any pytest line in this repository: `pyproject.toml`'s `addopts` carry one, a
       # second asks for `-qq`, and at that level pytest prints no counts line — so the job would
       # end green with nothing in the log saying how many tests passed. `-ra` prints the skip
