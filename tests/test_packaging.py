@@ -45,11 +45,18 @@ def _declared_version() -> str:
 VERSION = _declared_version()
 
 
+#: The environment variable a release gate sets when it is running against a version it just
+#: uploaded. Everywhere else the default applies, because the wait is paid at import and a tree
+#: declaring an unpublished version has nothing to wait for.
+PROPAGATION_ENV = "DOCKET_PYPI_PROPAGATION_SECONDS"
+
 #: How long to wait for an upload to reach the index before reporting it as not published.
 #: Measured against this project's own uploads: 0.2.4 was resolvable by `uv` on the second poll,
-#: about 15 s after the upload response, and the 0.2.3 release gate had already failed at a
-#: window that this bound covers several times over.
-PROPAGATION_TIMEOUT_SECONDS = 180
+#: about 15 s after the upload response, and the 0.2.3 release gate had already failed at a window
+#: that the release bound covers many times over. The default is short on purpose — it is paid at
+#: import, and a tree declaring a version nobody has uploaded should not spend three minutes
+#: discovering that. Measured: 3m0.6s of import time before this was split.
+PROPAGATION_TIMEOUT_SECONDS = float(os.environ.get(PROPAGATION_ENV, "15"))
 
 #: How long one install attempt waits before treating a missing version as propagation.
 INSTALL_RETRIES = 4
@@ -104,6 +111,12 @@ def _published_on_pypi() -> bool:
     clean-venv install, and CI's `pip` then resolved only up to the previous release — the probe
     and the installer had hit different edge caches minutes apart. Polling bounds the window; only
     a version that never appears at all is reported as not published.
+
+    How long it waits depends on who is asking. The release workflow sets
+    `DOCKET_PYPI_PROPAGATION_SECONDS`, because a release gate runs against a version that was
+    uploaded moments earlier and the whole point is to give it time to arrive. Every other run uses
+    the short default, because it pays this wait at import and a tree declaring an unpublished
+    version is not waiting for anything.
     """
     deadline = time.monotonic() + PROPAGATION_TIMEOUT_SECONDS
     attempt = 0

@@ -1,46 +1,55 @@
 ## [Unreleased]
-- **The packaging tests survive PyPI's propagation window instead of guessing at it.** Measured
-  on the 0.2.4 release gate: the guard found 0.2.4 on the index, un-skipped the clean-venv install,
-  and CI's `pip` then resolved only up to 0.2.3 — the probe and the installer had hit different
-  edge caches minutes apart. The gate failed on a propagation delay with a package and artifacts
-  that were both correct.
 
-  Three changes, one root cause. The guard reads the **simple index**, which is the cache `pip`,
-  `pipx` and `uv` resolve against, rather than the JSON API, which is a different cache with a
-  different lifetime — the 0.2.1 gate failed for exactly that reason. The guard **waits**, polling
-  until the index serves the version, because no single probe can promise what the installer will
-  see. And the install itself **retries** on a propagation-shaped error, recognising all three
-  wordings (pip, pipx, uv) for "the index has no such version", while a real breakage is returned
-  on the first attempt rather than retried.
+## [0.2.5] - 2026-10-20
 
-  `tests/test_propagation.py` (20 tests) exercises this rather than asserting it in prose,
-  including two that ask the real PyPI simple index for a version that exists and for one that
-  never did. Seven mutations caught: the guard reading the JSON API again, the guard deciding once,
-  an empty phrase list, an install helper that never retries, one that retries real breakage too,
-  one that discards the real failure output, and a call site that bypasses the helper.
-  Suite 1465 -> 1485.
+### Fixed
 
 - **The packaging tests survive PyPI's propagation window instead of guessing at it.** Measured
-  on the 0.2.4 release gate: the guard found 0.2.4 on the index, un-skipped the clean-venv install,
-  and CI's \ then resolved only up to 0.2.3 — the probe and the installer had hit
+  on the v0.2.4 release gate: the guard found 0.2.4 on the index, un-skipped the clean-venv install,
+  and CI's `pip` then resolved only up to 0.2.3, because the probe and the installer had hit
   different edge caches minutes apart. The gate failed on a propagation delay with a package and
   artifacts that were both correct.
 
-  Three changes, one root cause. The guard reads the **simple index**, which is the cache \,
-  \ and \ resolve against, rather than the JSON API, which is a different cache with a
-  different lifetime — the 0.2.1 gate failed for exactly that reason. The guard **waits**, polling
-  until the index serves the version, because no single probe can promise what the installer will
-  see. And the install itself **retries** on a propagation-shaped error, recognising all three
-  wordings (pip, pipx, uv) for "the index has no such version", while a real breakage is returned
-  on the first attempt rather than retried.
+  Three changes, one root cause. The guard reads the **simple index**, which is the cache `pip`,
+  `pipx` and `uv` resolve against, rather than the JSON API, which is a different cache with a
+  different lifetime — the defect the 0.2.1 gate needed fixed, recorded as applied and verified,
+  and never actually committed. The guard **waits**, polling until the index serves the version,
+  and skips only a version that never appears. And the install **retries** on a propagation-shaped
+  error, recognising all three wordings for "the index has no such version", while a real breakage
+  returns on the first attempt rather than being retried into a slower version of the same failure.
 
-  \ (20 tests) exercises this rather than asserting it in prose,
-  including two that ask the real PyPI simple index for a version that exists and for one that
-  never did. Seven mutations caught: the guard reading the JSON API again, the guard deciding once,
-  an empty phrase list, an install helper that never retries, one that retries real breakage too,
-  one that discards the real failure output, and a call site that bypasses the helper.
-  Suite 1465 -> 1485.
+  `tests/test_propagation.py` (20 tests) exercises this rather than asserting it in prose, including
+  two that ask the real PyPI simple index for a version that exists and for one that never did.
+  Seven mutations caught: the guard reading the JSON API again, the guard deciding once, an empty
+  phrase list, an install helper that never retries, one that retries real breakage too, one that
+  discards the real failure output, and a call site that bypasses the helper.
 
+  Two of those tests found defects in the tests themselves, which is the reason to write them:
+  `time` was a function-local import so it could not be patched, and the call-site guard asserted
+  that nothing calls `_run` at all, which is false — running the binary an install just produced is
+  not an install and has nothing to retry. Both corrected.
+
+- **The propagation wait is scoped rather than paid by every run.** As first written it was a single
+  180 s constant evaluated at import, so a tree declaring a version nobody had uploaded spent
+  3m0.6s discovering that. The release workflow now sets `DOCKET_PYPI_PROPAGATION_SECONDS=300`,
+  because that is the one job that runs against a version uploaded minutes earlier; every other run
+  uses a 15 s default.
+
+- **The "no PyPI credential" guard matches credentials rather than the letters P-Y-P-I.** It asserted
+  that no environment key contains "PYPI", which is a proxy for "no PyPI credential" and tripped on
+  `DOCKET_PYPI_PROPAGATION_SECONDS`, a timeout bound holding no credential — and the way to make the
+  suite green would have been to rename the variable so the guard stopped looking at it. It now
+  matches what a credential looks like: a `TWINE_*` variable, anything carrying a password or token,
+  or any value reading a secret other than the run-scoped `github.token`.
+
+  Four guards hold both halves in place, and six mutations of them are caught: a `twine upload` step,
+  a PyPI token read from a repository secret, the release token pointed at a long-lived secret, a
+  literal `TWINE_PASSWORD`, the propagation bound dropped from the gate, and the bound shortened
+  below a release-gate value.
+
+Suite 1465 -> 1487.
+
+No change to the shipped code: `git diff 0.2.4..0.2.5 -- src/` is empty.
 
 ## [0.2.4] - 2026-10-20
 

@@ -31,6 +31,16 @@ jobs:
       - name: Test the tag before shipping it
         # `-ra`, and no `-q`: `addopts` already carries one and a second would suppress the
         # counts line. The release log is the evidence that the tag was tested.
+        #
+        # `DOCKET_PYPI_PROPAGATION_SECONDS` because this job runs against a version that was
+        # uploaded minutes earlier, and PyPI's index propagates unevenly across edge caches. The
+        # packaging tests wait for the index to serve the version before deciding whether they can
+        # measure it at all, and the bound has to be long here and nowhere else: the wait is paid
+        # at import, and a tree declaring an unpublished version should not spend three minutes
+        # discovering that. Measured — the 0.2.4 tag gate read the index, found the version,
+        # un-skipped the install, and CI's `pip` then resolved only the previous release.
+        env:
+          DOCKET_PYPI_PROPAGATION_SECONDS: "300"
         run: PYTHONPATH=src python -m pytest tests -ra
       - name: Build
         run: python -m build

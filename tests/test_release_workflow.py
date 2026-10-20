@@ -179,8 +179,26 @@ def test_the_pypi_upload_stays_out_of_the_workflow() -> None:
         run = str(step.get("run") or "")
         assert "twine" not in run, f"the release workflow must not upload to PyPI: {run[:120]}"
         env = step.get("env") or {}
-        for key in env:
-            assert "PYPI" not in key.upper(), f"a PyPI credential appears as {key!r} in env"
+        # What a PyPI credential actually looks like, rather than the letters P-Y-P-I in a key: a
+        # `TWINE_*` variable, or anything carrying a password or token, or any value that reads a
+        # secret other than the run-scoped `github.token`. The previous form asserted that no key
+        # contains "PYPI", which is a proxy for this and trips on a timeout bound named
+        # `DOCKET_PYPI_PROPAGATION_SECONDS` that holds no credential. Satisfying a guard by
+        # renaming the thing it looks at is not passing it.
+        for key, value in env.items():
+            name = str(key).upper()
+            assert not name.startswith("TWINE_"), (
+                f"a twine credential appears as {key!r}; the PyPI upload is a deliberate manual step"
+            )
+            for fragment in ("PASSWORD", "TOKEN", "SECRET", "API_KEY", "CREDENTIAL"):
+                if fragment in name:
+                    assert isinstance(value, str) and value.strip() == "${{ github.token }}", (
+                        f"{key!r} reads something other than the run-scoped github.token: {value!r}"
+                    )
+            if isinstance(value, str) and "secrets." in value:
+                assert value.strip() == "${{ github.token }}", (
+                    f"{key!r} reads a repository secret; the release job must not hold one"
+                )
     # The prose that explains *why* it stays manual is what makes the policy reviewable, and it
     # names `twine` in a comment. It is read here, from the comment lines only, so the assertion
     # above and this one cannot contradict each other.
@@ -272,6 +290,41 @@ def test_the_release_publication_recovers_from_a_release_that_already_exists() -
     assert "gh release upload" in body, f"no upload path for an existing release: {body!r}"
     assert "--clobber" in body, f"a re-run must replace the artifacts, not add to them: {body!r}"
     assert "gh release create" in body, f"the first-run path is gone: {body!r}"
+
+
+def test_the_release_gate_asks_for_the_long_propagation_bound() -> None:
+    """The gate runs against a version uploaded minutes earlier, so it must wait for the index.
+
+    Without this the gate falls back to the 15 s default, the packaging tests skip on a propagation
+    delay, and the tag ships with three install paths unverified and reported as skipped — the exact
+    outcome the propagation fix in `tests/test_packaging.py` exists to prevent. Measured on 0.2.4:
+    the guard read the index, found the version, un-skipped the install, and CI's `pip` then
+    resolved only the previous release.
+    """
+
+    document = _load(RELEASE)
+    gate = [
+        step for step in _steps(document, "release") if "Test the tag before shipping it" in str(step.get("name", ""))
+    ]
+    assert len(gate) == 1, f"expected one tag gate, found {len(gate)}"
+    env = gate[0].get("env") or {}
+    assert "DOCKET_PYPI_PROPAGATION_SECONDS" in env, (
+        f"the gate does not set the propagation bound, so it waits 15 s and skips the install "
+        f"paths on a slow index: {env!r}"
+    )
+    value = env["DOCKET_PYPI_PROPAGATION_SECONDS"]
+    assert float(value) >= 120, f"the gate waits {value} s, which is not a release-gate bound"
+
+
+def test_the_propagation_default_is_short_so_ordinary_runs_do_not_pay_for_it() -> None:
+    """The wait is paid at import. A tree declaring an unpublished version has nothing to wait for.
+
+    Measured: 3m0.6s of import time when the bound was a single constant with no release override.
+    """
+
+    source = (REPO / "tests" / "test_packaging.py").read_text(encoding="utf-8")
+    assert "PROPAGATION_ENV" in source, "the bound is not overridable by the caller"
+    assert 'os.environ.get(PROPAGATION_ENV, "15")' in source, "the default is not the short one"
 
 
 if __name__ == "__main__":  # pragma: no cover - `python3 tests/test_release_workflow.py`

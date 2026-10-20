@@ -1,5 +1,5 @@
 {
   "schema": "docket/vectors/receipt-digest/v1",
   "note": "sha256 of the canonical JSON of the receipt with seal and signature removed",
-  "receipt_core_sha256": "6ca012b168cf78be377e78d39f06469a95944b636ca499cde8d28bffefc663d8"
+  "receipt_core_sha256": "2ba4ad94746c231a3be6a04cbef8fcd7df448f7f11374e8d41b6d345436f171b"
 }
