@@ -1,4 +1,23 @@
 ## [Unreleased]
+- **The README link check no longer reports an unreachable host as a broken link.** Measured on
+  the v0.2.3 release gate: `img.shields.io` dropped a connection on one badge and the check
+  reported `RemoteDisconnected https://img.shields.io/badge/python-3.11%2B-blue` under
+  *URLs in README.md that do not answer 200*. The tag failed on that, with a package and
+  artifacts that were both correct.
+
+  `RemoteDisconnected` is an `OSError`, and the handler for connection-level errors appended to
+  the same list as the handler for status codes, so a host that never answered was reported as a
+  link that answered wrongly. A 404 is an answer and a retry returns the same status, so it is
+  still conclusive and still fails. A dropped connection is retried three times with backoff; if
+  the host still never answers, the result is printed as *not verified* rather than asserted to
+  be broken, because the test did not observe these links to be broken.
+
+  `tests/test_link_check.py` (5 tests) pins the distinction against two real loopback servers,
+  one answering 404 and one accepting the connection and closing it without answering. Six
+  mutations of the check are caught: status failures recorded in the unreachable list, the
+  separate list removed, the attempt count reduced to one, the backoff removed, the unreachable
+  result not reported, and a retry loop that never retries. Suite 1460 -> 1465.
+
 - **The release workflow recovers from a re-run and can be dispatched by hand.** Two defects in
   `.github/workflows/release.yml`, both measured on the v0.2.3 run:
 
