@@ -1,5 +1,48 @@
 ## [Unreleased]
 
+### Fixed
+
+- **Three supply-chain claims that nothing performed.** `SECURITY.md` said releases are attached "with
+  a signed `SHA256SUMS`" and that the repository is "protected with required reviews and signed
+  commits"; `MAINTAINERS.md` and `GOVERNANCE.md` repeated the signing claim. Measured before anything
+  was changed, and none of the three held:
+
+  - `.github/workflows/release.yml` builds the file with `cd dist && sha256sum * > SHA256SUMS`. A
+    checksum list, not a signature: no key, no detached signature, no attestation.
+  - No `gpg`, `cosign`, `minisign`, `sigstore` or `gh attestation` invocation exists in `.github/`,
+    `tools/`, `Makefile` or `pyproject.toml`.
+  - Zero of the first fifty commits verify as GPG-signed, `user.signingkey` is unset, and no workflow
+    signs anything.
+  - `main`'s protection sets `required_approving_review_count` to `0`, so the review requirement
+    enforces no review. The nine required status checks and the force-push block are real, and were
+    observed to reject a force-push.
+
+  A supply-chain section is where a reader looks to decide what evidence they can trust, so a claim of
+  that kind failing is worse than the absence of the control: it tells someone to check something that
+  does not exist. The three documents now say what is true, and point at what Docket genuinely does
+  sign -- receipts, with Ed25519, through `docket keygen`, `docket run --sign` and `docket verify`.
+  All four were executed before being written down: `docket verify` reported
+  `PASS signature: Ed25519 signature valid` on a receipt produced by a real run against a real
+  loopback upstream, and `tools/build_dist.py --check --ref v0.2.8` reported
+  `dist/ matches v0.2.8 (0e1ab46f2b9f), 2 artifact(s) unchanged`.
+
+- **A guard, so the claim cannot drift back the way it drifted in.** `tests/test_supply_chain_claims.py`
+  fails if a document calls a release artifact or a commit signed while the pipeline contains no
+  signing step, and fails if the three commands `SECURITY.md` names stop existing on the real CLI
+  surface or lose the flags the prose depends on. Five mutations were applied and all five were
+  caught: the plain claim, the claim placed beside its own disclaimer, "signed commits", "commits are
+  signed", and renaming `docket verify --public-key`.
+
+  Two of those mutations survived the first version of the guard, and both were real gaps rather than
+  noise. The guard skipped any line containing "unsigned", so a line that claimed signing *and*
+  disclaimed it in one sentence walked through; a word boundary already separates the two, because
+  `\bsigned\b` does not match inside "unsigned" where the `n` is a word character, so the skip was
+  removed. And only "signed commits" was matched, so the same claim written "commits are signed" was
+  missed. A third gap the guard's own documentation exposed: `docs/testing.md` quotes the condemned
+  claim in order to record it, so quoted spans are stripped before a line is tested -- an assertion
+  and a quotation of an assertion are not the same thing.
+
+
 ## [0.2.8] - 2026-10-21
 
 

@@ -65,8 +65,17 @@ Ordinary bugs (wrong output, a crash, an unhelpful message) are normal issues, n
   verifier against the committed conformance vectors, and a clean-venv install + demo smoke
   test.
 - Releases are built from a tag in CI; the sdist and wheel are attached to the GitHub release
-  with a signed `SHA256SUMS`. The repository is expected to be protected with required
-  reviews and signed commits.
+  with a `SHA256SUMS` covering every artifact. That file is a checksum list and **not a signature**:
+  there is no signing key in the pipeline, and a supply-chain section that claimed one would be the
+  exact gap this document exists to expose. Verify a release by rebuilding from its tag and comparing
+  digests, which is what `tools/build_dist.py --check --ref <tag>` does.
+- What Docket does sign is its own evidence. `docket keygen` writes an Ed25519 keypair,
+  `docket run --sign <key>` seals the receipt with it, and `docket verify` checks the signature. This
+  is implemented and exercised; it is not a claim about the release artifacts.
+- `main` is protected against force-push and deletion and requires nine status checks in strict mode.
+  Both were observed to reject a push. Commits are not signed, and
+  `required_approving_review_count` is `0`, so no second person reviews before a merge. For a
+  single-maintainer project that is the honest posture; nothing here substitutes for reading the diff.
 - `docket` never phones home. There is no telemetry, no update check, no analytics, no account.
   The only addresses Docket itself dials are loopback (its own boundary, its probes) and the
   provider URLs the *user* configured — because a supervised agent asked it to.

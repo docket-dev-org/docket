@@ -19,7 +19,8 @@ process binds this maintainer exactly as it binds everyone else.
 
 - triage issues and pull requests (target: first response within a week; 72 hours for the
   recorded in this file and in the release notes);
-- cut releases: tag, CI build, signed `SHA256SUMS`, release notes from `CHANGELOG.md`;
+- cut releases: tag, CI build, a `SHA256SUMS` over the artifacts, release notes from
+  `CHANGELOG.md`;
 - own the security response window described in [`SECURITY.md`](SECURITY.md);
 - keep the specification and the vectors in step with the implementations — the one
   non-negotiable responsibility in this project.

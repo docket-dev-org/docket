@@ -60,7 +60,8 @@ the title and can return.
 - Semantic versioning for the tool; the format tag is versioned separately (`docket/receipt/v1`)
   and changes only per the format process.
 - Releases are cut from `main` by a maintainer, tagged, built in CI, and accompanied by a
-  `CHANGELOG.md` entry and a signed `SHA256SUMS`.
+  `CHANGELOG.md` entry and a `SHA256SUMS` covering every artifact. The checksums are unsigned;
+  `docket keygen` and `docket run --sign` sign receipts, not release files.
 - The support commitment for any given version is stated at release time.
 
 ## Funding and independence
