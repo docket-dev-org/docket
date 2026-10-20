@@ -311,6 +311,40 @@ there is nothing to re-chain, and a receipt redacted on its own would no longer 
 command refuses rather than producing one — pass `--ledger` when the ledger is not beside the
 receipt.
 
+## `docket watch [--ledger FILE] [--interval SECONDS] [--once]`
+
+Follow a live run and print it, with a running spend total. Leave it on a second terminal:
+
+```bash
+# Terminal one
+docket run --max-usd 5 -- ./agent.sh
+
+# Terminal two
+docket watch
+```
+
+```text
+watch: following .docket/runs/9f2a1c.jsonl
+     session.start      session DKT-20261020-4F1A2B  /home/you/project
+$0.000000 proc.spawn         spawned python3 agent.py
+$0.000140 model.response     gpt-6-luna  in=1,204 out=310  $0.000140
+$0.000140 model.request      gpt-6-luna  /v1/chat/completions
+$0.000280 model.response     gpt-6-luna  in=1,180 out=402  $0.000280
+$0.000280 proc.exit          exit 0
+     session.end        DKT-20261020-4F1A2B finished in 12.408s  exit 0
+
+watch: 10 event(s) shown of 15 in the ledger  spend $0.000280  3 call(s)
+```
+
+It reads a file, so it works against a run somebody else started and is safe to leave running. It
+stops when the run does — a `session.end` event — or after five seconds of silence, and it says which
+happened. A torn tail, which is what a supervisor killed mid-write leaves behind, does not stop the
+events after it from printing. `--once` reads what is there and stops, which is how you look at a
+run that already finished.
+
+Ledger plumbing is not shown: the policy digest and the before-and-after snapshots are in the file
+and not in the tail, because a tail that prints plumbing is a tail nobody leaves running.
+
 ## `docket prices [--path PATH] [--json]`
 
 Prints the price table with its `as_of` date, per-family source notes and the table digest —

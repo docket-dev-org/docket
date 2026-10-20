@@ -263,6 +263,7 @@ The event number, both hashes, and the date inside the docket number differ on e
 | command | what it does | what you get |
 | --- | --- | --- |
 | `docket demo` | Runs a scripted runaway agent under a real boundary | A receipt, its findings, and a verification report; `--tamper` adds the doctored run |
+| `docket watch` | Follows a live run and prints it, with a running spend total | Leave it on a second terminal |
 | `docket init` | Writes a commented starter policy | `docket.toml` with caps, watch scope, egress allow list, and resilience defaults |
 | `docket run -- <command>` | Runs any command under the policy | A ledger and a receipt per run; exit `42` on a cap, `43` if the policy refuses to start |
 | `docket verify <receipt>` | Verifies a receipt offline | One line per check; exit `1` if any `FAIL`; the ledger beside the receipt is used unless `--ledger` names another; `--impl node` hands it to the independent Node verifier the wheel carries |
@@ -385,7 +386,7 @@ cd docket
 PYTHONPATH=src python3 -m pytest tests -ra
 ```
 
-That is 1372 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1372 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
+That is 1386 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1386 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
 
 Two rules matter more than style:
 

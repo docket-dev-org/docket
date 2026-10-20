@@ -63,7 +63,11 @@ is deliberately refused with a reason. The short version, as of this commit:
       a real supervised run — including the tampered-receipt and cap-fired paths — and
       `tests/test_action_smoke.py` covers the scripted provider and smoke agent it depends on.
       `.github/workflows/action-smoke.yml` runs it in Actions on every push.
-- [ ] `docket watch` — tail a live run with a spend meter, safe to leave on a second terminal
+- [x] `docket watch` — tail a live run with a spend meter, safe to leave on a second terminal.
+      It follows a ledger file as a supervisor appends to it, prints each event with a running
+      total costed against the same price table the boundary used, and stops on `session.end`
+      or after a quiet window, saying which. Nothing here talks to the boundary or a provider.
+      `tests/test_watch.py` drives it against a real supervised run in another thread.
 - [x] receipt `--redact` profiles for circulating evidence externally (paths, argv, secrets).
       `docket report --redact paths,argv,hosts,secrets` writes a redacted receipt *and* ledger,
       re-chains the pair so it still verifies, records what it replaced under a `redaction`

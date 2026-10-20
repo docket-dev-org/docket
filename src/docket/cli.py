@@ -1091,6 +1091,21 @@ def cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_watch(args: argparse.Namespace) -> int:
+    from .watch import WatchError, watch
+
+    try:
+        return watch(
+            args.ledger,
+            once=args.once,
+            interval=args.interval,
+            cwd=Path.cwd(),
+        )
+    except WatchError as error:
+        _out(sys.stderr, f"{PROGRAM}: {error}")
+        return 1
+
+
 def cmd_prices(args: argparse.Namespace) -> int:
     table = PriceTable.load(args.path)
     if args.json:
@@ -1576,6 +1591,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     init.set_defaults(func=cmd_init)
+
+    watch = sub.add_parser("watch", help="follow a live run and print it with a running spend total")
+    watch.add_argument(
+        "--ledger", metavar="FILE", default=None, help="ledger to follow (default: the newest one beside you)"
+    )
+    watch.add_argument("--interval", type=float, default=0.25, help="seconds between polls (default: 0.25)")
+    watch.add_argument("--once", action="store_true", help="read what is there and stop, instead of following")
+    watch.set_defaults(func=cmd_watch)
 
     prices = sub.add_parser("prices", help="show the price table and its provenance")
     prices.add_argument("--path", help="use a different price file")
