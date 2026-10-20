@@ -1,0 +1,48 @@
+# A policy whose cap is below the first call's cost, so the boundary refuses it.
+#
+# This exists so `examples/ci/` can exercise the exit-42 path: the cap fired, which is the boundary
+# working, and the receipt still records what was spent before it did. `on_breach = "kill"` is the
+# CI default, because nobody is watching the meter.
+#
+# Used by `.github/workflows/action-smoke.yml`.
+
+[policy]
+name = "capped"
+
+[budget]
+mode = "usd"
+
+[caps]
+max_usd = 0.000001
+max_tokens = 2000000
+max_model_calls = 60
+warn_at = 0.8
+on_breach = "kill"
+grace_seconds = 5.0
+
+[models]
+allow = ['*opus*', '*sonnet*', '*haiku*', 'gpt-5*', 'gpt-6*']
+deny = []
+
+[egress]
+mode = "deny"
+allow = ['api.anthropic.com', 'api.openai.com', 'generativelanguage.googleapis.com', 'api.deepseek.com', 'api.mistral.ai', 'openrouter.ai', 'api.groq.com', 'localhost', '127.0.0.1']
+
+[files]
+watch = ['.']
+ignore = []
+deny_write = ['uv.lock', 'poetry.lock', 'package-lock.json', 'yarn.lock', '.env', '.env.*']
+
+[resilience]
+breaker_threshold = 5
+breaker_cooldown_seconds = 30
+breaker_max_cooldown_seconds = 300
+max_ledger_bytes = 268435456
+fail_fast_evidence = false
+min_free_bytes = 16777216
+
+[cache]
+enabled = false
+ttl_seconds = 300.0
+max_entries = 256
+max_hits = 1000

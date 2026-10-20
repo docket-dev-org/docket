@@ -1,0 +1,240 @@
+name: "Docket"
+description: "Run an AI agent under a spend and scope policy, verify the resulting receipt offline, and fail the job on a policy violation."
+author: "The Docket contributors"
+
+branding:
+  color: blue
+  icon: shield
+
+inputs:
+  command:
+    description: "The agent command to run under the policy, exactly as it would be typed after `--`."
+    required: true
+  policy:
+    description: "Path to the Docket policy file."
+    required: false
+    default: "docket.toml"
+  version:
+    description: "The `docket-ai` release to install. Pin it; `latest` resolves at run time and is not reproducible."
+    required: false
+    default: "0.1.8"
+  python-version:
+    description: "The Python version to install Docket with."
+    required: false
+    default: "3.12"
+  label:
+    description: "A label recorded in the receipt, so a run can be traced back to the job that made it."
+    required: false
+    default: ""
+  verify:
+    description: "Verify the receipt offline before the job continues."
+    required: false
+    default: "true"
+  fail-on-violation:
+    description: "Fail the job when the receipt carries a policy-violation finding."
+    required: false
+    default: "true"
+  upload-evidence:
+    description: "Upload the ledger, receipts and verification report as an artifact, from failed jobs too."
+    required: false
+    default: "true"
+  artifact-name:
+    description: "Name of the uploaded evidence artifact."
+    required: false
+    default: "docket-evidence"
+  evidence-path:
+    description: "The evidence directory the run wrote to."
+    required: false
+    default: ".docket"
+  upstreams:
+    description: "Provider base-URL overrides, one `NAME=URL` per line. Point the boundary at a gateway or a scripted provider instead of the provider's own API."
+    required: false
+    default: ""
+
+outputs:
+  receipt:
+    description: "Path to the receipt the run produced, or an empty string when none was written."
+    value: ${{ steps.run.outputs.receipt }}
+  exit-code:
+    description: "The agent's own exit code. 42 means the cap fired, which is a result and not a crash."
+    value: ${{ steps.run.outputs.exit-code }}
+  spend:
+    description: "The recorded spend in USD, as the receipt states it."
+    value: ${{ steps.report.outputs.spend }}
+  calls:
+    description: "The number of model calls the boundary forwarded."
+    value: ${{ steps.report.outputs.calls }}
+  verified:
+    description: "`true` when the receipt verified offline, `false` when it did not, and `skipped` when verification was turned off."
+    value: ${{ steps.verify.outputs.verified }}
+  cap-exceeded:
+    description: "How many caps this run exceeded, as the receipt counts them. 0 means none did."
+    value: ${{ steps.report.outputs.cap-exceeded }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Docket
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 -m pip install --quiet "docket-ai==${{ inputs.version }}"
+        docket --version
+
+    - name: Check the policy exists
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ ! -f "${{ inputs.policy }}" ]; then
+          echo "::error::policy file ${{ inputs.policy }} not found. Run 'docket init' first, or set the 'policy' input."
+          exit 1
+        fi
+        echo "policy: ${{ inputs.policy }}"
+        docket report --help >/dev/null   # the CLI is on PATH and answers
+
+    - name: Run the agent under the policy
+      id: run
+      shell: bash
+      # `continue-on-error` is deliberate. Exit 42 means the cap fired, which is the boundary
+      # working. Failing the job there would teach people to raise caps instead of reading
+      # receipts; the steps below decide what is actually a failure.
+      continue-on-error: true
+      env:
+        POLICY: ${{ inputs.policy }}
+        LABEL: ${{ inputs.label || github.run_id }}
+        UPSTREAMS: ${{ inputs.upstreams }}
+      run: |
+        set +e
+        # One `NAME=URL` per line becomes one `--upstream` flag. An empty input adds nothing, so
+        # the boundary talks to the provider's own API exactly as it would without the action.
+        upstream_args=()
+        while IFS= read -r line; do
+          [ -n "${line}" ] || continue
+          upstream_args+=(--upstream "${line}")
+        done <<< "${UPSTREAMS}"
+        if [ -n "${LABEL}" ]; then
+          docket run --policy "${POLICY}" --label "${LABEL}" "${upstream_args[@]}" -- ${{ inputs.command }}
+        else
+          docket run --policy "${POLICY}" "${upstream_args[@]}" -- ${{ inputs.command }}
+        fi
+        code=$?
+        set -e
+        echo "exit-code=${code}" >> "$GITHUB_OUTPUT"
+        # `latest.receipt.json` is a symlink-style pointer the CLI maintains; copy the resolved
+        # path so later steps do not depend on the pointer still being there.
+        receipt=""
+        if [ -f "${{ inputs.evidence-path }}/latest.receipt.json" ]; then
+          receipt="${{ inputs.evidence-path }}/latest.receipt.json"
+        elif ls "${{ inputs.evidence-path }}"/receipts/*.receipt.json >/dev/null 2>&1; then
+          receipt="$(ls -t "${{ inputs.evidence-path }}"/receipts/*.receipt.json | head -1)"
+        fi
+        echo "receipt=${receipt}" >> "$GITHUB_OUTPUT"
+        echo "docket exit code: ${code}"
+        if [ "${code}" -eq 42 ]; then
+          echo "::notice::the cap fired (exit 42). The receipt records what was spent before it did."
+        fi
+        exit 0
+
+    - name: Report the run
+      id: report
+      if: always() && steps.run.outputs.receipt != ''
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - "${{ steps.run.outputs.receipt }}" "${GITHUB_OUTPUT}" <<'PY'
+        import json, sys
+        receipt = json.load(open(sys.argv[1]))
+        totals = receipt.get("totals", {})
+        # Step outputs go to the file $GITHUB_OUTPUT names. Workflow commands (`::notice::`) are
+        # read from stdout, so they are printed rather than written — redirecting stdout into the
+        # output file would put them where nothing reads them.
+        # The receipt counts exceeded caps under `caps.exceeded`. It does not name which cap fired,
+        # so the output is the count the evidence actually carries rather than a name invented here.
+        caps = receipt.get("caps") or {}
+        with open(sys.argv[2], "a") as outputs:
+            print(f"spend={totals.get('cost_usd', '0')}", file=outputs)
+            print(f"calls={totals.get('calls', 0)}", file=outputs)
+            print(f"cap-exceeded={caps.get('exceeded', 0)}", file=outputs)
+        print(f"::notice::spend ${totals.get('cost_usd', '0')} of the cap, "
+              f"{totals.get('calls', 0)} model calls forwarded")
+        PY
+
+    - name: Verify the receipt offline
+      id: verify
+      if: always() && steps.run.outputs.receipt != '' && inputs.verify == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        receipt="${{ steps.run.outputs.receipt }}"
+        ledger=""
+        for candidate in "${{ inputs.evidence-path }}"/runs/*.jsonl; do
+          [ -e "$candidate" ] || continue
+          ledger="$candidate"
+        done
+        # The exit code is captured rather than allowed to abort the step. `set -e` on a failing
+        # `docket verify` would end the job here with nothing in the log saying which check failed,
+        # which is the one thing the reader needs.
+        set +e
+        if [ -n "${ledger}" ]; then
+          docket verify "${receipt}" --ledger "${ledger}" --json > verification.json
+        else
+          docket verify "${receipt}" --json > verification.json
+        fi
+        verify_code=$?
+        set -e
+        python3 - verification.json "${GITHUB_OUTPUT}" "${verify_code}" <<'PY'
+        import json, sys
+        try:
+            report = json.load(open(sys.argv[1]))
+        except (OSError, ValueError):
+            # No report at all is a failure, and it is reported as one rather than as a skip.
+            print("::error::docket verify produced no readable report")
+            with open(sys.argv[2], "a") as outputs:
+                print("verified=false", file=outputs)
+            sys.exit(1)
+        verify_code = int(sys.argv[3])
+        skipped = [c["name"] for c in report.get("checks", []) if c.get("status") == "skip"]
+        failed = [c["name"] for c in report.get("checks", []) if c.get("status") == "fail"]
+        ok = bool(report.get("ok")) and verify_code == 0
+        with open(sys.argv[2], "a") as outputs:
+            print(f"verified={'true' if ok else 'false'}", file=outputs)
+        # A skip is not a pass. Print what was not checked, because that is where surprises hide.
+        for name in skipped:
+            print(f"::notice::verification skipped: {name}")
+        for name in failed:
+            print(f"::error::verification failed: {name}")
+        if verify_code != 0:
+            print(f"::error::docket verify exited {verify_code}")
+        if not ok:
+            sys.exit(1)
+        PY
+
+    - name: Fail on a policy violation
+      if: always() && steps.run.outputs.receipt != '' && inputs.fail-on-violation == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - "${{ steps.run.outputs.receipt }}" <<'PY'
+        import json, sys
+        receipt = json.load(open(sys.argv[1]))
+        # The rules that mean an agent did something the policy exists to prevent, rather than
+        # something merely expensive.
+        MATTERS = {"write-scope", "policy-denials", "unsafe-path"}
+        violations = [f for f in receipt.get("findings", []) if f.get("rule") in MATTERS]
+        for finding in violations:
+            print(f"::error::{finding.get('title', finding['rule'])} — {finding.get('detail', '')}")
+        if violations:
+            print(f"{len(violations)} policy violation(s) in this run", file=sys.stderr)
+            sys.exit(1)
+        PY
+
+    - name: Upload the evidence
+      if: always() && inputs.upload-evidence == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}-${{ github.run_id }}
+        path: |
+          ${{ inputs.evidence-path }}/**
+          verification.json
+        if-no-files-found: warn
+        retention-days: 14

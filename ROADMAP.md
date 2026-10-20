@@ -56,8 +56,13 @@ is deliberately refused with a reason. The short version, as of this commit:
       framework calls and prints the command that attaches it. `tests/test_presets.py` loads
       every policy back through the real parser and runs five of them end to end against the
       scripted provider.
-- [ ] GitHub Action: run an agent step under a policy, upload the receipt as an artifact,
-      fail the job on a policy violation or an unverifiable receipt
+- [x] GitHub Action: run an agent step under a policy, upload the receipt as an artifact,
+      fail the job on a policy violation or an unverifiable receipt. The composite action lives
+      at `action.yml`, with `receipt`, `exit-code`, `spend`, `calls`, `verified` and
+      `cap-exceeded` as outputs. `tests/test_action.py` executes its own `run:` blocks against
+      a real supervised run — including the tampered-receipt and cap-fired paths — and
+      `tests/test_action_smoke.py` covers the scripted provider and smoke agent it depends on.
+      `.github/workflows/action-smoke.yml` runs it in Actions on every push.
 - [ ] `docket watch` — tail a live run with a spend meter, safe to leave on a second terminal
 - [ ] receipt `--redact` profiles for circulating evidence externally (paths, argv, secrets)
 - [ ] honest coverage: record provider responses the boundary saw *without* parsing them

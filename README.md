@@ -363,6 +363,17 @@ Docket ships no MCP server and no `AGENTS.md`, and the omission is deliberate: D
 
 If you need a protocol bridge, whether an MCP server, an internal agent framework, or an A2A gateway, the boundary already answers the provider's own HTTP API, so a bridge in front of it changes nothing about what is recorded. [Open an issue](https://github.com/docket-dev-org/docket/issues) with the interface you need and the repository will grow one rather than claim one today.
 
+4. **Gate a pipeline.** The repository ships a composite action, so a CI job adds Docket with one `uses:` line:
+
+   ```yaml
+   - uses: docket-dev-org/docket@v0.1.8
+     with:
+       command: python3 agent.py
+       policy: docket.toml
+   ```
+
+   It runs the agent under the policy, verifies the receipt offline, fails the job on a policy violation, and uploads the evidence from failed jobs too. `receipt`, `exit-code`, `spend`, `calls`, `verified` and `cap-exceeded` come back as step outputs. A run whose cap fires exits `42`, which the action reports as a notice rather than a failure. See [the CI example](https://github.com/docket-dev-org/docket/blob/main/examples/ci/README.md) for the inputs, and for the same pipeline written out step by step.
+
 ## Contributing
 
 To run the suite exactly as CI runs it, run:
@@ -374,7 +385,7 @@ cd docket
 PYTHONPATH=src python3 -m pytest tests -ra
 ```
 
-That is 1320 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1320 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
+That is 1348 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1348 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
 
 Two rules matter more than style:
 

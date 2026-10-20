@@ -1,0 +1,106 @@
+name: Action smoke
+
+# The reusable action in `action.yml` is advertised in the README and in `examples/ci/README.md`,
+# and an action that has never run is a feature advertised as integrated when it is only written
+# down. So it runs here, on every push and on demand, against a scripted provider: a real supervised
+# run, a real verification, a real artifact upload, and — on demand — the cap path.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      expect-cap:
+        description: "Also run with a cap small enough to fire, so the exit-42 path is exercised."
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: action-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: the action, end to end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # A one-response OpenAI-shaped provider, so the run needs no credential and no network. The
+      # URL it prints is the only thing the next steps need from it.
+      - name: Start the scripted provider
+        id: provider
+        shell: bash
+        run: |
+          python3 examples/ci/fake_provider.py > provider.url &
+          echo "$!" >> provider.pid
+          for _ in $(seq 1 50); do
+            [ -s provider.url ] && break
+            sleep 0.2
+          done
+          url="$(head -1 provider.url)"
+          test -n "$url" || { echo "the fake provider printed no URL"; cat provider.url; exit 1; }
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "provider at $url"
+
+      - name: Run the agent through the action
+        id: bounded
+        uses: ./
+        with:
+          command: python3 examples/ci/agent.py
+          policy: examples/ci/docket.toml
+          upstreams: openai=${{ steps.provider.outputs.url }}
+          label: action-smoke-${{ github.run_id }}
+          artifact-name: docket-evidence-clean
+
+      - name: The action reported what it ran
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "receipt:   ${{ steps.bounded.outputs.receipt }}"
+          echo "exit code: ${{ steps.bounded.outputs.exit-code }}"
+          echo "spend:     ${{ steps.bounded.outputs.spend }}"
+          echo "calls:     ${{ steps.bounded.outputs.calls }}"
+          echo "verified:  ${{ steps.bounded.outputs.verified }}"
+          test -n "${{ steps.bounded.outputs.receipt }}" || { echo "the action produced no receipt"; exit 1; }
+          test "${{ steps.bounded.outputs.verified }}" = "true" || { echo "the receipt did not verify"; exit 1; }
+          test "${{ steps.bounded.outputs.calls }}" -ge 1 || { echo "the boundary forwarded no calls"; exit 1; }
+
+      # The cap path. A policy with a cap below the first call's cost makes the boundary refuse it,
+      # which is exit 42 — and the action must report that as a result rather than as a crash.
+      - name: Run again with a cap that fires
+        id: capped
+        if: github.event_name == 'workflow_dispatch' && inputs.expect-cap
+        uses: ./
+        with:
+          command: python3 examples/ci/agent.py
+          policy: examples/ci/capped.toml
+          upstreams: openai=${{ steps.provider.outputs.url }}
+          label: action-smoke-capped-${{ github.run_id }}
+          fail-on-violation: "false"
+          artifact-name: docket-evidence-capped
+
+      - name: The cap path was reported, not crashed
+        if: github.event_name == 'workflow_dispatch' && inputs.expect-cap
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "exit code: ${{ steps.capped.outputs.exit-code }}"
+          echo "cap exceeded: ${{ steps.capped.outputs.cap-exceeded }}"
+          test "${{ steps.capped.outputs.exit-code }}" = "42" || { echo "expected exit 42, got ${{ steps.capped.outputs.exit-code }}"; exit 1; }
+          test "${{ steps.capped.outputs.cap-exceeded }}" -ge 1 || { echo "the receipt recorded no exceeded cap"; exit 1; }
+          test "${{ steps.capped.outputs.verified }}" = "true" || { echo "the capped run's receipt did not verify"; exit 1; }
+
+      - name: Stop the provider
+        if: always()
+        shell: bash
+        run: |
+          [ -f provider.pid ] && kill "$(cat provider.pid)" 2>/dev/null || true

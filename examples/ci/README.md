@@ -2,6 +2,66 @@
 
 A pipeline that runs an agent, keeps the evidence, and gates on the receipt being verifiable.
 
+There are two ways to do this, and the second is the one most people want.
+
+## The reusable action
+
+The repository ships a composite action at [`action.yml`](../../action.yml). One `uses:` line
+installs Docket, runs the agent under a policy, verifies the receipt offline, fails the job on a
+policy violation, and uploads the evidence — including from failed jobs.
+
+```yaml
+name: agent
+on: [workflow_dispatch, pull_request]
+
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docket-dev-org/docket@v0.1.8
+        with:
+          command: python3 agent.py
+          policy: examples/ci/docket.toml
+          label: ${{ github.run_id }}
+```
+
+The action reports, as step outputs you can assert on or pass to a later job:
+
+| Output | What it holds |
+| --- | --- |
+| `receipt` | Path to the receipt, or empty when none was written |
+| `exit-code` | The agent's own exit code. `42` means the cap fired |
+| `spend` | Recorded spend in USD, as the receipt states it |
+| `calls` | Model calls the boundary forwarded |
+| `verified` | `true`, `false`, or `skipped` |
+| `cap-exceeded` | How many caps the run exceeded, as the receipt counts them |
+
+Inputs worth knowing:
+
+| Input | Default | Why you would change it |
+| --- | --- | --- |
+| `policy` | `docket.toml` | Point at a policy somewhere else |
+| `version` | `0.1.8` | Pin a different release. `latest` is not reproducible |
+| `upstreams` | *(none)* | `NAME=URL` per line, to point the boundary at a gateway or a scripted provider |
+| `fail-on-violation` | `true` | Turn off when a violation is a warning in your pipeline |
+| `verify` | `true` | Turn off only when another step verifies independently |
+| `upload-evidence` | `true` | Turn off when your own artifact step handles it |
+
+A run whose cap fires exits `42`, and the action reports that as a `::notice::` rather than failing
+the job. Exit `42` is the boundary working: failing the pipeline there would teach people to raise
+caps instead of reading receipts.
+
+The action is exercised on every push by
+[`.github/workflows/action-smoke.yml`](../../.github/workflows/action-smoke.yml), against the
+scripted provider below — a real supervised run, a real verification, and the cap path on demand.
+
+## Without the action
+
+If you would rather write the steps yourself, this is the same pipeline spelled out. It is also the
+clearest statement of what the action does.
+
 ```yaml
 name: agent
 on: [workflow_dispatch, pull_request]
@@ -14,7 +74,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
 
-      # docket is on PyPI:
+      # docket is on PyPI as docket-ai; the command it installs is `docket`:
       - run: pip install docket-ai
 
       - name: Run the agent under a policy
@@ -73,6 +133,23 @@ Why this shape:
 
 The policy in [`docket.toml`](docket.toml) is a usable starting point: `$2.00`, 60 model calls,
 15 minutes, premium models denied, egress allow-listed.
+
+## Trying it with no API key
+
+Two files here make the pipeline runnable without a credential:
+
+- [`fake_provider.py`](fake_provider.py) serves one fixed OpenAI-shaped response and prints its URL.
+- [`agent.py`](agent.py) makes exactly one call through whatever base URL the environment names.
+
+```bash
+# Requires: Python 3.11 or newer, and nothing else.
+python3 examples/ci/fake_provider.py &     # prints a URL, then serves
+docket run -p examples/ci/docket.toml --upstream openai=http://127.0.0.1:<port> \
+  -- python3 examples/ci/agent.py
+```
+
+[`capped.toml`](capped.toml) sets a cap below the first call's cost, so the boundary refuses it and
+the run exits `42`. That is the path the smoke workflow exercises on demand.
 
 ## Verifying without installing Docket
 
