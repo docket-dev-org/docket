@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 690" width="980" height="690" role="img" aria-labelledby="checks-light-title checks-light-desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif">
+  <title id="checks-light-title">Every emitted check in the registry, grouped by what it proves</title>
+  <desc id="checks-light-desc">The registry defines the check vocabulary for the docket receipt format. Grouped by claim: the record is unaltered, covering the chain, head, event count, Merkle root, ledger file digest, retained responses, usage inclusion proofs, evidence completeness and document shape; the arithmetic is recomputable, covering cost recomputation, totals, token totals, cached totals, assumed prices, per-model totals, usage-source counts, cost basis, latency and the cache checks; the receipt states its limits, covering format, limits disclosure and chaos-run; and the optional seal and signature. A check that cannot run reports SKIP.</desc>
+  <rect x="0" y="0" width="980" height="690" class="page" fill="#F7F5EF"/>
+  <defs>
+    <marker id="light-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="line" stroke-width="1"/>
+    </marker>
+    <style>
+      .page { fill: #F7F5EF; }
+      .card { fill: #FFFFFF; }
+      .raised { fill: #EFEDE6; }
+      .text { fill: #17212B; }
+      .secondary { fill: #3D4C5A; }
+      .muted { fill: #55677A; }
+      .accent { fill: #2457F5; }
+      .accent-soft { fill: #E4EBFE; }
+      .accent-text { fill: #12307F; }
+      .border { fill: #D5CEBF; }
+      .grid { fill: #DDD6C8; }
+      .passed { fill: #17663F; }
+      .failed { fill: #B3261E; }
+      .skipped { fill: #7A5300; }
+      .optional { fill: #55677A; }
+      .line { stroke: #D5CEBF; fill: none; }
+      .accent-line { stroke: #2457F5; fill: none; }
+      .strong-line { stroke: #3D4C5A; fill: none; }
+      .hairline { stroke: #DDD6C8; stroke-width: 1; fill: none; }
+      .sans { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', 'DejaVu Sans Mono', monospace; }
+      .t-title { font-size: 19px; font-weight: 600; }
+      .t-section { font-size: 15px; font-weight: 600; }
+      .t-label { font-size: 13px; font-weight: 500; }
+      .t-detail { font-size: 11px; }
+      .t-micro { font-size: 10px; }
+      text { dominant-baseline: middle; }
+    </style>
+  </defs>
+  <text x="24" y="32" class="t-title sans t-title-fill" fill="#17212B" text-anchor="start">Every check, and what it proves</text>
+  <text x="24" y="60" class="t-detail sans t-detail-fill" fill="#3D4C5A" text-anchor="start">28 emitted check ids, read from spec/registry.json, grouped by the claim each one makes</text>
+  <rect x="24" y="96" width="932" height="134" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <rect x="24" y="96" width="4" height="134" rx="2" fill="#2457F5"/>
+  <text x="48" y="120" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">the record is unaltered   ·   11</text>
+  <rect x="48" y="140" width="160" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="60" y="152" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">receipt-format</text>
+  <rect x="220" y="140" width="160" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="232" y="152" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">receipt-shape</text>
+  <rect x="392" y="140" width="160" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="404" y="152" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">ledger-chain</text>
+  <rect x="564" y="140" width="160" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="576" y="152" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">head</text>
+  <rect x="736" y="140" width="160" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="748" y="152" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">event-count</text>
+  <rect x="48" y="166" width="160" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="60" y="178" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">merkle-root</text>
+  <rect x="220" y="166" width="160" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="232" y="178" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">ledger-file-digest</text>
+  <rect x="392" y="166" width="160" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="404" y="178" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">retained-responses</text>
+  <rect x="564" y="166" width="160" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="576" y="178" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">usage-inclusion-proofs</text>
+  <rect x="736" y="166" width="160" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="748" y="178" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">usage-rows-rebound</text>
+  <rect x="48" y="192" width="160" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="60" y="204" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">evidence-completeness</text>
+  <rect x="24" y="244" width="932" height="134" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <rect x="24" y="244" width="4" height="134" rx="2" fill="#2457F5"/>
+  <text x="48" y="268" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">the arithmetic is recomputable   ·   12</text>
+  <rect x="48" y="288" width="141" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="60" y="300" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">cost-recomputation</text>
+  <rect x="201" y="288" width="141" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="213" y="300" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">totals</text>
+  <rect x="354" y="288" width="141" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="366" y="300" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">token-totals</text>
+  <rect x="507" y="288" width="141" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="519" y="300" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">cached-totals</text>
+  <rect x="660" y="288" width="141" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="672" y="300" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">assumed-prices</text>
+  <rect x="48" y="314" width="141" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="60" y="326" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">latency-summary</text>
+  <rect x="201" y="314" width="141" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="213" y="326" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">cache-savings</text>
+  <rect x="354" y="314" width="141" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="366" y="326" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">cache-hit-origins</text>
+  <rect x="507" y="314" width="141" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="519" y="326" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">cache-hit-proofs</text>
+  <rect x="660" y="314" width="141" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="672" y="326" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">by-model-totals</text>
+  <rect x="48" y="340" width="141" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="60" y="352" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">usage-source-counts</text>
+  <rect x="201" y="340" width="141" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="213" y="352" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">cost-basis</text>
+  <rect x="24" y="392" width="932" height="82" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <rect x="24" y="392" width="4" height="82" rx="2" fill="#B3261E"/>
+  <text x="48" y="416" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">the receipt states its limits   ·   3</text>
+  <rect x="48" y="436" width="129" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="60" y="448" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">format</text>
+  <rect x="189" y="436" width="129" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="201" y="448" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">limits-disclosure</text>
+  <rect x="330" y="436" width="129" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="342" y="448" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">chaos-run</text>
+  <rect x="24" y="488" width="932" height="82" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <rect x="24" y="488" width="4" height="82" rx="2" fill="#7A5300"/>
+  <text x="48" y="512" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">optional, and reported when absent   ·   2</text>
+  <rect x="48" y="532" width="79" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="60" y="544" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">seal</text>
+  <rect x="139" y="532" width="79" height="24" rx="4" class="raised" fill="#EFEDE6"/>
+  <text x="151" y="544" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">signature</text>
+  <line x1="24" y1="590" x2="956" y2="590" class="hairline"/>
+  <text x="24" y="618" class="t-detail sans t-detail-fill" fill="#17212B" text-anchor="start">A check that cannot run reports SKIP with its reason. It never reports PASS.</text>
+  <text x="24" y="642" class="t-detail sans t-detail-fill" fill="#55677A" text-anchor="start">One run of `docket demo` emits 19 PASS and 3 SKIP.</text>
+  <text x="24" y="664" class="t-detail sans t-detail-fill" fill="#55677A" text-anchor="start">Seal and signature are absent because the run was neither sealed nor signed; cache-savings because the cache was off.</text>
+</svg>
+

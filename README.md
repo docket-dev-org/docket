@@ -46,26 +46,10 @@ Docket is designed around five commitments that follow from those gaps:
 
 ## Architecture and how it works
 
-```text
-   your agent ──────► Docket supervisor ──────► recording boundary ──────► provider API
-   (any process)            │                          │
-                            │                          ├─ model calls   (+ tokens, cost)
-                            │                          ├─ refusals      (caps, egress, breaker)
-                            │                          └─ cache hits    (when --cache)
-                            ├─ filesystem watcher ────► file changes   (+ content digests)
-                            └─ lifecycle ─────────────► start, exit, tool calls, policy events
-                                                       │
-                                                       ▼
-                              .docket/ledger.jsonl   canonical JSON, hash-chained, Merkle-rooted
-                                                       │
-                                                       ▼
-                              .docket/receipts/DKT-<date>-<id>.receipt.json
-                                                       │
-                        ┌──────────────────────────────┼──────────────────────────────┐
-                        ▼                              ▼                              ▼
-                 docket verify                verify-js/verify.mjs           verify-go/docket-verify
-                 (Python reference)           (Node, zero dependencies)      (Go, clean-room)
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://docket-dev-org.github.io/docket/assets/diagrams/pipeline-dark.svg">
+  <img src="https://docket-dev-org.github.io/docket/assets/diagrams/pipeline-light.svg" alt="A run under Docket: the agent runs under a supervisor, which places a loopback boundary between the agent and its provider. The boundary records model calls with their token counts and cost, refusals from caps and egress rules, and cache hits, while a filesystem watcher records changed files with content digests. Every event lands in a hash-chained JSON ledger, which becomes one receipt, and that receipt is verified offline by three implementations that share no code." width="980" height="632">
+</picture>
 
 1. **`docket run` starts your command as a child process** and sets the provider base URLs it finds in the environment to a local boundary (`--http-proxy` additionally sets `HTTP_PROXY` and `HTTPS_PROXY` for agents that honour them).
 2. **The boundary forwards each model request** to the upstream provider, counts tokens, prices the call, and appends an event. When a cap would be crossed it refuses with HTTP 403 (`docket_cap_exceeded`) and the supervisor stops the process group with exit code `42`.
@@ -80,12 +64,25 @@ Docket is designed around five commitments that follow from those gaps:
 - **Does not prevent:** writes outside the boundary, or reads the process was permitted to make. `deny_write` is detection and evidence, not a veto: user space cannot intercept another process's syscalls without `ptrace` or a container.
 - **Does not sign by default:** sealing is an HMAC with your key; signing is Ed25519 with a key someone else can verify. Without either, a receipt is tamper-evident against the ledger but not against someone who can rewrite both files.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://docket-dev-org.github.io/docket/assets/diagrams/receipt-dark.svg">
+  <img src="https://docket-dev-org.github.io/docket/assets/diagrams/receipt-light.svg" alt="A receipt has 24 members. Grouped by question: which run it was (format, docket number, label, timestamp, tool); what it was allowed to do (policy, caps); what it cost (totals, model calls, price table, latency); what it touched (tools, files, network, ops); how to check it (ledger, event counts, appendix, evidence, seal, signature); and what it admits (limits disclosure, findings, proxy)." width="980" height="772">
+</picture>
+
+Twenty-four members is too many to explain in prose and too few to need a manual. Grouping them by what a reader asks turns a wall of keys into six answers.
+
 > [!WARNING]
 > Docket is an accounting and evidence layer that enforces budgets, not a sandbox. When the threat is a hostile agent, isolate it with a container and use Docket to record and price what it did.
 
 ### Three implementations, one format
 
 The format is only worth what an independent implementation can reproduce, so the repository holds three verifiers that share no code: the Python reference, a zero-dependency Node one, and a clean-room Go one written from the specification alone. All three run against the same 44 committed conformance vectors, which are 2 valid documents plus a negative corpus of 42, of which 38 must be refused (6 at parse time, 32 by a named check) and 4 must be accepted. That is 132 verdicts that have to agree.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://docket-dev-org.github.io/docket/assets/diagrams/verifiers-dark.svg">
+  <img src="https://docket-dev-org.github.io/docket/assets/diagrams/verifiers-light.svg" alt="The specification in spec/ is the contract, licensed CC BY 4.0 so other implementations can copy it. Three verifiers implement it independently: the Python reference with zero dependencies, a Node program using only the standard library, and a clean-room Go program written from the specification alone. All three run against 44 committed conformance vectors, which is 132 verdicts that have to agree." width="980" height="420">
+</picture>
+
 
 ```console
 $ make conformance
@@ -217,6 +214,13 @@ One run, trimmed to the lines that matter; the docket number, the event count an
 Point the command at your real agent and the same receipt carries its calls. Exit code `0` means the run ended normally; `42` means a cap stopped it.
 
 ### 3. See the failure modes
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://docket-dev-org.github.io/docket/assets/diagrams/cap-dark.svg">
+  <img src="https://docket-dev-org.github.io/docket/assets/diagrams/cap-light.svg" alt="A step chart of cumulative spend across 15 model calls in one docket demo run. Spend climbs from one cent to $2.000500 against a $2.00 cap, drawn as a dashed red line. Thirteen of those calls are byte-identical, shaded, and cost $1.62 between them. The sixteenth call is refused with HTTP 403 and the run exits 42. The cap is enforced by the boundary, outside the agent process." width="980" height="492">
+</picture>
+
+The figure above is one real run, not an illustration. The numbers come from `assets/diagrams/source/cap-series.json`, which records the run they were read from and how to refresh them, and `tests/test_diagrams.py` fails if the figure and that file disagree.
 
 `docket demo` starts a real supervisor, a real recording boundary, and a scripted provider, then refuses the call that would cross a $2.00 cap:
 
@@ -398,7 +402,7 @@ cd docket
 PYTHONPATH=src python3 -m pytest tests -ra
 ```
 
-That is 1489 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1489 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
+That is 1500 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1500 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
 
 Two rules matter more than style:
 

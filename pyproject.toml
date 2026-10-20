@@ -128,6 +128,16 @@ skips = [
   "B404",
   "B603",
   "B607",
+  # B405/B314 flag every `xml.etree.ElementTree` parse. The only one here is
+  # `tools/diagrams/validate.py`, reading the SVG files that `tools/diagrams/make.py` wrote into
+  # `assets/diagrams/` in the same run. There is no user-supplied XML anywhere in the path: the
+  # input is this repository's own generated output, read back so the figures can be held to the
+  # contrast, accessibility and layout rules in `tests/test_diagrams.py`. The recommended fix,
+  # `defusedxml`, is a runtime dependency, and this project ships none — the zero-dependency claim
+  # in `pyproject.toml`, `SECURITY.md` and the README is worth more than a theoretical XML attack
+  # on a file the build just wrote.
+  "B405",
+  "B314",
 ]
 
 [tool.ruff]

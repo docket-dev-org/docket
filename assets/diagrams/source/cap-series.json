@@ -1,0 +1,34 @@
+{
+  "_source": "One `docket demo --keep --json` run, recorded 2026-10-20. The demo is deterministic: a fixed clock, a scripted provider, and no network. Two runs produced the same docket number (DKT-20261020-746EF4) and the same total ($2.000500).",
+  "_how_to_refresh": "Run `docket demo --keep --json`, then read cumulative_cost_usd from every model.response event in the ledger beside the printed receipt_path, and rewrite `calls` below. `tools/make_diagrams.py` and `tests/test_diagrams.py` both read this file, so a refresh moves the figure and its guard together.",
+  "cap_usd": 2.0,
+  "total_usd": "2.000500",
+  "exit_code": 42,
+  "breached": "max_usd",
+  "calls": [
+    { "n": 1, "cumulative": "0.010000", "model": "claude-opus-4-8", "outcome": "allowed" },
+    { "n": 2, "cumulative": "0.382000", "model": "claude-sonnet-5", "outcome": "allowed" },
+    { "n": 3, "cumulative": "0.506500", "model": "claude-sonnet-5", "outcome": "allowed" },
+    { "n": 4, "cumulative": "0.631000", "model": "claude-sonnet-5", "outcome": "allowed" },
+    { "n": 5, "cumulative": "0.755500", "model": "claude-sonnet-5", "outcome": "allowed" },
+    { "n": 6, "cumulative": "0.880000", "model": "claude-sonnet-5", "outcome": "allowed" },
+    { "n": 7, "cumulative": "1.004500", "model": "claude-sonnet-5", "outcome": "allowed" },
+    { "n": 8, "cumulative": "1.129000", "model": "claude-sonnet-5", "outcome": "allowed" },
+    { "n": 9, "cumulative": "1.253500", "model": "claude-sonnet-5", "outcome": "allowed" },
+    { "n": 10, "cumulative": "1.378000", "model": "claude-sonnet-5", "outcome": "allowed" },
+    { "n": 11, "cumulative": "1.502500", "model": "claude-sonnet-5", "outcome": "allowed" },
+    { "n": 12, "cumulative": "1.627000", "model": "claude-sonnet-5", "outcome": "allowed" },
+    { "n": 13, "cumulative": "1.751500", "model": "claude-sonnet-5", "outcome": "allowed" },
+    { "n": 14, "cumulative": "1.876000", "model": "claude-sonnet-5", "outcome": "allowed" },
+    { "n": 15, "cumulative": "2.000500", "model": "claude-sonnet-5", "outcome": "allowed" },
+    { "n": 16, "cumulative": "2.000500", "model": "claude-sonnet-5", "outcome": "denied" }
+  ],
+  "runaway_loop": {
+    "identical_calls": 13,
+    "first": 3,
+    "last": 15,
+    "usd_impact": "1.62",
+    "severity": "critical",
+    "confidence": "deterministic"
+  }
+}

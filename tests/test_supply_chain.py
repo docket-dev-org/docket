@@ -86,13 +86,19 @@ def test_nothing_under_src_imports_a_package_the_project_does_not_declare():
     modules = sorted(module for directory in CHECKED_DIRS for module in (ROOT / directory).rglob("*.py"))
     assert modules, f"no modules found under {CHECKED_DIRS}"
 
+    # First-party is the package *and* the module's own directory. A module importing something
+    # that sits beside it is importing this repository, not a dependency, and treating that as a
+    # missing requirement reports a defect where there is none. Measured: the diagram generator under
+    # `tools/diagrams/` imports `design`, `figures` and `validate` from its own directory, and
+    # this guard reported all three as undeclared packages before that rule was written down.
     own = {module.stem for module in PACKAGE.glob("*.py")}
     stdlib = set(sys.stdlib_module_names)
     offenders: dict[str, set[str]] = {}
     for module in modules:
         relative = str(module.relative_to(ROOT))
+        siblings = {other.stem for other in module.parent.glob("*.py")}
         for name in _imported_top_level_names(module):
-            if name in stdlib or name in own or name == "docket":
+            if name in stdlib or name in own or name in siblings or name == "docket":
                 continue
             allowed_in = ALLOWED_THIRD_PARTY.get(name)
             if allowed_in and relative.startswith(allowed_in[1]):

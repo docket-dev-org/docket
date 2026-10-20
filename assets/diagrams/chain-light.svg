@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 614" width="980" height="614" role="img" aria-labelledby="chain-light-title chain-light-desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif">
+  <title id="chain-light-title">A hash chain over ledger events, and the verdict after one byte is changed</title>
+  <desc id="chain-light-desc">Four ledger events in a hash chain, each carrying the hash of the event before it. In the second row one event is edited, so its hash no longer matches and every hash after it would have to change too. The verifier reports FAIL on ledger-chain, naming event 7 and the mismatching hash; SKIP on head, because the chain is already broken; and FAIL on merkle-root, naming the recomputed root and the one in the receipt.</desc>
+  <rect x="0" y="0" width="980" height="614" class="page" fill="#F7F5EF"/>
+  <defs>
+    <marker id="light-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="line" stroke-width="1"/>
+    </marker>
+    <style>
+      .page { fill: #F7F5EF; }
+      .card { fill: #FFFFFF; }
+      .raised { fill: #EFEDE6; }
+      .text { fill: #17212B; }
+      .secondary { fill: #3D4C5A; }
+      .muted { fill: #55677A; }
+      .accent { fill: #2457F5; }
+      .accent-soft { fill: #E4EBFE; }
+      .accent-text { fill: #12307F; }
+      .border { fill: #D5CEBF; }
+      .grid { fill: #DDD6C8; }
+      .passed { fill: #17663F; }
+      .failed { fill: #B3261E; }
+      .skipped { fill: #7A5300; }
+      .optional { fill: #55677A; }
+      .line { stroke: #D5CEBF; fill: none; }
+      .accent-line { stroke: #2457F5; fill: none; }
+      .strong-line { stroke: #3D4C5A; fill: none; }
+      .hairline { stroke: #DDD6C8; stroke-width: 1; fill: none; }
+      .sans { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', 'DejaVu Sans Mono', monospace; }
+      .t-title { font-size: 19px; font-weight: 600; }
+      .t-section { font-size: 15px; font-weight: 600; }
+      .t-label { font-size: 13px; font-weight: 500; }
+      .t-detail { font-size: 11px; }
+      .t-micro { font-size: 10px; }
+      text { dominant-baseline: middle; }
+    </style>
+  </defs>
+  <text x="24" y="32" class="t-title sans t-title-fill" fill="#17212B" text-anchor="start">Each event carries the hash of the one before it</text>
+  <text x="24" y="60" class="t-detail mono t-detail-fill" fill="#3D4C5A" text-anchor="start">hash = sha256(prev ‖ canonical JSON of this event), so an edit changes every hash after it</text>
+  <text x="24" y="128" class="t-section sans t-section-fill" fill="#17663F" text-anchor="start">intact</text>
+  <rect x="104" y="148" width="140" height="96" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="120" y="170" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="start">#0</text>
+  <text x="120" y="192" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">session.start</text>
+  <text x="120" y="220" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">adf41ffd…</text>
+  <path d="M 250 196 L 266 196" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <rect x="272" y="148" width="140" height="96" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="288" y="170" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="start">#1</text>
+  <text x="288" y="192" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">policy.applied</text>
+  <text x="288" y="220" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">b7c20913…</text>
+  <path d="M 418 196 L 434 196" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <rect x="440" y="148" width="140" height="96" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="456" y="170" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="start">#6</text>
+  <text x="456" y="192" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">fs.snapshot</text>
+  <text x="456" y="220" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">9c31d0a4…</text>
+  <path d="M 586 196 L 602 196" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <rect x="608" y="148" width="140" height="96" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="624" y="170" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="start">#7</text>
+  <text x="624" y="192" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">model.request</text>
+  <text x="624" y="220" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">43012d1c…</text>
+  <path d="M 754 196 L 770 196" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <rect x="776" y="148" width="140" height="96" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="792" y="170" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="start">#8</text>
+  <text x="792" y="192" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">model.response</text>
+  <text x="792" y="220" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">e5b77102…</text>
+  <text x="104" y="264" class="t-micro sans t-micro-fill" fill="#55677A" text-anchor="start">each hash recomputes from the bytes on disk, and every prev links</text>
+  <line x1="24" y1="292" x2="956" y2="292" class="hairline"/>
+  <text x="24" y="320" class="t-section sans t-section-fill" fill="#B3261E" text-anchor="start">one byte changed</text>
+  <rect x="104" y="340" width="140" height="96" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="120" y="362" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="start">#0</text>
+  <text x="120" y="384" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">session.start</text>
+  <text x="120" y="412" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">adf41ffd…</text>
+  <path d="M 250 388 L 266 388" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <rect x="272" y="340" width="140" height="96" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="288" y="362" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="start">#1</text>
+  <text x="288" y="384" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">policy.applied</text>
+  <text x="288" y="412" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">b7c20913…</text>
+  <path d="M 418 388 L 434 388" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <rect x="440" y="340" width="140" height="96" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="456" y="362" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="start">#6</text>
+  <text x="456" y="384" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">fs.snapshot</text>
+  <text x="456" y="412" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">9c31d0a4…</text>
+  <path d="M 586 388 L 602 388" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <rect x="608" y="340" width="140" height="96" rx="8" class="raised" fill="#E4EBFE" stroke="#B3261E" stroke-width="1.25"/>
+  <rect x="608" y="340" width="4" height="96" rx="2" fill="#B3261E"/>
+  <text x="624" y="362" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="start">#7</text>
+  <text x="624" y="384" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">model.request</text>
+  <text x="624" y="406" class="t-micro mono t-micro-fill" fill="#B3261E" text-anchor="start">now 38dfe37a…</text>
+  <text x="624" y="424" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="start">was 43012d1c…</text>
+  <path d="M 754 388 L 770 388" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <line x1="776" y1="372" x2="776" y2="404" stroke="#B3261E" stroke-width="2.5"/>
+  <line x1="768" y1="372" x2="784" y2="404" stroke="#B3261E" stroke-width="2.5"/>
+  <rect x="776" y="340" width="140" height="96" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="792" y="362" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="start">#8</text>
+  <text x="792" y="384" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">model.response</text>
+  <text x="792" y="412" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">e5b77102…</text>
+  <text x="104" y="456" class="t-micro sans t-micro-fill" fill="#55677A" text-anchor="start">the link into #8 no longer holds, because #8&#x27;s prev names the hash #7 used to have</text>
+  <line x1="24" y1="456" x2="956" y2="456" class="hairline"/>
+  <text x="104" y="492" class="t-micro mono t-micro-fill" fill="#B3261E" text-anchor="start">FAIL</text>
+  <text x="168" y="492" class="t-label mono t-label-fill" fill="#17212B" text-anchor="start">ledger-chain</text>
+  <text x="344" y="492" class="t-detail mono t-detail-fill" fill="#3D4C5A" text-anchor="start">broken at event #7: content hash mismatch</text>
+  <text x="104" y="518" class="t-micro mono t-micro-fill" fill="#7A5300" text-anchor="start">SKIP</text>
+  <text x="168" y="518" class="t-label mono t-label-fill" fill="#17212B" text-anchor="start">head</text>
+  <text x="344" y="518" class="t-detail mono t-detail-fill" fill="#3D4C5A" text-anchor="start">not checked: the chain is broken at event #7</text>
+  <text x="104" y="544" class="t-micro mono t-micro-fill" fill="#B3261E" text-anchor="start">FAIL</text>
+  <text x="168" y="544" class="t-label mono t-label-fill" fill="#17212B" text-anchor="start">merkle-root</text>
+  <text x="344" y="544" class="t-detail mono t-detail-fill" fill="#3D4C5A" text-anchor="start">recomputed 38dfe37a… != receipt 43012d1c…</text>
+  <text x="104" y="584" class="t-detail sans t-detail-fill" fill="#55677A" text-anchor="start">The receipt is not &quot;unreadable&quot;. It is specific about exactly where the record stops being trustworthy.</text>
+</svg>
+

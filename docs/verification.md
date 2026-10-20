@@ -36,6 +36,13 @@ as data:
 
 ## Every check, and what it actually proves
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://docket-dev-org.github.io/docket/assets/diagrams/checks-dark.svg">
+  <img src="https://docket-dev-org.github.io/docket/assets/diagrams/checks-light.svg" alt="The registry defines the check vocabulary for the docket receipt format. Grouped by claim: the record is unaltered; the arithmetic is recomputable; the receipt states its limits; and the optional seal and signature. A check that cannot run reports SKIP." width="980" height="642">
+</picture>
+
+The same list, grouped by the claim each check makes. The ids are read from `spec/registry.json`, so a check added to the format appears here or `tests/test_diagrams.py` goes red.
+
 | check | passes when | what it proves | what it does **not** prove |
 | --- | --- | --- | --- |
 | `parse` | the file is JSON this format reads at all — one object, no duplicate names, no `NaN`/`Infinity` | the verdict below is about a document that means one thing | — (it is not a verdict: a refusal here exits `1` with an empty stdout and the reason on stderr) |

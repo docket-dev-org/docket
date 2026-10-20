@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 632" width="980" height="632" role="img" aria-labelledby="pipeline-light-title pipeline-light-desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif">
+  <title id="pipeline-light-title">Docket wraps a run and leaves a receipt three independent programs can check</title>
+  <desc id="pipeline-light-desc">An agent process runs under a supervisor, which places a loopback boundary between the agent and its provider. The boundary records model calls with their token counts and cost, refusals from caps and egress rules, and cache hits; a filesystem watcher records changed files with content digests. Every event lands in a hash-chained JSON ledger, which becomes one receipt. That receipt is verified offline by three implementations that share no code: the Python reference, a zero-dependency Node program, and a clean-room Go program.</desc>
+  <rect x="0" y="0" width="980" height="632" class="page" fill="#F7F5EF"/>
+  <defs>
+    <marker id="light-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="line" stroke-width="1"/>
+    </marker>
+    <style>
+      .page { fill: #F7F5EF; }
+      .card { fill: #FFFFFF; }
+      .raised { fill: #EFEDE6; }
+      .text { fill: #17212B; }
+      .secondary { fill: #3D4C5A; }
+      .muted { fill: #55677A; }
+      .accent { fill: #2457F5; }
+      .accent-soft { fill: #E4EBFE; }
+      .accent-text { fill: #12307F; }
+      .border { fill: #D5CEBF; }
+      .grid { fill: #DDD6C8; }
+      .passed { fill: #17663F; }
+      .failed { fill: #B3261E; }
+      .skipped { fill: #7A5300; }
+      .optional { fill: #55677A; }
+      .line { stroke: #D5CEBF; fill: none; }
+      .accent-line { stroke: #2457F5; fill: none; }
+      .strong-line { stroke: #3D4C5A; fill: none; }
+      .hairline { stroke: #DDD6C8; stroke-width: 1; fill: none; }
+      .sans { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', 'DejaVu Sans Mono', monospace; }
+      .t-title { font-size: 19px; font-weight: 600; }
+      .t-section { font-size: 15px; font-weight: 600; }
+      .t-label { font-size: 13px; font-weight: 500; }
+      .t-detail { font-size: 11px; }
+      .t-micro { font-size: 10px; }
+      text { dominant-baseline: middle; }
+    </style>
+  </defs>
+  <text x="24" y="32" class="t-title sans t-title-fill" fill="#17212B" text-anchor="start">One run, and the record it leaves</text>
+  <line x1="24" y1="52" x2="956" y2="52" class="hairline"/>
+  <text x="84" y="112" class="t-micro sans t-micro-fill" fill="#55677A" text-anchor="end">THE RUN</text>
+  <rect x="104" y="76" width="152" height="72" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="124" y="104" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">your agent</text>
+  <text x="124" y="124" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">any process</text>
+  <rect x="304" y="76" width="168" height="72" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="324" y="104" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">supervisor</text>
+  <text x="324" y="124" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">caps, spawn, exit</text>
+  <rect x="520" y="76" width="176" height="72" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <rect x="520" y="76" width="4" height="72" rx="2" fill="#2457F5"/>
+  <text x="540" y="104" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">boundary</text>
+  <text x="540" y="124" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">loopback proxy</text>
+  <rect x="744" y="76" width="176" height="72" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="764" y="104" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">provider API</text>
+  <text x="764" y="124" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">the one you pay</text>
+  <path d="M 262 112 L 298 112" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <path d="M 478 112 L 514 112" class="accent-line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <path d="M 702 112 L 738 112" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <rect x="254.0" y="103" width="52.96" height="19" rx="4" class="page" fill="#F7F5EF"/>
+  <text x="280" y="112" class="t-detail sans t-detail-fill" fill="#3D4C5A" text-anchor="middle">spawns</text>
+  <rect x="464.0" y="103" width="65.28" height="19" rx="4" class="page" fill="#F7F5EF"/>
+  <text x="496" y="112" class="t-detail sans t-detail-fill" fill="#3D4C5A" text-anchor="middle">base URL</text>
+  <rect x="688.0" y="103" width="65.28" height="19" rx="4" class="page" fill="#F7F5EF"/>
+  <text x="720" y="112" class="t-detail sans t-detail-fill" fill="#3D4C5A" text-anchor="middle">forwards</text>
+  <text x="84" y="222" class="t-micro sans t-micro-fill" fill="#55677A" text-anchor="end">RECORDED</text>
+  <rect x="104" y="196" width="188" height="52" rx="8" class="raised" fill="#EFEDE6" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="120" y="216" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">model calls</text>
+  <text x="120" y="234" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">+ tokens, cost</text>
+  <rect x="312" y="196" width="188" height="52" rx="8" class="raised" fill="#EFEDE6" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="328" y="216" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">refusals</text>
+  <text x="328" y="234" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">caps, egress, breaker</text>
+  <rect x="520" y="196" width="188" height="52" rx="8" class="raised" fill="#EFEDE6" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="536" y="216" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">cache hits</text>
+  <text x="536" y="234" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">only when --cache</text>
+  <rect x="728" y="196" width="188" height="52" rx="8" class="raised" fill="#EFEDE6" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="744" y="216" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">file changes</text>
+  <text x="744" y="234" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">+ content digests</text>
+  <path d="M 608 154 L 608 190" class="accent-line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <rect x="551.0" y="167" width="114.56" height="19" rx="4" class="page" fill="#F7F5EF"/>
+  <text x="608" y="176" class="t-detail sans t-detail-fill" fill="#3D4C5A" text-anchor="middle">forwards, prices</text>
+  <path d="M 388 154 L 388 190" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <rect x="350.0" y="167" width="77.60000000000001" height="19" rx="4" class="page" fill="#F7F5EF"/>
+  <text x="388" y="176" class="t-detail sans t-detail-fill" fill="#3D4C5A" text-anchor="middle">fs watcher</text>
+  <text x="84" y="336" class="t-micro sans t-micro-fill" fill="#55677A" text-anchor="end">THE LEDGER</text>
+  <path d="M 608 254 L 608 294" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <rect x="104" y="300" width="812" height="72" rx="8" class="raised" fill="#E4EBFE" stroke="#D5CEBF" stroke-width="1.25"/>
+  <rect x="104" y="300" width="4" height="72" rx="2" fill="#2457F5"/>
+  <text x="128" y="326" class="t-label mono t-label-fill" fill="#17212B" text-anchor="start">.docket/runs/&lt;session&gt;.jsonl</text>
+  <text x="128" y="348" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">canonical JSON, one event per line, each carrying the hash of the one before it</text>
+  <text x="940" y="326" class="t-micro sans t-micro-fill" fill="#12307F" text-anchor="end">hash-chained</text>
+  <path d="M 608 378 L 608 406" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <rect x="104" y="412" width="812" height="76" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <rect x="104" y="412" width="4" height="76" rx="2" fill="#2457F5"/>
+  <text x="128" y="440" class="t-label mono t-label-fill" fill="#17212B" text-anchor="start">.docket/receipts/DKT-&lt;date&gt;-&lt;id&gt;.receipt.json</text>
+  <text x="128" y="464" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">totals, policy, per-model breakdown, an RFC 6962 Merkle root, and the price table used</text>
+  <text x="940" y="440" class="t-micro sans t-micro-fill" fill="#12307F" text-anchor="end">offline</text>
+  <path d="M 608 494 L 608 522" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <rect x="104" y="528" width="256" height="52" rx="8" class="raised" fill="#EFEDE6" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="120" y="548" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">docket verify</text>
+  <text x="120" y="566" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">Python reference</text>
+  <rect x="368" y="528" width="256" height="52" rx="8" class="raised" fill="#EFEDE6" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="384" y="548" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">verify.mjs</text>
+  <text x="384" y="566" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">Node, zero deps</text>
+  <rect x="632" y="528" width="288" height="52" rx="8" class="raised" fill="#EFEDE6" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="648" y="548" class="t-label sans t-label-fill" fill="#17212B" text-anchor="start">docket-verify</text>
+  <text x="648" y="566" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">Go, clean-room</text>
+  <text x="490" y="604" class="t-detail sans t-detail-fill" fill="#55677A" text-anchor="middle">three implementations that share no code, held to one written format</text>
+</svg>
+

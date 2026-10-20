@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 492" width="980" height="492" role="img" aria-labelledby="cap-light-title cap-light-desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif">
+  <title id="cap-light-title">Cumulative spend rising to the cap, and the call the boundary refused</title>
+  <desc id="cap-light-desc">A step chart of cumulative spend across 15 model calls in one docket demo run. Spend climbs from one cent to $2.000500 against a $2.00 cap, drawn as a dashed red line. Thirteen of those calls are byte-identical, shaded, and cost $1.62 between them. The sixteenth call is refused with HTTP 403 and the run exits 42. The cap is enforced by the boundary, outside the agent process.</desc>
+  <rect x="0" y="0" width="980" height="492" class="page" fill="#F7F5EF"/>
+  <defs>
+    <marker id="light-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="line" stroke-width="1"/>
+    </marker>
+    <style>
+      .page { fill: #F7F5EF; }
+      .card { fill: #FFFFFF; }
+      .raised { fill: #EFEDE6; }
+      .text { fill: #17212B; }
+      .secondary { fill: #3D4C5A; }
+      .muted { fill: #55677A; }
+      .accent { fill: #2457F5; }
+      .accent-soft { fill: #E4EBFE; }
+      .accent-text { fill: #12307F; }
+      .border { fill: #D5CEBF; }
+      .grid { fill: #DDD6C8; }
+      .passed { fill: #17663F; }
+      .failed { fill: #B3261E; }
+      .skipped { fill: #7A5300; }
+      .optional { fill: #55677A; }
+      .line { stroke: #D5CEBF; fill: none; }
+      .accent-line { stroke: #2457F5; fill: none; }
+      .strong-line { stroke: #3D4C5A; fill: none; }
+      .hairline { stroke: #DDD6C8; stroke-width: 1; fill: none; }
+      .sans { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', 'DejaVu Sans Mono', monospace; }
+      .t-title { font-size: 19px; font-weight: 600; }
+      .t-section { font-size: 15px; font-weight: 600; }
+      .t-label { font-size: 13px; font-weight: 500; }
+      .t-detail { font-size: 11px; }
+      .t-micro { font-size: 10px; }
+      text { dominant-baseline: middle; }
+    </style>
+  </defs>
+  <text x="24" y="32" class="t-title sans t-title-fill" fill="#17212B" text-anchor="start">The ceiling binds outside the agent</text>
+  <text x="24" y="60" class="t-detail sans t-detail-fill" fill="#3D4C5A" text-anchor="start">One `docket demo` run: 15 calls allowed, then the boundary refused the call that would have crossed $2.00</text>
+  <line x1="96" y1="336" x2="924" y2="336" class="hairline"/>
+  <text x="84" y="336" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="end">$0</text>
+  <line x1="96" y1="237" x2="924" y2="237" class="hairline"/>
+  <text x="84" y="237" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="end">$1</text>
+  <line x1="96" y1="139" x2="924" y2="139" class="hairline"/>
+  <text x="84" y="139" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="end">$2</text>
+  <line x1="96" y1="139" x2="924" y2="139" stroke="#B3261E" stroke-width="1.75" stroke-dasharray="7 5"/>
+  <rect x="833.0" y="110" width="71.8" height="18" rx="4" class="page" fill="#F7F5EF"/>
+  <text x="868" y="119" class="t-label mono t-label-fill" fill="#3D4C5A" text-anchor="middle">cap $2.00</text>
+  <rect x="206" y="116" width="662" height="220" fill="#B3261E" fill-opacity="0.07"/>
+  <text x="537" y="92" class="t-micro sans t-micro-fill" fill="#B3261E" text-anchor="middle">13 identical calls</text>
+  <path d="M 96 336 L 96 336 L 96 335 L 151 335 L 151 298 L 206 298 L 206 286 L 261 286 L 261 274 L 316 274 L 316 261 L 372 261 L 372 249 L 427 249 L 427 237 L 482 237 L 482 225 L 537 225 L 537 212 L 592 212 L 592 200 L 648 200 L 648 188 L 703 188 L 703 176 L 758 176 L 758 164 L 813 164 L 813 151 L 868 151 L 868 139" class="accent-line" stroke-width="2.25" fill="none"/>
+  <circle cx="96" cy="335" r="3.5" fill="#2457F5"/>
+  <circle cx="151" cy="298" r="3.5" fill="#2457F5"/>
+  <circle cx="206" cy="286" r="3.5" fill="#2457F5"/>
+  <circle cx="261" cy="274" r="3.5" fill="#2457F5"/>
+  <circle cx="316" cy="261" r="3.5" fill="#2457F5"/>
+  <circle cx="372" cy="249" r="3.5" fill="#2457F5"/>
+  <circle cx="427" cy="237" r="3.5" fill="#2457F5"/>
+  <circle cx="482" cy="225" r="3.5" fill="#2457F5"/>
+  <circle cx="537" cy="212" r="3.5" fill="#2457F5"/>
+  <circle cx="592" cy="200" r="3.5" fill="#2457F5"/>
+  <circle cx="648" cy="188" r="3.5" fill="#2457F5"/>
+  <circle cx="703" cy="176" r="3.5" fill="#2457F5"/>
+  <circle cx="758" cy="164" r="3.5" fill="#2457F5"/>
+  <circle cx="813" cy="151" r="3.5" fill="#2457F5"/>
+  <circle cx="868" cy="139" r="3.5" fill="#2457F5"/>
+  <line x1="924" y1="116" x2="924" y2="336" stroke="#B3261E" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <rect x="909" y="124" width="30" height="30" rx="15" fill="#F7F5EF" stroke="#B3261E" stroke-width="1.75"/>
+  <text x="924" y="139" class="t-section sans t-section-fill" fill="#B3261E" text-anchor="middle">!</text>
+  <rect x="876.0" y="131" width="84.2" height="18" rx="4" class="page" fill="#F7F5EF"/>
+  <text x="918" y="140" class="t-label mono t-label-fill" fill="#3D4C5A" text-anchor="middle">403 refused</text>
+  <line x1="96" y1="336" x2="924" y2="336" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="96" y="360" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="middle">call 1</text>
+  <text x="924" y="360" class="t-micro mono t-micro-fill" fill="#55677A" text-anchor="middle">call 16</text>
+  <text x="510" y="384" class="t-detail sans t-detail-fill" fill="#55677A" text-anchor="middle">model calls, in order</text>
+  <line x1="24" y1="404" x2="956" y2="404" class="hairline"/>
+  <text x="24" y="432" class="t-micro sans t-micro-fill" fill="#55677A" text-anchor="start">spend</text>
+  <text x="24" y="452" class="t-label mono t-label-fill" fill="#17212B" text-anchor="start">$2.000500 of $2.00 cap</text>
+  <text x="260" y="432" class="t-micro sans t-micro-fill" fill="#55677A" text-anchor="start">the refused call</text>
+  <text x="260" y="452" class="t-label mono t-label-fill" fill="#B3261E" text-anchor="start">403 docket_cap_exceeded</text>
+  <text x="496" y="432" class="t-micro sans t-micro-fill" fill="#55677A" text-anchor="start">exit code</text>
+  <text x="496" y="452" class="t-label mono t-label-fill" fill="#17212B" text-anchor="start">42</text>
+  <text x="732" y="432" class="t-micro sans t-micro-fill" fill="#55677A" text-anchor="start">loop cost</text>
+  <text x="732" y="452" class="t-label mono t-label-fill" fill="#B3261E" text-anchor="start">$1.62</text>
+</svg>
+

@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 420" width="980" height="420" role="img" aria-labelledby="verifiers-light-title verifiers-light-desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif">
+  <title id="verifiers-light-title">One specification, three verifiers that share no code, one corpus of 132 verdicts</title>
+  <desc id="verifiers-light-desc">The specification in spec/ is the contract, licensed CC BY 4.0 so other implementations can copy it. Three verifiers implement it independently: the Python reference with zero dependencies, a Node program using only the standard library, and a clean-room Go program written from the specification alone. All three run against 44 committed conformance vectors, two valid documents and a negative corpus of 42 of which 38 must be refused, which is 132 verdicts that have to agree. Running make conformance reports 88 correct, 0 wrong.</desc>
+  <rect x="0" y="0" width="980" height="420" class="page" fill="#F7F5EF"/>
+  <defs>
+    <marker id="light-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="line" stroke-width="1"/>
+    </marker>
+    <style>
+      .page { fill: #F7F5EF; }
+      .card { fill: #FFFFFF; }
+      .raised { fill: #EFEDE6; }
+      .text { fill: #17212B; }
+      .secondary { fill: #3D4C5A; }
+      .muted { fill: #55677A; }
+      .accent { fill: #2457F5; }
+      .accent-soft { fill: #E4EBFE; }
+      .accent-text { fill: #12307F; }
+      .border { fill: #D5CEBF; }
+      .grid { fill: #DDD6C8; }
+      .passed { fill: #17663F; }
+      .failed { fill: #B3261E; }
+      .skipped { fill: #7A5300; }
+      .optional { fill: #55677A; }
+      .line { stroke: #D5CEBF; fill: none; }
+      .accent-line { stroke: #2457F5; fill: none; }
+      .strong-line { stroke: #3D4C5A; fill: none; }
+      .hairline { stroke: #DDD6C8; stroke-width: 1; fill: none; }
+      .sans { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', 'DejaVu Sans Mono', monospace; }
+      .t-title { font-size: 19px; font-weight: 600; }
+      .t-section { font-size: 15px; font-weight: 600; }
+      .t-label { font-size: 13px; font-weight: 500; }
+      .t-detail { font-size: 11px; }
+      .t-micro { font-size: 10px; }
+      text { dominant-baseline: middle; }
+    </style>
+  </defs>
+  <text x="24" y="32" class="t-title sans t-title-fill" fill="#17212B" text-anchor="start">One format, three implementations, no shared code</text>
+  <text x="24" y="60" class="t-detail sans t-detail-fill" fill="#3D4C5A" text-anchor="start">A format is worth what a stranger can reproduce from the specification alone</text>
+  <text x="24" y="116" class="t-micro sans t-micro-fill" fill="#55677A" text-anchor="start">the contract</text>
+  <rect x="24" y="132" width="224" height="112" rx="8" class="raised" fill="#E4EBFE" stroke="#D5CEBF" stroke-width="1.25"/>
+  <rect x="24" y="132" width="4" height="112" rx="2" fill="#2457F5"/>
+  <text x="44" y="160" class="t-label mono t-label-fill" fill="#17212B" text-anchor="start">spec/</text>
+  <text x="44" y="182" class="t-micro mono t-micro-fill" fill="#3D4C5A" text-anchor="start">docket-receipt-1.md</text>
+  <text x="44" y="204" class="t-micro sans t-micro-fill" fill="#55677A" text-anchor="start">the format, verbatim</text>
+  <text x="44" y="224" class="t-micro sans t-micro-fill" fill="#55677A" text-anchor="start">CC BY 4.0</text>
+  <text x="300" y="116" class="t-micro sans t-micro-fill" fill="#55677A" text-anchor="start">the implementations</text>
+  <rect x="300" y="132" width="336" height="36" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="316" y="150" class="t-label mono t-label-fill" fill="#17212B" text-anchor="start">verify.py</text>
+  <text x="316" y="162" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">Python reference · zero dependencies</text>
+  <path d="M 248 188 L 268 188 Q 276 188 276 180 L 276 158 Q 276 150 284 150 L 300 150" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <rect x="300" y="172" width="336" height="36" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="316" y="190" class="t-label mono t-label-fill" fill="#17212B" text-anchor="start">verify.mjs</text>
+  <text x="316" y="202" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">Node · standard library only</text>
+  <path d="M 248 188 L 268 188 Q 276 188 276 196 L 276 182 Q 276 190 284 190 L 300 190" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <rect x="300" y="212" width="336" height="36" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="316" y="230" class="t-label mono t-label-fill" fill="#17212B" text-anchor="start">docket-verify</text>
+  <text x="316" y="242" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">Go · clean-room, from the spec</text>
+  <path d="M 248 188 L 268 188 Q 276 188 276 196 L 276 222 Q 276 230 284 230 L 300 230" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <text x="680" y="116" class="t-micro sans t-micro-fill" fill="#55677A" text-anchor="start">the corpus</text>
+  <rect x="680" y="132" width="276" height="112" rx="8" class="card" fill="#FFFFFF" stroke="#D5CEBF" stroke-width="1.25"/>
+  <text x="700" y="156" class="t-label mono t-label-fill" fill="#12307F" text-anchor="start">44</text>
+  <text x="756" y="156" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">committed vectors</text>
+  <text x="700" y="180" class="t-label mono t-label-fill" fill="#12307F" text-anchor="start">2</text>
+  <text x="756" y="180" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">valid documents</text>
+  <text x="700" y="204" class="t-label mono t-label-fill" fill="#12307F" text-anchor="start">42</text>
+  <text x="756" y="204" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">negative corpus</text>
+  <text x="700" y="228" class="t-label mono t-label-fill" fill="#12307F" text-anchor="start">132</text>
+  <text x="756" y="228" class="t-micro sans t-micro-fill" fill="#3D4C5A" text-anchor="start">verdicts that must agree</text>
+  <text x="680" y="262" class="t-micro sans t-micro-fill" fill="#55677A" text-anchor="start">of the 42: 38 must be refused, 4 accepted</text>
+  <path d="M 636 150 L 650 150 Q 658 150 658 158 L 658 180 Q 658 188 666 188 L 680 188" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <path d="M 636 190 L 650 190 Q 658 190 658 182 L 658 196 Q 658 188 666 188 L 680 188" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <path d="M 636 230 L 650 230 Q 658 230 658 222 L 658 196 Q 658 188 666 188 L 680 188" class="line" stroke-width="1.5" marker-end="url(#light-arrow)"/>
+  <line x1="24" y1="268" x2="956" y2="268" class="hairline"/>
+  <text x="24" y="296" class="t-detail sans t-detail-fill" fill="#17212B" text-anchor="start">What that buys a reader: a receipt written by 0.1.0 verifies under any later release, and you can check one with a program this project did not write.</text>
+  <rect x="24" y="324" width="932" height="56" rx="8" class="raised" fill="#EFEDE6"/>
+  <text x="44" y="344" class="t-micro mono t-micro-fill" fill="#17212B" text-anchor="start">$ make conformance</text>
+  <text x="44" y="366" class="t-micro mono t-micro-fill" fill="#17663F" text-anchor="start">88 correct, 0 wrong, 0 not judged (2 positive, 42 negative vectors)</text>
+</svg>
+

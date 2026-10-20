@@ -1,4 +1,56 @@
 ## [Unreleased]
+### Added
+
+- **Six documentation figures, generated from source rather than drawn by hand.** The README was
+  one long description with a single logo and an ASCII architecture block. It now carries a figure
+  for each thing a reader has to understand before the tool is worth trying:
+
+  | figure | what it shows | where it is used |
+  | --- | --- | --- |
+  | `pipeline` | the run: agent, supervisor, boundary, provider; what the boundary and the filesystem watcher record; the ledger; the receipt; the three verifiers | README, replacing the ASCII architecture block |
+  | `cap` | cumulative spend against the ceiling, from one real `docket demo` run, with the runaway region shaded and the refused call marked | README, where the cap is introduced |
+  | `chain` | the hash chain intact and after one byte is changed, with the recorded and recomputed hashes side by side and the broken link into the next event | `docs/verification.md` |
+  | `receipt` | the receipt's 24 members grouped by the question each answers | README, where the receipt is introduced |
+  | `verifiers` | one specification, three implementations that share no code, and the corpus of 132 verdicts they must agree on | README, where the three implementations are introduced |
+  | `checks` | every emitted check id in `spec/registry.json`, grouped by the claim it makes | `docs/verification.md` |
+
+- **A design system, so the figures read as one set.** `tools/diagrams/design.py` holds the
+  palette, the type scale, and the rules: orthogonal connectors only, arrow labels on an opaque
+  plate with a gap from their own stroke, text contrast of at least 4.5:1, every coordinate divisible
+  by 4, corner radius of 10 px or less, real text rather than outlined paths, and mono type reserved
+  for hashes, paths and field names. Each rule says why it has that value.
+
+- **Light and dark pairs, selected the way GitHub documents.** Every figure is emitted twice from one
+  function call, and the README selects with `<picture>` and a `prefers-color-scheme` source, which
+  follows the reader's GitHub theme. An SVG with its own media query follows the *operating system*,
+  so a reader with a dark GitHub theme on a light system would have seen the light palette; paired
+  files avoid that, and the GitHub mobile app's inconsistent handling of in-SVG media queries with it.
+  PyPI's sanitiser drops `<source>` and keeps the `<img>`, which was measured rather than assumed, so
+  the package page shows the light variant.
+
+- **Eleven guards, because a figure is a claim and nothing was running it.**
+  `tests/test_diagrams.py` holds every figure to the same seven rules the report applies, and then to
+  the ones that matter more: the spend chart quotes the series it was drawn from, that series is a
+  shape a real run can produce, the check figure lists exactly the ids `spec/registry.json` emits, the
+  receipt figure names only members a receipt carries, the emitted files match what the generator
+  produces from source, and every figure the documents reference is one that exists and is referenced
+  by absolute URL so PyPI can resolve it.
+
+  Six mutations of those guards are all caught: the fixture's total edited so the figure would quote
+  a run that did not happen, a call dropped from the series, cumulative spend made to fall, the
+  fixture losing its provenance note, a check id added to the registry without appearing in the
+  figure, and the RECORDED cards stacked again.
+
+### Fixed
+
+- **Two defects in the figures, both found by looking at them rather than reading them.** The pipeline
+  figure drew `model calls` and `file changes` at the same coordinates, so it named four things and
+  showed three; nothing complained, because nothing counted the cards. The chain figure drew both
+  rows identically, because the same hash was passed to both, so it did not show the break it existed
+  to show. `check_no_overlap` and a render-and-look pass are what found them, and both are now guarded.
+
+Suite 1489 -> 1500.
+
 - **The tamper demo test no longer leaves its workspace behind.** `test_the_tamper_demo_is_reproducible_by_the_command_it_prints`
   calls `run_demo(..., keep=True, ...)` so it can assert on the receipt and ledger, and never removed
   them, so every run left a directory under `/tmp`. It now reads the path the demo prints for a kept
