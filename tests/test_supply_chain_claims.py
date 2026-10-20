@@ -21,10 +21,21 @@ run against a real loopback upstream.
 
 This guard exists so the claim cannot drift back the way it drifted in. It checks two directions:
 
-1. No document may call a release artifact signed unless the pipeline contains a step that signs it.
+1. No document may call a release artifact or a commit signed unless the pipeline contains a step that
+   signs it.
 2. The commands the supply-chain section tells a reader to run have to exist on the real CLI surface,
    with the real flags, so a rename or a removal fails the build rather than leaving prose describing
    a command that no longer runs.
+
+Three gaps were found by mutating this guard rather than by reading it, and each was a real gap:
+
+- It skipped any line containing "unsigned", so a line that claimed signing *and* disclaimed it in one
+  sentence walked through. A word boundary already separates the two, because `\\bsigned\\b` does not
+  match inside "unsigned" where the `n` is a word character, so the skip is gone.
+- It matched only "signed commits", so the same claim written "commits are signed" was missed.
+- Quotations were stripped line by line, so a quotation that wraps -- the normal case in a file with a
+  100-column convention -- left half of itself behind and the guard flagged the documentation written
+  to explain the defect.
 """
 
 from __future__ import annotations
@@ -43,6 +54,13 @@ WORKFLOWS = sorted((REPO / ".github" / "workflows").glob("*.yml"))
 # artifact is signed is a claim nothing performs.
 SIGNING_STEPS = ("gpg", "cosign", "minisign", "sigstore", "gh attestation", "notary")
 
+# The two word orders of the signed-commits claim. A guard for one phrasing is a guard for one
+# phrasing.
+COMMIT_PATTERNS = (
+    re.compile(r"\bsigned\s+commits?\b", re.IGNORECASE),
+    re.compile(r"\bcommits?\s+(?:are|is|will be)\s+signed\b", re.IGNORECASE),
+)
+
 
 def pipeline_text() -> str:
     parts = [p.read_text(encoding="utf-8") for p in WORKFLOWS]
@@ -55,68 +73,64 @@ def pipeline_text() -> str:
     return "\n".join(parts).lower()
 
 
-def prose(line: str) -> str:
-    """A line with its quoted spans removed.
+def prose_lines(text: str) -> list[str]:
+    """The document's lines, with every double-quoted span blanked out.
 
-    `docs/testing.md` quotes the claims this guard condemns -- `"with a signed `SHA256SUMS`"` -- in
-    order to record what was wrong. An assertion and a quotation of an assertion are different things,
-    and the difference has to survive the check or the guard flags its own documentation. Markdown's
-    quoting convention in this repository is the double quote, so those spans are dropped.
+    `docs/testing.md` and the changelog both quote the claims this guard condemns, in order to record
+    what was wrong. An assertion and a quotation of an assertion are different things, and the
+    difference has to survive the check or the guard flags its own documentation.
+
+    The masking runs over the whole document rather than line by line, because a quotation wraps: the
+    changelog entry for this fix opens `"with a signed `SHA256SUMS`"` on one line and closes it on the
+    next, and a line-based stripper leaves `a signed` behind on the second line with an unbalanced
+    quote. Newlines are preserved so the result still lines up with the source, and the quote marks
+    themselves are blanked so half a quotation cannot survive either.
 
     This only ever removes text, so a claim written without quotes is still tested.
     """
-    return re.sub(r'"[^"]*"', " ", line)
+    out: list[str] = []
+    inside = False
+    for char in text:
+        if char == '"':
+            inside = not inside
+            out.append(" ")
+        elif inside:
+            out.append("\n" if char == "\n" else " ")
+        else:
+            out.append(char)
+    return "".join(out).splitlines()
 
 
 def test_no_document_claims_a_release_artifact_is_signed() -> None:
-    """A signature claim needs a signing step; there is none, so no document may make it.
-
-    The claim is matched with `\\bsigned\\b`, not with a substring search, and that distinction is
-    load-bearing. A word boundary does not occur inside "unsigned", because the `n` before it is a
-    word character, so the pattern already ignores the disclaimer wording and no separate skip is
-    needed. An earlier version skipped any line containing "unsigned", which let a line that claims
-    signing *and* disclaims it in the same sentence through untouched -- a mutation proved it.
-    """
+    """A signature claim needs a signing step; there is none, so no document may make it."""
     assert not any(step in pipeline_text() for step in SIGNING_STEPS), (
-        "the pipeline now signs artifacts, so this guard's premise is stale: the documents may "
-        "say so again, and this check should be inverted rather than kept"
+        "the pipeline now signs artifacts, so this guard's premise is stale: the documents may say so"
+        " again, and this check should be inverted rather than kept"
     )
     offenders: list[str] = []
     for document in DOCUMENTS:
-        for number, line in enumerate(document.read_text(encoding="utf-8").splitlines(), 1):
-            low = prose(line).lower()
+        for number, line in enumerate(prose_lines(document.read_text(encoding="utf-8")), 1):
+            low = line.lower()
             if "sha256sums" not in low:
                 continue
             if re.search(r"\bsigned\b", low):
                 offenders.append(f"{document.relative_to(REPO)}:{number}: {line.strip()}")
     assert not offenders, (
-        "a document claims the release checksums are signed, and nothing signs them:\n  "
-        + "\n  ".join(offenders)
+        "a document claims the release checksums are signed, and nothing signs them:\n  " + "\n  ".join(offenders)
     )
 
 
 def test_no_document_claims_commits_are_signed() -> None:
-    """Commits are not signed, so no document may promise that they are.
-
-    Both word orders are matched. A mutation that wrote "commits are signed" instead of "signed
-    commits" survived the first version of this check, and it is the same claim said the other way
-    round -- a guard that only catches one phrasing is a guard for one phrasing.
-    """
+    """Commits are not signed, so no document may promise that they are, in either word order."""
     offenders: list[str] = []
-    patterns = (
-        re.compile(r"\bsigned\s+commits?\b", re.IGNORECASE),
-        re.compile(r"\bcommits?\s+(?:are|is|will be)\s+signed\b", re.IGNORECASE),
-    )
     for document in DOCUMENTS:
-        for number, line in enumerate(document.read_text(encoding="utf-8").splitlines(), 1):
-            text = prose(line)
-            if "not signed" in text.lower():
+        for number, line in enumerate(prose_lines(document.read_text(encoding="utf-8")), 1):
+            if "not signed" in line.lower():
                 continue
-            if any(pattern.search(text) for pattern in patterns):
+            if any(pattern.search(line) for pattern in COMMIT_PATTERNS):
                 offenders.append(f"{document.relative_to(REPO)}:{number}: {line.strip()}")
-    assert not offenders, (
-        "a document claims commits are signed; no commit in the repository is:\n  "
-        + "\n  ".join(offenders)
+    assert not offenders, "a document claims commits are signed; no commit in the repository is:\n  " + "\n  ".join(
+        offenders
     )
 
 
@@ -128,11 +142,7 @@ def test_the_signing_commands_the_documents_name_exist() -> None:
     subcommands = {action.dest for action in parser._actions if hasattr(action, "choices")}
     assert subcommands, "the parser exposes no subcommands, which cannot be right"
 
-    choices = {
-        action.dest: list(action.choices)
-        for action in parser._actions
-        if getattr(action, "choices", None)
-    }
+    choices = {action.dest: list(action.choices) for action in parser._actions if getattr(action, "choices", None)}
     available = {name for group in choices.values() for name in group}
     assert "keygen" in available, "SECURITY.md names `docket keygen`, which the CLI does not have"
     assert "verify" in available, "SECURITY.md names `docket verify`, which the CLI does not have"
@@ -151,9 +161,7 @@ def test_the_signing_commands_the_documents_name_exist() -> None:
 
 
 @pytest.mark.parametrize("document", DOCUMENTS, ids=lambda p: p.name)
-def test_documents_do_not_promise_a_signing_key_that_the_pipeline_cannot_use(document: Path) -> None:
+def test_documents_do_not_promise_a_signing_key_the_pipeline_cannot_use(document: Path) -> None:
     """A promise to sign in CI would need a secret this repository has no way to hold."""
     text = document.read_text(encoding="utf-8").lower()
-    assert "sign the release" not in text, (
-        f"{document.name} promises to sign the release; no signing step exists"
-    )
+    assert "sign the release" not in text, f"{document.name} promises to sign the release; no signing step exists"
