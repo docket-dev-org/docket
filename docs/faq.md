@@ -68,7 +68,7 @@ Every run gets one. The word is plain English, which matters for a tool used by 
 lawyers and finance people who are not going to learn a new vocabulary.
 
 **Does it work with [my agent]?**
-If it honours `OPENAI_BASE_URL`/`ANTHROPIC_BASE_URL`/`GEMINI_API_BASE_URL`, yes. If it does not,
+If it honours `OPENAI_BASE_URL`/`ANTHROPIC_BASE_URL`/`GOOGLE_GEMINI_BASE_URL`, yes. If it does not,
 `--http-proxy`. If it is a service on another machine, no — and the receipt will say model
 traffic was not observed rather than presenting a suspiciously cheap run as a quiet one.
 See [`integrations.md`](integrations.md).

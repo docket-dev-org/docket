@@ -47,7 +47,7 @@ does not report it, with `usage_source = "estimated"` and a receipt that says so
 docket run --max-usd 5 -- gemini -p "summarise the changes in this repo"
 ```
 
-`GEMINI_API_BASE_URL` is injected, and the model is parsed from the request *path*
+`GEMINI_API_BASE_URL` and `GOOGLE_GEMINI_BASE_URL` are injected (Gemini CLI reads the second, which is not the variable a generic OpenAI-shaped client reads), and the model is parsed from the request *path*
 (`/v1beta/models/<model>:generateContent`), because Gemini does not put it in the body.
 
 ## aider, llm, and other OpenAI-compatible tools

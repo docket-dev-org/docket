@@ -19,6 +19,7 @@ from . import __version__
 from .diagnostics import write_diagnostic_bundle
 from .ledger import Ledger, quarantine_torn_tail
 from .policy import DEFAULT_TOML, Caps, Policy
+from .presets import PRESET_KEYS
 from .pricing import PriceTable
 from .receipt import load_receipt
 from .report import diff_receipts, render_diff, render_findings, render_markdown, render_receipt
@@ -960,15 +961,58 @@ def cmd_demo(args: argparse.Namespace) -> int:
 
 
 def cmd_init(args: argparse.Namespace) -> int:
+    from .presets import PRESET_KEYS, PRESETS, describe_presets, next_steps, policy_for
+
+    if args.framework == "":
+        # `--from` with no value lists the presets and writes nothing.
+        _out(sys.stdout, "Framework presets for `docket init --from <preset>`:")
+        _out(sys.stdout)
+        _out(sys.stdout, describe_presets())
+        _out(sys.stdout)
+        _out(sys.stdout, "Each writes a policy that names the models that framework calls, and prints")
+        _out(sys.stdout, "the command that attaches it to the boundary.")
+        return 0
+
+    chosen = None
+    if args.framework is not None:
+        for candidate in PRESETS:
+            if candidate.key == args.framework:
+                chosen = candidate
+                break
+        if chosen is None:
+            _out(sys.stderr, f"{PROGRAM}: no such preset {args.framework!r}. Choose from: {', '.join(PRESET_KEYS)}")
+            return 2
+
     path = Path(args.path)
     if path.exists() and not args.force:
         _out(sys.stderr, f"{PROGRAM}: {path} exists (use --force to overwrite)")
         return 1
     from .util import atomic_write
 
-    atomic_write(path, DEFAULT_TOML(name=args.name, max_usd=args.max_usd))
-    _out(sys.stdout, f"wrote {path}. Start a bounded run with:")
-    _out(sys.stdout, f"  {PROGRAM} run --policy {path} -- your-agent")
+    if chosen is None:
+        atomic_write(path, DEFAULT_TOML(name=args.name, max_usd=args.max_usd))
+        _out(sys.stdout, f"wrote {path}. Start a bounded run with:")
+        _out(sys.stdout, f"  {PROGRAM} run --policy {path} -- your-agent")
+        return 0
+
+    atomic_write(path, policy_for(chosen, name=args.name).to_toml())
+    _out(sys.stdout, f"wrote {path} for {chosen.title}.")
+    _out(sys.stdout)
+    _out(sys.stdout, chosen.summary)
+    if chosen.notes:
+        _out(sys.stdout)
+        _out(sys.stdout, "Before you run it:")
+        for note in chosen.notes:
+            _out(sys.stdout, f"  - {note}")
+    _out(sys.stdout)
+    _out(sys.stdout, "Attach the agent to the boundary:")
+    for step in next_steps(chosen, str(path)):
+        _out(sys.stdout, f"  {step}")
+    if chosen.attach:
+        _out(sys.stdout)
+        _out(sys.stdout, "`docket run` injects these into the agent's environment:")
+        for name, what in chosen.attach:
+            _out(sys.stdout, f"  {name}  ({what})")
     return 0
 
 
@@ -1422,6 +1466,19 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--name", default="default")
     init.add_argument("--max-usd", type=_cap_amount, default="5.00")
     init.add_argument("--force", action="store_true")
+    init.add_argument(
+        "--from",
+        dest="framework",
+        metavar="PRESET",
+        nargs="?",
+        const="",
+        default=None,
+        help=(
+            "start from a framework's own configuration: "
+            + ", ".join(PRESET_KEYS)
+            + "; pass it with no value to list them"
+        ),
+    )
     init.set_defaults(func=cmd_init)
 
     prices = sub.add_parser("prices", help="show the price table and its provenance")

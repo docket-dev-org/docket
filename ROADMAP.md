@@ -51,8 +51,11 @@ is deliberately refused with a reason. The short version, as of this commit:
 
 ## 0.2 — make it easy to adopt — *target: 6 weeks*
 
-- [ ] `docket init --from <framework>` presets for Claude Code, Codex CLI, Gemini CLI, aider,
-      OpenCode, and a generic HTTP profile
+- [x] `docket init --from <framework>` presets for Claude Code, Codex CLI, Gemini CLI, aider,
+      OpenCode, and a generic HTTP profile. Each writes a policy that names the models that
+      framework calls and prints the command that attaches it. `tests/test_presets.py` loads
+      every policy back through the real parser and runs five of them end to end against the
+      scripted provider.
 - [ ] GitHub Action: run an agent step under a policy, upload the receipt as an artifact,
       fail the job on a policy violation or an unverifiable receipt
 - [ ] `docket watch` — tail a live run with a spend meter, safe to leave on a second terminal

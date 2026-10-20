@@ -80,7 +80,7 @@ tell a claim from a boundary observation. The supervisor stays the only process 
 the ledger file — which is what keeps the hash chain valid.
 
 Provider variables injected with `--profile full`: `OPENAI_BASE_URL`, `OPENAI_API_BASE`,
-`ANTHROPIC_BASE_URL`, `GEMINI_API_BASE_URL`, `DEEPSEEK_BASE_URL`, `MISTRAL_BASE_URL`,
+`ANTHROPIC_BASE_URL`, `GEMINI_API_BASE_URL`, `GOOGLE_GEMINI_BASE_URL`, `AIDER_OPENAI_API_BASE`, `DEEPSEEK_BASE_URL`, `MISTRAL_BASE_URL`,
 `OPENROUTER_BASE_URL`, `GROQ_BASE_URL`. An agent that honours none of these still works via
 `--http-proxy`, or by calling `/docket/*` directly — and one that bypasses all of them is
 recorded as *missing*, not as *nothing happened*: the receipt's `limits_disclosure` states the
@@ -258,9 +258,31 @@ deterministic**. `--tamper` then edits one byte of the ledger and shows verifica
 the exact event. `--keep` leaves the workspace (with its ledger and receipt) on disk and prints
 the path. `--json` emits the run summary as a single JSON object.
 
-## `docket init [--path docket.toml] [--name NAME] [--max-usd N] [--force]`
+## `docket init [--path docket.toml] [--name NAME] [--max-usd N] [--force] [--from PRESET]`
 
 Writes a commented starter policy. Refuses to overwrite unless `--force`.
+
+`--from <preset>` writes a policy for a framework Docket already knows about, and prints the
+command that attaches it:
+
+```bash
+docket init --from          # list the presets, write nothing
+docket init --from claude-code
+```
+
+| Preset | Framework | What it changes |
+| --- | --- | --- |
+| `claude-code` | Claude Code | `*opus*`, `*sonnet*`, `*haiku*`; a $15 cap and 600 calls |
+| `codex` | OpenAI Codex CLI | `gpt-5*`, `gpt-6*`, `o3*`, `o4*`; a $15 cap and 600 calls |
+| `gemini-cli` | Gemini CLI | `gemini-*-pro*`, `gemini-*-flash*`; a $10 cap and 500 calls |
+| `aider` | aider | Anthropic, OpenAI, DeepSeek and Opus families; a $10 cap and 500 calls |
+| `opencode` | opencode | Anthropic, OpenAI and Gemini families; a $10 cap and 500 calls |
+| `http-proxy` | your own agent | every model; a $5 cap and 200 calls |
+| `generic` | no framework in particular | no model allow-list; the policy `docket init` always wrote |
+
+Every preset sets `egress.mode = "deny"` with the default allow-list, so a host the policy does not
+name is refused exactly as it was before. An unknown preset exits 2 and names the presets, rather
+than falling back to the generic one.
 
 ## `docket prices [--path PATH] [--json]`
 

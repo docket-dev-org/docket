@@ -164,6 +164,27 @@ docket run --policy docket.toml -- python3 -c "print('hello from the agent')"
 docket verify .docket/latest.receipt.json
 ```
 
+If your agent is one Docket already knows about, `docket init --from <preset>` writes a policy that
+names the models that agent calls and prints the command that attaches it:
+
+| Preset | Framework | Variable Docket injects |
+| --- | --- | --- |
+| `claude-code` | Claude Code | `ANTHROPIC_BASE_URL` |
+| `codex` | OpenAI Codex CLI | `OPENAI_BASE_URL` |
+| `gemini-cli` | Gemini CLI | `GOOGLE_GEMINI_BASE_URL` |
+| `aider` | aider | `OPENAI_API_BASE` |
+| `opencode` | opencode | none: add a `baseURL` block to `opencode.json` |
+| `http-proxy` | your own agent, any language | `DOCKET_PROXY_URL` |
+| `generic` | no framework in particular | `DOCKET_PROXY_URL` |
+
+```bash
+# Requires: docket installed. Lists the presets and writes nothing.
+docket init --from
+```
+
+Each preset is a real, tested policy: `tests/test_presets.py` loads every one back through the
+parser and runs five of them end to end against the scripted provider.
+
 ```text
 hello from the agent
 docket: DKT-20261018-5FB7B5 completed · $0.00 of $1.00 cap · 0 calls · receipt .docket/receipts/DKT-20261018-5FB7B5.receipt.json
@@ -353,7 +374,7 @@ cd docket
 PYTHONPATH=src python3 -m pytest tests -ra
 ```
 
-That is 1276 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1276 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
+That is 1320 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1320 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
 
 Two rules matter more than style:
 

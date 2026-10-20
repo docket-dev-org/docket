@@ -81,6 +81,13 @@ def _base_url_env(host: str, port: int, profile: str) -> dict[str, str]:
         "OPENAI_API_BASE": f"{root}/openai/v1",
         "ANTHROPIC_BASE_URL": f"{root}/anthropic",
         "GEMINI_API_BASE_URL": f"{root}/gemini",
+        # Gemini CLI reads `GOOGLE_GEMINI_BASE_URL`, which is not the variable a generic
+        # OpenAI-shaped client reads. Both are set, because setting only the generic-shaped one
+        # leaves the one framework that actually needs it talking to Google directly, and a run
+        # whose agent bypassed the boundary is a receipt about nothing.
+        "GOOGLE_GEMINI_BASE_URL": f"{root}/gemini",
+        # aider reads `AIDER_OPENAI_API_BASE` in preference to the SDK's own variable.
+        "AIDER_OPENAI_API_BASE": f"{root}/openai/v1",
         "DEEPSEEK_BASE_URL": f"{root}/deepseek/v1",
         "MISTRAL_BASE_URL": f"{root}/mistral/v1",
         "OPENROUTER_BASE_URL": f"{root}/openrouter/v1",
