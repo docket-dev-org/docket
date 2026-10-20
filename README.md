@@ -151,7 +151,7 @@ python3 -m pip install git+https://github.com/docket-dev-org/docket.git
 ```
 
 > [!NOTE]
-> The distribution is named `docket-ai` because PyPI administratively prohibits the bare name `docket`: it answers 404 on the JSON API, and `twine upload` still refuses it with "The name 'docket' isn't allowed". PyPI keeps that list to prevent dependency-confusion attacks, and the only way off it is a PEP 541 request reviewed by the PyPI administrators. Everything else is `docket`: the import is `import docket`, the console script is `docket`, and the command you type is `docket`. Only the name `pip install` takes differs.
+> The distribution is named `docket-ai` because PyPI administratively prohibits the bare name `docket`. PyPI keeps that list to prevent dependency-confusion attacks. Everything else is `docket`: the import is `import docket`, the console script is `docket`, and the command you type is `docket`. Only the name `pip install` takes differs.
 
 ### 2. Cap a run of your own agent
 
