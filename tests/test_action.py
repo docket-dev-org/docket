@@ -295,7 +295,13 @@ def test_the_run_step_produces_the_outputs_the_action_promises(
     assert "exit-code" in written, "the step wrote no exit code"
     assert written["exit-code"] == "0", written
     assert written["receipt"], "the step wrote no receipt path"
-    assert Path(written["receipt"]).is_file(), f"the receipt {written['receipt']} does not exist"
+    # The step's receipt path is relative to *its* working directory, not to this process's. The
+    # first version of this assertion resolved it against the repository root, which happened to
+    # carry a `.docket/` from an earlier run — so it passed locally and failed in CI on a repository
+    # that was fine. That is the failure mode a guard that passes for the wrong reason has.
+    assert (Path(a_run["tmp"]) / written["receipt"]).is_file(), (
+        f"the receipt {written['receipt']} does not exist in the run's own directory"
+    )
 
 
 def test_the_report_step_reads_a_real_receipt(action: dict, a_run: dict[str, str], tmp_path: Path) -> None:
