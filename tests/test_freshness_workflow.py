@@ -57,6 +57,39 @@ def test_the_drift_check_is_the_same_one_ci_runs(workflow: dict) -> None:
     assert "tools/sync_counts.py --check" in step["run"], step["run"]
 
 
+def test_the_freshness_job_installs_what_the_tests_job_installs() -> None:
+    """A smaller environment collects a smaller suite, which reads as drift.
+
+    The first run of this workflow installed only `pytest`, so modules needing `cryptography` or
+    `pyyaml` were skipped rather than collected, and it opened an issue claiming the suite had
+    shrunk from 1399 to 1363. The two jobs now install the same things, and this asserts it.
+    """
+    freshness = yaml.safe_load((REPO / ".github" / "workflows" / "freshness.yml").read_text(encoding="utf-8"))
+    ci = yaml.safe_load((REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+
+    def packages(document: dict, job: str) -> set[str]:
+        for step in document["jobs"][job]["steps"]:
+            run = step.get("run") or ""
+            if "pip install" in run and "pytest" in run:
+                return set(re.findall(r"[a-z0-9_.-]+", run.split("pip install", 1)[1]))
+        pytest.fail(f"no pip install step found in the {job!r} job")
+
+    import re
+
+    # `uv` is excluded on purpose: `tests/test_packaging.py` skips itself with that reason when it
+    # is absent, so a missing `uv` changes no collected count. Everything else in the tests job's
+    # list is a module some test file imports, and a module that cannot import is skipped rather
+    # than collected.
+    needed = packages(ci, "test") - {"uv"}
+    have = packages(freshness, "check")
+    missing = needed - have
+    assert not missing, (
+        f"the freshness job does not install {sorted(missing)}, which the tests job does; "
+        "a module that cannot import them is skipped rather than collected, so the freshness job "
+        "would measure a smaller suite and report a drift that does not exist"
+    )
+
+
 def test_the_report_names_the_command_that_fixes_it(workflow: dict) -> None:
     """An issue that does not say what to run is a ticket, not a fix."""
     step = next(s for s in _steps(workflow) if "Write the report" in s.get("name", ""))

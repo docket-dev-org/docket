@@ -37,7 +37,12 @@ jobs:
         id: drift
         run: |
           set +e
-          pip install --quiet pytest
+          # The same optional dependencies the `tests` job installs, and for the same reason: a
+          # module that cannot import `yaml` or `cryptography` is skipped rather than collected, so
+          # a job with only `pytest` measures a *smaller* suite than CI does and reports a drift
+          # that does not exist. That is exactly what happened the first time this ran: it opened
+          # an issue claiming 1399 should be 1363.
+          pip install --quiet pytest cryptography pyyaml
           python3 tools/sync_counts.py --check
           code=$?
           set -e
