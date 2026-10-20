@@ -23,9 +23,57 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 
-#: The version the README's install commands resolve to. Pinned so a pending upload cannot make
-#: these tests measure a release that is not published yet.
-VERSION = "0.1.8"
+
+def _declared_version() -> str:
+    """The version `pyproject.toml` declares, read from the tree rather than written here.
+
+    This constant used to be a literal, which meant every release made these tests red and every
+    release fixed a test instead of the tool. It is pinned in the sense that matters — it is the
+    version this tree declares, so a pending upload cannot make these tests measure a release that
+    is not published yet — and it follows the tree on its own.
+    """
+    document = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
+    project = document.get("project")
+    assert isinstance(project, dict), "pyproject.toml has no [project] table"
+    version = project.get("version")
+    assert isinstance(version, str) and version, "pyproject.toml declares no version"
+    return version
+
+
+#: The version the README's install commands resolve to.
+VERSION = _declared_version()
+
+
+def _published_on_pypi() -> bool:
+    """Whether the version this tree declares is downloadable from PyPI.
+
+    These tests install the *published* distribution, so a tree whose version has been bumped and
+    not yet uploaded has nothing to measure. That is reported as a skip with the reason, never as a
+    pass: an install check that quietly did not run is the failure mode this project exists to
+    prevent, and it is the difference between "could not check" and "works".
+    """
+    import json
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(
+        f"https://pypi.org/pypi/docket-ai/{VERSION}/json",
+        headers={"User-Agent": "docket-packaging-test"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            document = json.load(response)
+    except (urllib.error.URLError, TimeoutError, OSError):
+        # No network is not a verdict either. The install is not exercised, and the reason says so.
+        return False
+    return isinstance(document, dict) and bool(document.get("urls"))
+
+
+_PUBLISHED = _published_on_pypi()
+_SKIP_UNPUBLISHED = pytest.mark.skipif(
+    not _PUBLISHED,
+    reason=f"docket-ai=={VERSION} is not on PyPI yet; the install paths were not exercised",
+)
 
 
 def _run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -33,6 +81,7 @@ def _run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[st
 
 
 @pytest.mark.skipif(shutil.which("uv") is None, reason="uv is not installed; `uv tool install` was not exercised")
+@_SKIP_UNPUBLISHED
 def test_uv_tool_install_produces_a_working_command() -> None:
     """`uv tool install` builds an isolated environment and installs one executable named `docket`."""
     home = Path(tempfile.mkdtemp(prefix="docket-uv-"))
@@ -54,16 +103,37 @@ def test_uv_tool_install_produces_a_working_command() -> None:
 
 
 @pytest.mark.skipif(shutil.which("pipx") is None, reason="pipx is not installed; `pipx install` was not exercised")
+@_SKIP_UNPUBLISHED
 def test_pipx_install_produces_a_working_command() -> None:
-    completed = _run(["pipx", "install", "--force", f"docket-ai=={VERSION}"])
+    """`pipx install` puts one executable named `docket` on a bin directory, and it works.
+
+    The install is directed into a throwaway `PIPX_HOME` and `PIPX_BIN_DIR`, and the binary is
+    taken from *that* directory rather than from `PATH`. The previous version called
+    `shutil.which("docket")` after a successful install, which resolves the first `docket` on `PATH`
+    — and on a machine that already has one, from `pip install .` or a system package, that is a
+    different program from the one pipx just made. It failed on the release candidate for exactly
+    that reason, having passed for it on every machine where no other `docket` existed. A test that
+    can pass because of something other than what it is testing is worse than no test.
+    """
+    home = Path(tempfile.mkdtemp(prefix="docket-pipx-"))
+    pipx_home = home / "pipx"
+    pipx_bin = home / "bin"
+    pipx_bin.mkdir()
+    env = {**os.environ, "PIPX_HOME": str(pipx_home), "PIPX_BIN_DIR": str(pipx_bin)}
+    completed = _run(["pipx", "install", "--force", f"docket-ai=={VERSION}"], env=env)
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    binary = shutil.which("docket")
-    assert binary, "pipx reported success but no `docket` is on PATH"
-    ran = _run([binary, "--version"])
+
+    binary = pipx_bin / "docket"
+    assert binary.is_file(), (
+        f"pipx reported success but wrote no {binary}; it wrote "
+        f"{sorted(p.name for p in pipx_bin.iterdir()) or 'nothing'}"
+    )
+    ran = _run([str(binary), "--version"])
     assert ran.returncode == 0, ran.stdout + ran.stderr
-    assert f"docket {VERSION}" in ran.stdout, ran.stdout
+    assert f"docket {VERSION}" in ran.stdout, f"the binary pipx installed reports {ran.stdout.strip()!r}, not {VERSION}"
 
 
+@_SKIP_UNPUBLISHED
 def test_a_clean_venv_install_runs_the_documented_journey() -> None:
     """`pip install` into a fresh venv, then the three commands the quick start shows.
 

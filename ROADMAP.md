@@ -84,11 +84,16 @@ is deliberately refused with a reason. The short version, as of this commit:
       used to be discarded, so the estimate could never be checked. `tests/test_evidence_retention.py`
       covers the digest, truncation, the reserved-headroom boundary, a write that fails, the
       verifier's re-hash, and what `--redact` does with a path it cannot carry.
-- [x] packaging: `uv tool install docket-ai` is executed by `tests/test_packaging.py` in a clean
-      virtual environment, end to end (`init` → `run` → `verify`), and the install path is what the
-      action tests need the `docket` console script for. **Still open: `pipx` is not installed in any
-      environment this project has been measured in, so no `pipx` claim is made here**; and a Homebrew
-      formula needs a tap repository and a released bottle, which is a separate piece of work.
+- [x] packaging: `tests/test_packaging.py` executes every install path the README names, against
+      the version the tree declares rather than a literal, and skips with a stated reason when that
+      version is not on PyPI yet rather than failing or pretending. Measured on 0.2.0: `uv tool
+      install docket-ai` (uv 0.13.3), `pipx install docket-ai` (pipx 1.18.4) into a throwaway
+      `PIPX_HOME`, and a clean `python -m venv` running the whole documented journey
+      (`init` → `run` → `verify`). The pipx test resolves the binary from the directory pipx wrote
+      to, not from `PATH`: the previous version called `shutil.which("docket")` and found whichever
+      `docket` happened to be installed already, which is how it passed on a clean machine and
+      failed on the release candidate. **Still open: a Homebrew formula needs a tap repository and a
+      released bottle, which is separate work and is not claimed here.**
 
 **How this page is kept honest.** Every `[x]` above is a claim that something exists, and a claim
 about code that nothing checks is the same failure mode as a stale test count: it was true when
