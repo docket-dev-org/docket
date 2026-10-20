@@ -58,8 +58,12 @@ PROPAGATION_ENV = "DOCKET_PYPI_PROPAGATION_SECONDS"
 #: discovering that. Measured: 3m0.6s of import time before this was split.
 PROPAGATION_TIMEOUT_SECONDS = float(os.environ.get(PROPAGATION_ENV, "15"))
 
-#: How long one install attempt waits before treating a missing version as propagation.
-INSTALL_RETRIES = 4
+#: The ceiling on install attempts, whatever the clock says. The bound that actually decides is
+#: `PROPAGATION_TIMEOUT_SECONDS`, the same one the probe polls against; this exists so a clock that
+#: does not advance cannot turn a bounded wait into an unbounded one. It is deliberately larger than
+#: the short default needs, because the release gate raises the deadline to 300 s and the installer
+#: has to be able to use it.
+INSTALL_RETRIES = 25
 
 #: The phrases `pip`, `pipx` and `uv` use when the index has no such version. Matched as a set so a
 #: wording change in a tool is a visible failure rather than a silent loss of the retry.
@@ -135,14 +139,29 @@ def _install(command: list[str], **kwargs: object) -> subprocess.CompletedProces
     The distinction this preserves: a propagation-shaped failure is retried, because it is a fact
     about a cache and not about the package, and every other failure is returned on the first
     attempt, because retrying a real breakage only spends time before reporting the same thing.
-    A package that genuinely cannot be installed still fails, after `INSTALL_RETRIES` attempts,
-    with the output of the last one.
+    A package that genuinely cannot be installed still fails, after the last attempt, with the
+    output of that attempt.
+
+    The wait is bounded by `PROPAGATION_TIMEOUT_SECONDS`, the same bound `_published_on_pypi`
+    polls against, with `INSTALL_RETRIES` as a ceiling above it. The two have to agree. The release
+    gate sets the bound to 300 s so the probe will wait for the index; while the installer was given
+    a fixed 5 s / 10 s / 15 s ladder instead, it was offered a tenth of the patience the gate had
+    just paid for. Measured on the 0.2.7 tag gate: the simple index served 0.2.7, the probe returned
+    True, the install was un-skipped, and `pip` inside `pipx` still resolved only up to 0.2.6
+    through a different edge cache, so all four attempts failed and the gate went red. Retrying for
+    30 s does not close a window that has already been given 300 s of cover.
     """
+    deadline = time.monotonic() + PROPAGATION_TIMEOUT_SECONDS
     last = _run(command, **kwargs)
-    for attempt in range(1, INSTALL_RETRIES):
-        if last.returncode == 0 or not _looks_like_propagation(last):
-            return last
-        time.sleep(5 * attempt)
+    attempt = 0
+    while (
+        last.returncode != 0
+        and _looks_like_propagation(last)
+        and attempt < INSTALL_RETRIES - 1
+        and time.monotonic() < deadline
+    ):
+        attempt += 1
+        time.sleep(min(5 * attempt, 15))
         last = _run(command, **kwargs)
     return last
 

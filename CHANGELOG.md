@@ -1,5 +1,78 @@
 ## [Unreleased]
 
+### Fixed
+
+- **The release gate's propagation bound now covers the installer and not only the probe.** The 0.2.7
+  tag gate went red on `test_pipx_install_produces_a_working_command`: `pip` inside `pipx` reported
+  `from versions: 0.1.0, ..., 0.2.6` for `docket-ai==0.2.7`, four attempts in a row, while 0.2.7 had
+  been on PyPI for several minutes and the simple index was serving it.
+
+  The gate already had the right idea. It sets `DOCKET_PYPI_PROPAGATION_SECONDS=300`, and
+  `_published_on_pypi()` polls the simple index for up to that long; it found 0.2.7 and returned
+  True, which un-skipped the install test. What it did not do is hand that time to the installer.
+  `_install` retried on a fixed ladder of 5 s, 10 s, 15 s and then stopped at four attempts whatever
+  the bound said -- 30 s of retrying against 300 s of cover, a tenth of the patience the gate had
+  just paid for. The probe and the installer resolving against different edge caches was already
+  measured and recorded on 0.2.4; what was missing is that the bound has to reach the installer too,
+  or it is half a fix. Waiting 300 s for the index to serve a version and then giving the installer
+  30 s to notice does not close a window that has already been given 300 s of cover.
+
+  `_install` is now bounded by `PROPAGATION_TIMEOUT_SECONDS`, the same constant the probe polls
+  against, read at call time rather than captured at import, with `INSTALL_RETRIES` raised to 25 as a
+  ceiling above the deadline so a clock that does not advance cannot make a bounded wait unbounded.
+  A propagation-shaped failure still fails the caller, after the last attempt, with that attempt's
+  real output; a real breakage is still returned on the first attempt, because a wider budget on a
+  failure that is not propagation-shaped would mean a genuinely broken install spends the whole gate
+  failing slowly.
+
+- **A guard that checked a name where it needed to check a value.** `tests/test_install_budget.py`
+  is new, with five guards, and mutation found the third one passing for the wrong reason: it
+  asserted that `DOCKET_PYPI_PROPAGATION_SECONDS` appears in `release.yml` and never read its value,
+  so setting it to `"15"` -- the default, which grants a release gate no extra cover at all -- passed
+  clean. A guard that passes for a reason other than the one it exists for is worse than no guard:
+  it reports coverage it does not provide, and the defect under test was itself a bound set in the
+  right place that never reached the code needing it. It now reads the value and requires it to
+  exceed the default and to be coverable by the attempt ceiling.
+
+  Mutation also found one anchor stale: `deadline = time.monotonic() + PROPAGATION_TIMEOUT_SECONDS`
+  appears twice, because `_published_on_pypi` and `_install` are bounded the same way, which is the
+  point of the fix. The harness refused to mutate rather than guess which it meant, which is right
+  -- a mutation that lands on the wrong function proves nothing about the one it claims to test. The
+  anchor now carries the line that follows, which is unique to `_install`. Five mutations, five
+  caught, and `tools/mutation/mutate_install_budget.py` is documented in `docs/testing.md`.
+
+Suite 1500 -> 1505.
+
+- **Seventeen rationales were never rendered on the published docs site, and nothing said so.**
+  `docs/testing.md`'s per-file table declared three columns, `file | tests | what it pins`, while 17
+  rows carried a fourth cell holding why each guard exists. GFM ignores cells beyond the header count,
+  so the "why" behind `test_diagrams.py`, `test_propagation.py`, `test_release_workflow.py` and the
+  rest was in the file and not on the page. No test failed and no link broke, because nothing counted
+  the cells. The header is four columns now, the 40 three-cell rows are padded to match, and
+  `tests/test_doc_tables.py` holds all 701 table rows in 21 documents to their header's width, to
+  escaping pipes inside code spans, and to not repeating their own base.
+
+- **`docs/production-coverage.md` split a row inside a code span.** The Helm row carried
+  `` `| int64` `` with an unescaped pipe, so GFM split the cell there and the text after it became a
+  cell the header does not have. Escaped to `\|`, which is what `docs/cli.md` and `docs/testing.md`
+  already do for the same notation.
+
+  Three of the five candidates for that defect were correct and are recorded as such, because the
+  obvious reading is wrong: `docs/deployment.md:65` and `docs/testing.md:305` also show more pipes
+  than their header has columns, and they are fine. Their pipes are escaped, and a naive
+  `split("|")` counts an escaped pipe as a separator where GFM does not. Checking before concluding
+  is what kept this from "fixing" two rows that were never broken.
+
+- **The `test_build_dist.py` row repeated its own opening sentence three times.** It carried five
+  cells: a 402-character base, the same base plus one extension, and the same base plus another. That
+  is the shape a `" | " + reason` concatenation leaves when it runs twice, and it is the second time
+  this row has been repaired -- the first repair joined two reasons into one cell, which is not the
+  same as merging them. The base being a prefix of both extensions is what makes the rebuild a
+  reconstruction rather than a guess.
+
+Suite 1505 -> 2916, of which `test_doc_tables.py` is 1411: it is parametrised over every table
+row in the documentation, so it grows as the documentation does.
+
 ## [0.2.7] - 2026-10-21
 
 ### Added
@@ -85,6 +158,15 @@ Suite 1489 -> 1500.
   guard that fires on correct code gets switched off, so it reads with `ast` and asks per function.
 
 Suite 1487 -> 1489.
+
+No change to the shipped code: `git diff 0.2.6..0.2.7 -- src/` is empty. The conformance vectors'
+digests change because a receipt carries `tool.version`.
+
+**The 0.2.7 tag gate was red, and the reason is recorded here rather than left to be found in a
+workflow log.** `test_pipx_install_produces_a_working_command` failed: the installer was given 30 s
+of retrying against the 300 s propagation bound the gate had just set, and `pip` inside `pipx`
+resolved through a different edge cache than the probe that had un-skipped the test. The artifacts
+were correct and unchanged; what failed was the gate's own test. Fixed in 0.2.8.
 
 ## [0.2.6] - 2026-10-20
 
