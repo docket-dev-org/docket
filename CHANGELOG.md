@@ -1,9 +1,29 @@
 ## [Unreleased]
-- **The README link check no longer reports an unreachable host as a broken link.** Measured on
-  the v0.2.3 release gate: `img.shields.io` dropped a connection on one badge and the check
-  reported `RemoteDisconnected https://img.shields.io/badge/python-3.11%2B-blue` under
-  *URLs in README.md that do not answer 200*. The tag failed on that, with a package and
-  artifacts that were both correct.
+
+## [0.2.4] - 2026-10-20
+
+### Fixed
+
+- **The release workflow recovers from a re-run and can be dispatched by hand.** The version
+  came from `${GITHUB_REF_NAME#v}`, so a `workflow_dispatch` run on a branch resolved
+  `main`, looked for `## [main]` in the changelog and failed whatever the maintainer did;
+  the trigger the workflow declares could not succeed. The version is read out of
+  `pyproject.toml` and a tag that disagrees with it fails the job. Publication ran
+  `gh release create`, which exits non-zero when the release exists, so a re-run after a
+  partial failure stopped there with deleting the release as the only way past it; it now
+  uploads onto an existing release. Three guards, five mutations, all caught.
+
+- **The README link check no longer reports an unreachable host as a broken link.** On the
+  v0.2.3 gate, `img.shields.io` dropped a connection on one badge and the check reported
+  `RemoteDisconnected` under *URLs in README.md that do not answer 200*, failing a tag
+  whose package and artifacts were both correct. `RemoteDisconnected` is an `OSError`, and
+  connection-level errors appended to the same list as status codes, so a host that never
+  answered was reported as a link that answered wrongly. A 404 stays conclusive and still
+  fails; a dropped connection is retried three times with backoff and then printed as not
+  verified rather than asserted to be broken. Five tests against two real loopback servers;
+  six mutations caught.
+
+No change to the shipped code: `git diff 0.2.3..0.2.4 -- src/` is empty.
 
   `RemoteDisconnected` is an `OSError`, and the handler for connection-level errors appended to
   the same list as the handler for status codes, so a host that never answered was reported as a
@@ -35,7 +55,6 @@
   `tests/test_release_workflow.py` gains three guards for this, and all five mutations of them
   are caught (version from the ref name; disagreement reported but not fatal; no existence check;
   upload without `--clobber`; the create path alone). Suite 1457 -> 1460.
-
 
 ## [0.2.3] - 2026-10-20
 
