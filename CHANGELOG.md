@@ -1,4 +1,46 @@
 ## [Unreleased]
+- **The packaging tests survive PyPI's propagation window instead of guessing at it.** Measured
+  on the 0.2.4 release gate: the guard found 0.2.4 on the index, un-skipped the clean-venv install,
+  and CI's `pip` then resolved only up to 0.2.3 — the probe and the installer had hit different
+  edge caches minutes apart. The gate failed on a propagation delay with a package and artifacts
+  that were both correct.
+
+  Three changes, one root cause. The guard reads the **simple index**, which is the cache `pip`,
+  `pipx` and `uv` resolve against, rather than the JSON API, which is a different cache with a
+  different lifetime — the 0.2.1 gate failed for exactly that reason. The guard **waits**, polling
+  until the index serves the version, because no single probe can promise what the installer will
+  see. And the install itself **retries** on a propagation-shaped error, recognising all three
+  wordings (pip, pipx, uv) for "the index has no such version", while a real breakage is returned
+  on the first attempt rather than retried.
+
+  `tests/test_propagation.py` (20 tests) exercises this rather than asserting it in prose,
+  including two that ask the real PyPI simple index for a version that exists and for one that
+  never did. Seven mutations caught: the guard reading the JSON API again, the guard deciding once,
+  an empty phrase list, an install helper that never retries, one that retries real breakage too,
+  one that discards the real failure output, and a call site that bypasses the helper.
+  Suite 1465 -> 1485.
+
+- **The packaging tests survive PyPI's propagation window instead of guessing at it.** Measured
+  on the 0.2.4 release gate: the guard found 0.2.4 on the index, un-skipped the clean-venv install,
+  and CI's \ then resolved only up to 0.2.3 — the probe and the installer had hit
+  different edge caches minutes apart. The gate failed on a propagation delay with a package and
+  artifacts that were both correct.
+
+  Three changes, one root cause. The guard reads the **simple index**, which is the cache \,
+  \ and \ resolve against, rather than the JSON API, which is a different cache with a
+  different lifetime — the 0.2.1 gate failed for exactly that reason. The guard **waits**, polling
+  until the index serves the version, because no single probe can promise what the installer will
+  see. And the install itself **retries** on a propagation-shaped error, recognising all three
+  wordings (pip, pipx, uv) for "the index has no such version", while a real breakage is returned
+  on the first attempt rather than retried.
+
+  \ (20 tests) exercises this rather than asserting it in prose,
+  including two that ask the real PyPI simple index for a version that exists and for one that
+  never did. Seven mutations caught: the guard reading the JSON API again, the guard deciding once,
+  an empty phrase list, an install helper that never retries, one that retries real breakage too,
+  one that discards the real failure output, and a call site that bypasses the helper.
+  Suite 1465 -> 1485.
+
 
 ## [0.2.4] - 2026-10-20
 

@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 from pathlib import Path
 
@@ -44,29 +45,103 @@ def _declared_version() -> str:
 VERSION = _declared_version()
 
 
+#: How long to wait for an upload to reach the index before reporting it as not published.
+#: Measured against this project's own uploads: 0.2.4 was resolvable by `uv` on the second poll,
+#: about 15 s after the upload response, and the 0.2.3 release gate had already failed at a
+#: window that this bound covers several times over.
+PROPAGATION_TIMEOUT_SECONDS = 180
+
+#: How long one install attempt waits before treating a missing version as propagation.
+INSTALL_RETRIES = 4
+
+#: The phrases `pip`, `pipx` and `uv` use when the index has no such version. Matched as a set so a
+#: wording change in a tool is a visible failure rather than a silent loss of the retry.
+_NO_SUCH_VERSION = (
+    "No matching distribution found",
+    "Could not find a version that satisfies",
+    "there is no version of",
+)
+
+
+def _simple_index_serves(version: str) -> bool:
+    """Whether PyPI's simple index serves this version.
+
+    The simple index is the cache `pip`, `pipx` and `uv` resolve against. The JSON API is a
+    different cache with a different lifetime, and asking it the installer's question is how the
+    0.2.1 gate failed: the JSON API answered 200 for a freshly uploaded version while `pipx`
+    still resolved "No matching distribution found", so the guard un-skipped a test that then
+    failed on a delay that had nothing to do with the package.
+    """
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(
+        f"https://pypi.org/simple/docket-ai/?cb={version}",
+        headers={
+            "User-Agent": "docket-packaging-test",
+            "Accept": "application/vnd.pypi.simple.v1+json, text/html;q=0.1",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = response.read().decode("utf-8", "replace")
+    except (urllib.error.URLError, TimeoutError, OSError):
+        # No network is not a verdict either. The install is not exercised, and the reason says so.
+        return False
+    return version in body
+
+
 def _published_on_pypi() -> bool:
-    """Whether the version this tree declares is downloadable from PyPI.
+    """Whether the version this tree declares has reached the index the installers read.
 
     These tests install the *published* distribution, so a tree whose version has been bumped and
     not yet uploaded has nothing to measure. That is reported as a skip with the reason, never as a
     pass: an install check that quietly did not run is the failure mode this project exists to
     prevent, and it is the difference between "could not check" and "works".
-    """
-    import json
-    import urllib.error
-    import urllib.request
 
-    request = urllib.request.Request(
-        f"https://pypi.org/pypi/docket-ai/{VERSION}/json",
-        headers={"User-Agent": "docket-packaging-test"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            document = json.load(response)
-    except (urllib.error.URLError, TimeoutError, OSError):
-        # No network is not a verdict either. The install is not exercised, and the reason says so.
-        return False
-    return isinstance(document, dict) and bool(document.get("urls"))
+    This waits rather than deciding once, because no single probe can promise what the installer
+    will see. Measured on 0.2.4: this guard read the index, found the version, un-skipped the
+    clean-venv install, and CI's `pip` then resolved only up to the previous release — the probe
+    and the installer had hit different edge caches minutes apart. Polling bounds the window; only
+    a version that never appears at all is reported as not published.
+    """
+    deadline = time.monotonic() + PROPAGATION_TIMEOUT_SECONDS
+    attempt = 0
+    while True:
+        if _simple_index_serves(VERSION):
+            return True
+        attempt += 1
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(min(5 * attempt, 15))
+
+
+def _install(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    """Run an install, retrying while the index has not been told about the version yet.
+
+    The distinction this preserves: a propagation-shaped failure is retried, because it is a fact
+    about a cache and not about the package, and every other failure is returned on the first
+    attempt, because retrying a real breakage only spends time before reporting the same thing.
+    A package that genuinely cannot be installed still fails, after `INSTALL_RETRIES` attempts,
+    with the output of the last one.
+    """
+    last = _run(command, **kwargs)
+    for attempt in range(1, INSTALL_RETRIES):
+        if last.returncode == 0 or not _looks_like_propagation(last):
+            return last
+        time.sleep(5 * attempt)
+        last = _run(command, **kwargs)
+    return last
+
+
+def _looks_like_propagation(completed: subprocess.CompletedProcess[str]) -> bool:
+    """Whether a failed install failed because the index has no such version.
+
+    A package that cannot be installed and an index that has not been told about it yet produce the
+    same exit code and different meanings. Only the second one is worth another attempt.
+    """
+    haystack = f"{completed.stdout}\n{completed.stderr}"
+    return any(phrase in haystack for phrase in _NO_SUCH_VERSION)
 
 
 _PUBLISHED = _published_on_pypi()
@@ -77,7 +152,7 @@ _SKIP_UNPUBLISHED = pytest.mark.skipif(
 
 
 def _run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, capture_output=True, text=True, timeout=900, **kwargs)  # type: ignore[arg-type]
+    return subprocess.run(command, capture_output=True, text=True, timeout=900, **kwargs)  # type: ignore[call-overload]
 
 
 @pytest.mark.skipif(shutil.which("uv") is None, reason="uv is not installed; `uv tool install` was not exercised")
@@ -92,7 +167,7 @@ def test_uv_tool_install_produces_a_working_command() -> None:
     # guard says the version is published and `uv` says there is no such version, so the test fails
     # on a cache rather than on the package. Measured on 0.2.2: the simple index served the file
     # immediately while `uv tool install` resolved "no version of docket-ai==0.2.2" until refreshed.
-    completed = _run(
+    completed = _install(
         ["uv", "tool", "install", "--python", sys.executable, "--refresh", f"docket-ai=={VERSION}"],
         env={**os.environ, "HOME": str(home)},
     )
@@ -102,7 +177,7 @@ def test_uv_tool_install_produces_a_working_command() -> None:
 
     # `uv tool run` does not depend on where the executable landed, which is the half of the install
     # the README warns about.
-    ran = _run(["uv", "tool", "run", "--refresh", "--from", f"docket-ai=={VERSION}", "docket", "--version"])
+    ran = _install(["uv", "tool", "run", "--refresh", "--from", f"docket-ai=={VERSION}", "docket", "--version"])
     assert ran.returncode == 0, ran.stdout + ran.stderr
     assert f"docket {VERSION}" in ran.stdout, ran.stdout
 
@@ -125,7 +200,7 @@ def test_pipx_install_produces_a_working_command() -> None:
     pipx_bin = home / "bin"
     pipx_bin.mkdir()
     env = {**os.environ, "PIPX_HOME": str(pipx_home), "PIPX_BIN_DIR": str(pipx_bin)}
-    completed = _run(["pipx", "install", "--force", f"docket-ai=={VERSION}"], env=env)
+    completed = _install(["pipx", "install", "--force", f"docket-ai=={VERSION}"], env=env)
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
     binary = pipx_bin / "docket"
@@ -151,7 +226,7 @@ def test_a_clean_venv_install_runs_the_documented_journey() -> None:
     assert created.returncode == 0, created.stdout + created.stderr
 
     python = venv / "bin" / "python"
-    installed = _run([str(python), "-m", "pip", "install", "--quiet", "--no-cache-dir", f"docket-ai=={VERSION}"])
+    installed = _install([str(python), "-m", "pip", "install", "--quiet", "--no-cache-dir", f"docket-ai=={VERSION}"])
     assert installed.returncode == 0, installed.stdout + installed.stderr
 
     binary = venv / "bin" / "docket"
