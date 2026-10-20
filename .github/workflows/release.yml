@@ -20,6 +20,14 @@ jobs:
           python-version: "3.12"
       - name: Install test dependencies (the tag gate runs the whole suite, skips and all)
         run: pip install build pytest cryptography pyyaml
+      - name: Install the package under test
+        # `tests/test_action.py` executes the composite action's own `run:` blocks, and
+        # `tests/test_packaging.py` runs an installed console script. Without this the tag gate
+        # fails with `docket: command not found` — exit 127 — which is not a verdict about the tag
+        # and reads as one. This is the same omission the CI `tests` job had, fixed there first and
+        # missed here, so `tests/test_release_workflow.py` now holds the two jobs' install steps
+        # together the way the freshness test does.
+        run: pip install .
       - name: Test the tag before shipping it
         # `-ra`, and no `-q`: `addopts` already carries one and a second would suppress the
         # counts line. The release log is the evidence that the tag was tested.

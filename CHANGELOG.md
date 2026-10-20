@@ -1,4 +1,16 @@
 ## [Unreleased]
+- **The release gate installs the package under test.** `tests/test_action.py` executes the
+  composite action's own `run:` blocks and `tests/test_packaging.py` runs an installed console
+  script, and `.github/workflows/release.yml` installed test dependencies but never the package,
+  so both failed with `docket: command not found` — exit 127, which is not a verdict about the tag
+  and reads like one. The gate was red for every tag from the moment the action tests landed. This
+  is the same omission the CI `tests` job had, fixed there first and missed here.
+  `tests/test_release_workflow.py` holds the two jobs' install steps together the way the freshness
+  test does, and asserts the rest of what a release gate is: the gate runs the `tests` directory
+  rather than a subset, it prints its counts, a tag with no changelog section fails the job, the
+  workflow uploads nothing to PyPI and carries no PyPI credential, and the GitHub release uses the
+  run-scoped token. Eight mutations, all caught.
+
 
 ## [0.2.0] - 2026-10-20
 
