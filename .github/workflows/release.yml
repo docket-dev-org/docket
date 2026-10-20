@@ -37,13 +37,29 @@ jobs:
       - name: Checksums
         run: |
           cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - name: Resolve this version from the package, not from the ref name
+        # `pyproject.toml` is the authoritative version. Deriving it from `${GITHUB_REF_NAME#v}`
+        # meant the release title, the artifact names and the notes heading could disagree with
+        # the package, and it made `workflow_dispatch` unusable: on a branch the ref name is
+        # `main`, so the notes lookup looked for `## [main]` and the job failed whatever you
+        # did. Read the version, then hold the tag to it. A mismatch fails here rather than
+        # publishing a release whose name and contents disagree.
+        id: version
+        run: |
+          VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not name the version pyproject.toml declares (${VERSION}); refusing to publish" >&2
+            exit 1
+          fi
+          echo "publishing ${VERSION} from ${GITHUB_REF_TYPE} ${GITHUB_REF_NAME}"
       - name: Extract this version's notes
-        # The changelog is 100 KB and leads with [Unreleased], so a 0.1.0 release whose notes
-        # open with unreleased work tells a reader nothing about 0.1.0. Take the one section
-        # whose heading names this tag. An empty result fails the job: a release with no notes
+        # The changelog is 100 KB and leads with [Unreleased], so a release whose notes
+        # open with unreleased work tells a reader nothing about the release. Take the one section
+        # whose heading names this version. An empty result fails the job: a release with no notes
         # is worse than a failed run, because the failure is visible and the release is not.
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${VERSION}"
           awk -v ver="$VERSION" '
             $0 ~ "^## \\[" ver "\\]" {f=1; print; next}
             f && /^## \[/ {exit}
@@ -58,10 +74,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "Docket ${GITHUB_REF_NAME#v}" \
-            --notes-file RELEASE_NOTES.md \
-            dist/*
+          TAG="v${VERSION}"
+          # A re-run has to be able to recover. `gh release create` exits non-zero when the
+          # release already exists, so a re-run after a partial failure, or a run that follows a
+          # release the maintainer already cut by hand, stopped here and the only way past it was
+          # to delete the release. Upload onto the existing release instead: both the notes and
+          # the artifacts are replaced from this run's own build, so the outcome is the same
+          # release carrying this run's content.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists; uploading this run's artifacts onto it"
+            gh release upload "$TAG" --clobber dist/*
+          else
+            gh release create "$TAG" --title "Docket ${VERSION}" --notes-file RELEASE_NOTES.md dist/*
+          fi
       # PyPI upload stays a deliberate manual step rather than a `twine upload` in this job.
       # The reason is blast radius, not missing plumbing: a PyPI token is a credential that
       # can publish under the project's name forever and cannot be scoped to a branch, so

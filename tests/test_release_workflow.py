@@ -211,6 +211,69 @@ def trgers_key(triggers: dict) -> list[str]:
     return sorted(str(key) for key in triggers)
 
 
+def test_the_release_version_comes_from_pyproject_and_not_from_the_ref_name() -> None:
+    """`pyproject.toml` is authoritative; the ref name is a label that can drift from it.
+
+    Measured on v0.2.3: the workflow derived the version from `${GITHUB_REF_NAME#v}`, so a
+    `workflow_dispatch` run on a branch resolved `main`, looked for `## [main]` in the changelog,
+    and failed with "CHANGELOG.md has no section for main" whatever the maintainer did. The
+    version is now read out of `pyproject.toml`, so a manual run publishes the version the
+    package declares.
+    """
+
+    document = _load(RELEASE)
+    resolve = [step for step in _steps(document, "release") if "Resolve this version" in str(step.get("name", ""))]
+    assert len(resolve) == 1, f"expected one resolve step, found {len(resolve)}"
+    body = resolve[0].get("run", "")
+    assert "pyproject.toml" in body, body
+    assert "GITHUB_ENV" in body, body
+    for step in _steps(document, "release"):
+        run = step.get("run")
+        if isinstance(run, str):
+            assert "GITHUB_REF_NAME#v" not in run, (
+                f"{step.get('name')} still derives a version from the ref name, which is "
+                "unusable under workflow_dispatch: {run!r}"
+            )
+
+
+def test_a_tag_that_disagrees_with_the_declared_version_is_refused() -> None:
+    """A tag naming a different version than the package must fail before anything ships.
+
+    This is the defect that produced the 0.2.0 provenance mismatch: the tag named a later commit
+    than the artifacts were built from, and nothing in the pipeline checked the two against each
+    other. The pipeline cannot see the commit, but it can see the version, and the version is
+    the half the release body is built from.
+    """
+
+    document = _load(RELEASE)
+    resolve = [step for step in _steps(document, "release") if "Resolve this version" in str(step.get("name", ""))]
+    assert len(resolve) == 1, "no resolve step"
+    body = resolve[0].get("run", "")
+    assert "${GITHUB_REF_NAME}" in body and "refusing to publish" in body, body
+    assert "exit 1" in body, f"the disagreement is reported but not fatal: {body!r}"
+
+
+def test_the_release_publication_recovers_from_a_release_that_already_exists() -> None:
+    """A re-run must not require deleting the release to get past publication.
+
+    Measured on v0.2.3: the release was cut by hand, then the tag's workflow run reached
+    "Publish the GitHub release" and failed, because `gh release create` exits non-zero when the
+    release exists. The gate had passed and the artifacts were good; only the publication step
+    was stuck, and the documented way out was to delete the release.
+    """
+
+    document = _load(RELEASE)
+    publish = [
+        step for step in _steps(document, "release") if "Publish the GitHub release" in str(step.get("name", ""))
+    ]
+    assert len(publish) == 1, f"expected one publish step, found {len(publish)}"
+    body = publish[0].get("run", "")
+    assert "gh release view" in body, f"no existence check, so a re-run cannot recover: {body!r}"
+    assert "gh release upload" in body, f"no upload path for an existing release: {body!r}"
+    assert "--clobber" in body, f"a re-run must replace the artifacts, not add to them: {body!r}"
+    assert "gh release create" in body, f"the first-run path is gone: {body!r}"
+
+
 if __name__ == "__main__":  # pragma: no cover - `python3 tests/test_release_workflow.py`
     import sys
 

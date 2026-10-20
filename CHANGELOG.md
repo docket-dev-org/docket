@@ -1,4 +1,22 @@
 ## [Unreleased]
+- **The release workflow recovers from a re-run and can be dispatched by hand.** Two defects in
+  `.github/workflows/release.yml`, both measured on the v0.2.3 run:
+
+  1. The version came from `${GITHUB_REF_NAME#v}`, so a `workflow_dispatch` run on a branch
+     resolved `main`, looked for `## [main]` in the changelog, and failed with
+     *CHANGELOG.md has no section for main* whatever the maintainer did. The declared
+     `workflow_dispatch` trigger could not succeed. The version is now read out of
+     `pyproject.toml`, and a tag that disagrees with it fails the job instead of publishing a
+     release whose name and contents disagree.
+  2. Publication ran `gh release create`, which exits non-zero when the release already exists.
+     The v0.2.3 tag gate passed, the artifacts were good, and the run stopped at publication
+     because the release had been cut by hand first — with deleting the release as the only way
+     past it. Publication now uploads onto an existing release.
+
+  `tests/test_release_workflow.py` gains three guards for this, and all five mutations of them
+  are caught (version from the ref name; disagreement reported but not fatal; no existence check;
+  upload without `--clobber`; the create path alone). Suite 1457 -> 1460.
+
 
 ## [0.2.3] - 2026-10-20
 
