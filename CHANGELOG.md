@@ -1,16 +1,34 @@
 ## [Unreleased]
-- **The release gate installs the package under test.** `tests/test_action.py` executes the
-  composite action's own `run:` blocks and `tests/test_packaging.py` runs an installed console
-  script, and `.github/workflows/release.yml` installed test dependencies but never the package,
-  so both failed with `docket: command not found` — exit 127, which is not a verdict about the tag
-  and reads like one. The gate was red for every tag from the moment the action tests landed. This
-  is the same omission the CI `tests` job had, fixed there first and missed here.
-  `tests/test_release_workflow.py` holds the two jobs' install steps together the way the freshness
-  test does, and asserts the rest of what a release gate is: the gate runs the `tests` directory
-  rather than a subset, it prints its counts, a tag with no changelog section fails the job, the
-  workflow uploads nothing to PyPI and carries no PyPI credential, and the GitHub release uses the
-  run-scoped token. Eight mutations, all caught.
 
+## [0.2.1] - 2026-10-20
+
+### Fixed
+
+- **The release gate installs the package under test.** `.github/workflows/release.yml` ran
+  the whole suite against a tree whose package was never installed, so `tests/test_action.py`
+  and `tests/test_packaging.py` failed with `docket: command not found` — exit 127, which is
+  not a verdict about the tag and reads like one. 0.2.0 was published with a release check
+  that had never passed. This is the same omission the CI `tests` job had, fixed there first
+  and missed here.
+
+- **The packaging tests measure the version the tree declares.** `tests/test_packaging.py`
+  pinned the version as a literal, and its pipx test resolved the binary with
+  `shutil.which("docket")` after a successful install — which finds whichever `docket` is
+  already on `PATH`, not the one pipx just made. It passed on every clean machine and failed
+  on the release candidate. The install is now directed into a throwaway `PIPX_HOME` and
+  `PIPX_BIN_DIR`, and the binary is taken from that directory.
+
+### Added
+
+- **`tests/test_release_workflow.py`**, which holds the release gate to the same standard as
+  the push gate: the package is installed and installed before the suite runs, the release
+  job's test dependencies are the CI `tests` job's, the gate runs the `tests` directory
+  rather than a subset, it prints its counts, a tag with no changelog section fails the job,
+  the workflow uploads nothing to PyPI and carries no PyPI credential, and the GitHub
+  release uses the run-scoped token. Eight mutations, all caught.
+
+No change to the shipped code: `git diff 0.2.0..0.2.1 -- src/` is empty, which is why 0.2.1
+exists — so that the newest tag, the newest release and a green gate name the same commit.
 
 ## [0.2.0] - 2026-10-20
 
