@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+## [0.2.8] - 2026-10-21
+
+
 ### Fixed
 
 - **The release gate's propagation bound now covers the installer and not only the probe.** The 0.2.7
