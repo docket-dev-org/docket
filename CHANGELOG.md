@@ -17,6 +17,15 @@
     enforces no review. The nine required status checks and the force-push block are real, and were
     observed to reject a force-push.
 
+  The posture paragraph that replaced them now separates what was observed from what was only read.
+  The first version said "Both were observed to reject a push" about the force-push and deletion
+  blocks; only the force-push block was exercised, refused with
+  `GH006: Protected branch update failed for refs/heads.main`, while the deletion block was read from
+  the API as `allow_deletions: {enabled: false}` and never tested. GitHub's own
+  `Bypassed rule violations for refs/heads.main` output from a later direct push is recorded too,
+  because it is the part that matters: the checks run and are enforced on pull requests, and an
+  administrator can go around them.
+
   A supply-chain section is where a reader looks to decide what evidence they can trust, so a claim of
   that kind failing is worse than the absence of the control: it tells someone to check something that
   does not exist. The three documents now say what is true, and point at what Docket genuinely does

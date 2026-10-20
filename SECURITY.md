@@ -73,9 +73,16 @@ Ordinary bugs (wrong output, a crash, an unhelpful message) are normal issues, n
   `docket run --sign <key>` seals the receipt with it, and `docket verify` checks the signature. This
   is implemented and exercised; it is not a claim about the release artifacts.
 - `main` is protected against force-push and deletion and requires nine status checks in strict mode.
-  Both were observed to reject a push. Commits are not signed, and
-  `required_approving_review_count` is `0`, so no second person reviews before a merge. For a
-  single-maintainer project that is the honest posture; nothing here substitutes for reading the diff.
+  The force-push block was observed working: the attribution repair's force-push was refused with
+  `GH006: Protected branch update failed for refs/heads/main -- Cannot force-push to this branch`. The
+  deletion block was read from the API (`allow_deletions: {enabled: false}`) and not exercised, and
+  the nine checks were observed running to success on every push since. Commits are not signed, and
+  `required_approving_review_count` is `0`, so no second person reviews before a merge. GitHub logged
+  `Bypassed rule violations for refs/heads.main` listing `Changes must be made through a pull request`
+  and `9 of 9 required status checks are expected` on a direct push, because the token is an
+  administrator. That is the honest posture for a single-maintainer project: the checks run and are
+  enforced on pull requests, and an administrator can go around them. Nothing here substitutes for
+  reading the diff.
 - `docket` never phones home. There is no telemetry, no update check, no analytics, no account.
   The only addresses Docket itself dials are loopback (its own boundary, its probes) and the
   provider URLs the *user* configured — because a supervised agent asked it to.
