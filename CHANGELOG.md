@@ -35,6 +35,32 @@
   loopback upstream, and `tools/build_dist.py --check --ref v0.2.8` reported
   `dist/ matches v0.2.8 (0e1ab46f2b9f), 2 artifact(s) unchanged`.
 
+### Repaired
+
+- **The published releases now match each other and the index.** Measured across 18 versions on PyPI,
+  18 tags and 17 GitHub releases, two things were inconsistent:
+
+  - `0.2.4` was tagged and published to PyPI but had no GitHub release, so a reader looking for its
+    release notes found nothing while the version installed normally.
+  - `v0.2.0`, `v0.2.1` and `v0.2.3` carried only the wheel and sdist. Every other release, including
+    all nine of the 0.1.x ones, carried a `SHA256SUMS` as well. Since the supply-chain section tells a
+    reader to verify a release by rebuilding from its tag and comparing digests, those three were the
+    releases that could not be checked that way.
+
+  `0.2.4`'s release was created from artifacts rebuilt with `tools/build_dist.py --ref v0.2.4` and
+  asserted against PyPI's published digests first, so it cannot have been created from bytes that
+  differ from the ones pip installed. The three missing `SHA256SUMS` files were produced by
+  downloading the exact bytes already on those releases and running the same `sha256sum`
+  `release.yml` runs. All 18 releases now hold three assets, and every `SHA256SUMS` names exactly its
+  own two artifacts.
+
+  One mistake was made and corrected in the process: the first `SHA256SUMS` for 0.2.4 was built with
+  `sha256sum *` inside a `dist/` that still held a previous version's sdist and the
+  `PROVENANCE.json` the build tool writes, so it certified four things, two of which were not on the
+  release. A checksums file is a claim about a specific set of bytes, so a file naming bytes that are
+  not on the release is wrong in the one way a checksums file can be wrong. It was replaced, and the
+  replacement was read back from GitHub to confirm what it claims.
+
 - **A guard, so the claim cannot drift back the way it drifted in.** `tests/test_supply_chain_claims.py`
   fails if a document calls a release artifact or a commit signed while the pipeline contains no
   signing step, and fails if the three commands `SECURITY.md` names stop existing on the real CLI
