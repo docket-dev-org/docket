@@ -1,5 +1,20 @@
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-20
+
+### Fixed
+
+- **The packaging tests ask the index the installer asks.** They decided whether to skip by
+  querying the JSON API, while `pip`, `pipx` and `uv` resolve against the simple index. Those
+  are different caches with different lifetimes, and the guard contradicted itself on 0.2.1:
+  the JSON API answered 200 for a freshly uploaded version while `pipx install` still resolved
+  *No matching distribution found*, so the guard un-skipped the test and the test failed on a
+  propagation delay that had nothing to do with the package. Both now read the simple index.
+  `PUBLISHING.md` records the ordering this implies: upload to PyPI before pushing the tag, so
+  the gate measures a published release rather than skipping three tests.
+
+No change to the shipped code: `git diff 0.2.1..0.2.2 -- src/` is empty.
+
 ## [0.2.1] - 2026-10-20
 
 ### Fixed

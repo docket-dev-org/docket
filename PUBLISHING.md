@@ -118,6 +118,29 @@ git tag -a vX.Y.Z -m "Docket X.Y.Z"
 git push origin vX.Y.Z
 ```
 
+### Upload to PyPI before you push the tag
+
+`tests/test_packaging.py` installs the *published* distribution, so the tag gate exercises
+whatever PyPI is serving for that version. Push the tag first and those three tests skip with
+that reason, which is honest and green; upload first and they run for real. The order that
+produces a gate measuring nothing is the first one, so prefer the second:
+
+```bash
+python3 tools/build_dist.py --ref vX.Y.Z      # export, build, record provenance
+twine check dist/*.whl dist/*.tar.gz
+twine upload dist/*.whl dist/*.tar.gz        # PyPI only: see "why this is manual" above
+# wait for the index to serve it, then:
+git tag -a vX.Y.Z -m "Docket X.Y.Z"
+git push origin vX.Y.Z
+```
+
+The wait is real and it is not a formality. The JSON API and the simple index are different
+caches, and `pip` resolves against the simple index: a tag pushed in the minute after an upload
+finds a guard that says the version exists and an installer that says it does not. That happened
+once, on 0.2.1, and the release gate went red on a propagation delay. The guard now reads the
+simple index for exactly this reason, so it skips rather than failing — but a skipped install
+check is not a performed one, and the release record should say which it was.
+
 The tag gate runs the suite before it ships anything, so a red suite on the tag is a real
 failure rather than a flake. If the release already exists for that tag, delete both first:
 
