@@ -189,17 +189,36 @@ def test_a_rewrite_preserves_the_sentence_around_the_number(
 
 
 def test_a_rewrite_of_the_version_leaves_the_badge_intact(scratch_tree: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The badge is a *quote* of the version, and the tool is the only thing that keeps it true.
+
+    Nothing here names a version. This test used to hardcode the one that was current when it was
+    written, which meant every release bumped it to red and every release fixed a test rather than
+    the tool. The version is read from the tree, made wrong in two independent places (the project
+    file and the badge), and the tool is required to bring both back to the same value — so it
+    keeps working on the release after this one, and the one after that.
+    """
     monkeypatch.setattr(sc, "collected_test_counts", lambda root=None: _counts())
+    document = (scratch_tree / "pyproject.toml").read_text(encoding="utf-8")
+    declared = re.search(r'^version = "([^"]+)"$', document, re.M)
+    assert declared, "the scratch tree has no version to work from"
+    current = declared.group(1)
+    other = "9.9.9"
+
     (scratch_tree / "pyproject.toml").write_text(
-        (scratch_tree / "pyproject.toml").read_text(encoding="utf-8").replace('version = "0.1.8"', 'version = "9.9.9"'),
-        encoding="utf-8",
+        document.replace(f'version = "{current}"', f'version = "{other}"', 1), encoding="utf-8"
     )
-    target = scratch_tree / "README.md"
-    target.write_text(
-        target.read_text(encoding="utf-8").replace("version-0.1.8-blue", "version-0.1.7-blue"), encoding="utf-8"
+    readme = scratch_tree / "README.md"
+    stale = readme.read_text(encoding="utf-8")
+    assert f"version-{current}-blue" in stale, (
+        f"the README no longer carries a version-{current}-blue badge to correct; if the badge "
+        "changed shape, this test must follow it rather than be deleted"
     )
+    readme.write_text(stale.replace(f"version-{current}-blue", "version-0.0.1-blue", 1), encoding="utf-8")
+
     assert sc.sync(check_only=False, dry_run=False, root=scratch_tree) == 0
-    assert "version-9.9.9-blue" in (scratch_tree / "README.md").read_text(encoding="utf-8")
+    after = readme.read_text(encoding="utf-8")
+    assert f"version-{other}-blue" in after, "the badge was not brought back to the declared version"
+    assert "version-0.0.1-blue" not in after
 
 
 def test_the_per_file_table_is_repaired(

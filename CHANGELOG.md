@@ -1,14 +1,6 @@
-# Changelog
-
-All notable changes are recorded here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the tool follows
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html). The receipt format is versioned
-separately by its tag (`docket/receipt/v1`) and changes only under the format process in
-[`CONTRIBUTING.md`](CONTRIBUTING.md#changing-the-format).
-
 ## [Unreleased]
 
-### Added
+## [0.2.0] - 2026-10-20
 
 - **Retention of the provider responses the boundary saw.** Every `model.response` event now
   carries `response_sha256` over the exact bytes returned to the agent, and
