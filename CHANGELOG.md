@@ -1,4 +1,7 @@
 ## [Unreleased]
+
+## [0.2.7] - 2026-10-21
+
 ### Added
 
 - **Six documentation figures, generated from source rather than drawn by hand.** The README was
@@ -82,7 +85,6 @@ Suite 1489 -> 1500.
   guard that fires on correct code gets switched off, so it reads with `ast` and asks per function.
 
 Suite 1487 -> 1489.
-
 
 ## [0.2.6] - 2026-10-20
 
