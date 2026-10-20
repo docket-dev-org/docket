@@ -47,6 +47,7 @@ from urllib.parse import urlsplit
 from . import cache as response_cache
 from . import events as ev
 from .canon import digest_of, num, usd
+from .evidence import capture_response, responses_root
 from .ledger import Ledger, LedgerFullError
 from .policy import DENIAL_TYPE, Policy
 from .pricing import CostMeter, estimate_tokens_from_text
@@ -1254,6 +1255,25 @@ class _Handler(BaseHTTPRequestHandler):
             "response_bytes": len(payload.get("text", "")) if streaming else len(payload.get("bytes", b"")),
             "injected_fault": injected,
         }
+        # What the boundary saw, recorded whether or not it can be understood. The digest is
+        # unconditional and covers the exact bytes handed back to the agent; the body itself is
+        # kept only when the policy asks. Both facts go on the event, because a run whose evidence
+        # quietly went missing is the failure this recorder exists to prevent.
+        response_body = payload.get("text", "").encode("utf-8") if streaming else payload.get("bytes", b"")
+        # An in-memory ledger has no path, and there is therefore nowhere to put a body. The digest
+        # is still recorded — it costs nothing and it is the part that identifies the response — and
+        # the capture says plainly that retention had no directory rather than inventing one.
+        run_root = proxy.ledger.path.parent.parent if proxy.ledger.path is not None else None
+        response_data.update(
+            capture_response(
+                response_body,
+                retain=proxy.policy.evidence.record_responses,
+                max_bytes=proxy.policy.evidence.record_response_max_bytes,
+                directory=responses_root(run_root) if run_root is not None else None,
+                disk_free=proxy.disk_free,
+                min_free_bytes=proxy.min_free_bytes,
+            ).to_dict(root=run_root)
+        )
         if usage_problems:
             # The provider's usage block was present but unreadable, and the tokens above are
             # therefore an estimate. Say which numbers were refused, on the event itself: a

@@ -112,6 +112,19 @@ DEFAULT_TESTS: dict[str, list[str]] = {
     # The ledger's failure-handling code (torn tails, quarantine, locks) is exercised by
     # `docket doctor`, so `test_diagnostics.py` belongs to this module's suite too — without it
     # every mutant in the quarantine path survives, which says nothing about the tests.
+    # Retention of provider responses is checked from three sides for the same reason the cache
+    # is: the module's own rules, the boundary that calls it, and the verifier that re-hashes what
+    # it claims it kept. A mutant that only the proxy tests would catch must not survive because
+    # the verifier's files were missing from the subset — that is the exact mistake the note on
+    # `verify.py` above records, and `tests/test_evidence_retention.py` is first in the list
+    # because its own tests fail first under the retention mutants.
+    "src/docket/evidence.py": [
+        "tests/test_evidence_retention.py",
+        "tests/test_proxy.py",
+        "tests/test_receipt_verify.py",
+        "tests/test_redact.py",
+        "tests/test_vectors.py",
+    ],
     "src/docket/ledger.py": [
         "tests/test_ledger.py",
         "tests/test_ledger_faults.py",

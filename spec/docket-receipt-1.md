@@ -161,6 +161,38 @@ A hit MUST NOT contribute to `totals`, to `model_calls.count` or to any cap: it 
 did not happen, and folding it into the spend would make the evidence describe a run that never
 took place. What it *saved* is reported separately (§6.4) and recomputed by verification.
 
+### 4.4.2 Retained provider responses
+
+A recorder MAY keep a copy of a provider response body beside the run it belongs to. The format
+records what was kept, not whether it should have been, and every field below is OPTIONAL.
+
+A `model.response` event MAY carry:
+
+| member | type | meaning |
+| --- | --- | --- |
+| `response_sha256` | string | SHA-256 of the exact bytes returned to the agent. Present whether or not the body was kept |
+| `response_retained` | bool | whether a copy was written |
+| `response_path` | string | where, as a path relative to the run directory |
+| `response_stored_sha256` | string | SHA-256 of the bytes written, when retained |
+| `response_stored_bytes` | int | how many bytes were written |
+| `response_total_bytes` | int | how many bytes the body was |
+| `response_truncated` | bool | whether the stored bytes are a prefix of the body |
+| `response_note` | string | why retention was requested and did not happen |
+
+`response_sha256` and `response_stored_sha256` are different numbers when `response_truncated` is
+true, and both are carried so the difference is visible. A verifier that recomputes a digest from a
+stored prefix MUST compare it against `response_stored_sha256`, never against
+`response_sha256`: the whole-body digest is a claim about bytes the verifier may not have.
+
+A verifier with access to the run directory SHOULD re-hash each retained body and report the result
+under the `retained-responses` id. A verifier without that access MUST NOT report a pass for it;
+reporting `not_judged` is the honest answer, and a consumer must be able to tell that apart from a
+pass.
+
+An event that states `response_retained` without a `response_path` or without a
+`response_stored_sha256` is a claim about a write that cannot be checked, and a verifier SHOULD
+refuse it.
+
 ### 4.5 File digest
 
 The ledger's `file_sha256` is the SHA-256 of the file bytes as written. Implementations

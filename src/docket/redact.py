@@ -67,13 +67,41 @@ _PATH_SHAPE = re.compile(r"^(?:[A-Za-z]:)?(?:/|~|\.{1,2}/)")
 #: Keys whose value names a place in the watched tree, whether or not it is absolute. A relative
 #: filename is still a fact about the repository it belongs to.
 _PATH_KEYS = frozenset(
-    {"path", "cwd", "root", "roots", "target", "file", "filename", "top_paths", "watched", "snapshot_root"}
+    {
+        "path",
+        "cwd",
+        "root",
+        "roots",
+        "target",
+        "file",
+        "filename",
+        "top_paths",
+        "watched",
+        "snapshot_root",
+        # A retained provider response body is written under the run directory and recorded as a
+        # path *relative* to it, so the path shape below does not match it. It is still a fact
+        # about the repository the run happened in, so it is redacted by name.
+        "response_path",
+    }
 )
 
 #: Keys whose value is a hostname or a port, by name, so a rename elsewhere does not silently
 #: un-redact them.
 _HOST_KEYS = frozenset({"host", "hostname", "upstream", "upstream_host", "provider_host", "server"})
 _PORT_KEYS = frozenset({"port", "requested_port", "upstream_port"})
+
+#: Fields a retained provider response body puts on a `model.response` event. They are removed
+#: rather than redacted, for the reason given at their call site: a redacted copy is meant to
+#: circulate, and it cannot carry a pointer to a file that did not travel with it.
+_RESPONSE_RETENTION_FIELDS = (
+    "response_retained",
+    "response_path",
+    "response_stored_bytes",
+    "response_total_bytes",
+    "response_truncated",
+    "response_stored_sha256",
+    "response_note",
+)
 
 
 class RedactionError(ValueError):
@@ -86,6 +114,8 @@ class RedactionReport:
 
     profiles: list[str] = field(default_factory=list)
     replaced: dict[str, int] = field(default_factory=dict)
+    #: `model.response` events that named a retained response body which this copy does not carry.
+    retained_responses_not_carried: int = 0
 
     def bump(self, profile: str, count: int = 1) -> None:
         self.replaced[profile] = self.replaced.get(profile, 0) + count
@@ -94,6 +124,7 @@ class RedactionReport:
         return {
             "profiles": list(self.profiles),
             "replaced": dict(sorted(self.replaced.items())),
+            "retained_responses_not_carried": self.retained_responses_not_carried,
             "note": (
                 "this receipt was derived by redaction; its ledger was re-chained to match, so the "
                 "pair still verifies against each other and no longer commits to the original events"
@@ -180,6 +211,18 @@ def redact_value(value: Any, key: str, profiles: list[str], report: RedactionRep
 def redact_event(event: Event, profiles: list[str], report: RedactionReport) -> Event:
     """One ledger event, with its data redacted and its hash left to be recomputed."""
     data = redact_value(dict(event.data or {}), "", profiles, report)
+    # A retained response body is a file on the producer's disk, not part of the document. A
+    # redacted copy is meant to circulate, so it cannot carry a pointer to a body that did not
+    # travel with it — and a copy that kept the pointer would fail `docket verify` on the
+    # `retained-responses` check, which is the whole reason this is here rather than left as a
+    # surprise. The digest stays: it is 64 characters, it is not the body, and it is what lets a
+    # recipient who is *given* the body prove it is the one the boundary saw. The count is recorded
+    # in the redaction block, so a reader knows the copy is silent about bodies rather than
+    # believing there were none.
+    if data.get("response_retained"):
+        for field_name in _RESPONSE_RETENTION_FIELDS:
+            data.pop(field_name, None)
+        report.retained_responses_not_carried += 1
     return Event(seq=event.seq, ts=event.ts, type=event.type, data=data, prev=event.prev, hash="")
 
 

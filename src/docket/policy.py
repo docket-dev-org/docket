@@ -274,6 +274,37 @@ class Cache:
 
 
 @dataclass
+class Evidence:
+    """What the boundary keeps of the provider responses it saw.
+
+    Off by default, and deliberately so. A response body can contain the prompt, a tool result, a
+    person's name, or a credential, so keeping bodies is something a run asks for rather than
+    something that happens because nobody said otherwise.
+
+    What is *not* optional is the digest. Every ``model.response`` event carries
+    ``response_sha256`` over the exact bytes returned to the agent whether or not the body is kept,
+    which is what makes a response identifiable by anyone who has it. ``record_responses`` adds the
+    body itself, bounded to ``record_response_max_bytes``, under ``.docket/responses/``, with the
+    event recording what was kept, what was dropped, and the digest of what was kept. See
+    ``docs/evidence-retention.md``.
+
+    The reason this exists at all is an unknown provider. Docket can read three usage-block shapes;
+    a provider it cannot read has its tokens *estimated* from the response text, and until now that
+    text was then discarded, so the estimate could never be checked or re-derived. Retention is what
+    makes an estimated number auditable.
+    """
+
+    record_responses: bool = False
+    record_response_max_bytes: int = 64 * 1024
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "record_responses": self.record_responses,
+            "record_response_max_bytes": self.record_response_max_bytes,
+        }
+
+
+@dataclass
 class Egress:
     mode: str = "deny"  # deny | tunnel
     allow: list[str] = field(default_factory=lambda: list(DEFAULT_EGRESS_ALLOW))
@@ -311,6 +342,7 @@ class Policy:
     files: Files = field(default_factory=Files)
     budget_mode: str = "usd"  # usd | quota
     resilience: Resilience = field(default_factory=Resilience)
+    evidence: Evidence = field(default_factory=Evidence)
     cache: Cache = field(default_factory=Cache)
     source_path: str | None = None
 
@@ -473,6 +505,7 @@ class Policy:
             ),
             budget_mode=str(budget_raw.get("mode", "usd")),
             cache=_cache_from(cls._section(raw, "cache")),
+            evidence=_evidence_from(cls._section(raw, "evidence")),
             source_path=source_path,
         )
         if policy.budget_mode not in {"usd", "quota"}:
@@ -497,6 +530,12 @@ class Policy:
         # into a document nobody can re-derive.
         if self.cache.enabled:
             document["cache"] = self.cache.to_dict()
+        # Same rule as the cache, and for a sharper reason here: a policy that says nothing about
+        # retention keeps the digest it always had, so receipts and signatures written before this
+        # section existed still re-derive. A digest that moves when a feature is added turns every
+        # document written by an earlier version into one nobody can check.
+        if self.evidence.record_responses:
+            document["evidence"] = self.evidence.to_dict()
         return document
 
     def digest(self) -> str:
@@ -701,6 +740,26 @@ def _cache_from(raw: dict[str, Any]) -> Cache:
     if max_hits is None or max_hits < 0:
         raise ValueError(f"cache.max_hits must be zero (no ceiling) or positive, got {raw.get('max_hits')!r}")
     return Cache(enabled=enabled, ttl_seconds=ttl, max_entries=int(max_entries), max_hits=int(max_hits))
+
+
+def _evidence_from(raw: dict[str, Any]) -> Evidence:
+    """Parse ``[evidence]``, the response-retention section.
+
+    The same rule as every other section: a value that cannot mean anything is refused at load
+    time with the key named, rather than becoming a run that silently kept nothing.
+
+    An ``[evidence]`` section that names only a size is an operator asking for retention, because a
+    cap on its own configures a retention that never happens. ``record_responses = false`` written
+    beside it is the way to say "configured, but off", and it wins.
+    """
+    other_keys = sorted(set(raw) - {"record_responses"})
+    enabled = _bool_key("evidence", "record_responses", raw.get("record_responses"), bool(other_keys))
+    cap = _whole_key("evidence", "record_response_max_bytes", raw.get("record_response_max_bytes"), 64 * 1024)
+    if cap is None or cap < 1:
+        raise ValueError(
+            f"evidence.record_response_max_bytes must be at least 1, got {raw.get('record_response_max_bytes')!r}"
+        )
+    return Evidence(record_responses=enabled, record_response_max_bytes=int(cap))
 
 
 def _resilience_from(raw: dict[str, Any]) -> Resilience:

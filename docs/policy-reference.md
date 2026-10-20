@@ -124,6 +124,27 @@ never answers — a policy nobody means. `enabled = false` written beside other 
 explicit way to say "tuned, but off", and it wins because it is the explicit statement. An empty
 `[cache]` section says nothing and leaves the cache off.
 
+## `[evidence]`
+
+Retention of the provider responses the boundary saw. Off unless `record_responses` says otherwise.
+The digest of every response is recorded either way — see
+[keeping the responses the boundary saw](evidence-retention.md) for what each field means and what
+`docket verify` does about it.
+
+| key | type | default | meaning |
+| --- | --- | --- | --- |
+| `record_responses` | bool | `false` | keep a bounded copy of each response body under `.docket/responses/`, named by its own digest |
+| `record_response_max_bytes` | int ≥ 1 | `65536` | how much of one body to keep; a longer body is stored as a prefix and the event says so |
+
+Like `[cache]`, this section appears in the receipt's policy document — and therefore in its digest —
+**only when it is enabled**, so a policy that says nothing about retention keeps the digest it always
+had and earlier receipts still re-derive.
+
+Naming only a size turns retention on, for the same reason `[cache]` behaves that way: a cap on its
+own configures a retention that never happens. `record_responses = false` written beside other keys
+is the one explicit way to say "tuned, but off", and it wins. An empty `[evidence]` section says
+nothing and leaves retention off.
+
 ## `[egress]`
 
 Applies to `--http-proxy` mode (and to CONNECT tunnels generally).

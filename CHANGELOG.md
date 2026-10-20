@@ -10,6 +10,21 @@ separately by its tag (`docket/receipt/v1`) and changes only under the format pr
 
 ### Added
 
+- **Retention of the provider responses the boundary saw.** Every `model.response` event now
+  carries `response_sha256` over the exact bytes returned to the agent, and
+  `[evidence] record_responses` additionally keeps a bounded copy of the body in a `responses`
+  sub-directory of the run directory, named by its own digest. `docket verify` re-hashes every
+  retained body under the new `retained-responses` check, so one edited or deleted after the run
+  fails. The reason this exists is a provider Docket cannot read: its usage block is in a fourth
+  shape, the token counts are estimated from the response text, and that text used to be
+  discarded, so the estimate could never be checked. A truncated body carries both digests and
+  says which is which; the verifier checks the bytes that were written and never claims to have
+  checked bytes it was not given. `docket report --redact` drops the retention fields rather
+  than leaving a pointer to a body the copy does not carry, and records how many under
+  `retained_responses_not_carried`. Retention is off by default: a response body can contain
+  the prompt, a tool result, or a credential, so the digest is the default and the body is the
+  opt-in. See `docs/evidence-retention.md`.
+
 - **Published to PyPI as `docket-ai` 0.1.0.** `pip install docket-ai` installs the same
   package, and the import, the console script and the command are all still `docket`. The
   distribution name differs because PyPI administratively prohibits the bare name `docket`:

@@ -105,6 +105,7 @@ $ make conformance
 | [Threat model and limits](https://docket-dev-org.github.io/docket/docs/threat-model/) | what Docket does not defend against |
 | [Comparison](https://docket-dev-org.github.io/docket/docs/comparison/) | Docket against gateways, observability, sandboxes, and record/replay tools |
 | [Response cache](https://docket-dev-org.github.io/docket/docs/caching/) | what a cache hit is, the brake it needs, and the measured cost |
+| [Response retention](https://docket-dev-org.github.io/docket/docs/evidence-retention/) | keeping the response bodies the boundary saw, and what `docket verify` re-hashes |
 | [Testing](https://docket-dev-org.github.io/docket/docs/testing/) | what is tested, by kind, and what is deliberately not |
 | [Format specification](https://docket-dev-org.github.io/docket/spec/docket-receipt-1/) and [Conformance](https://docket-dev-org.github.io/docket/spec/conformance/) | the normative `docket/receipt/v1` contract and the corpus that holds implementations to it |
 | [Production coverage](https://docket-dev-org.github.io/docket/docs/production-coverage/) | 77 production-engineering concepts, each with what exists here and where |
@@ -397,7 +398,7 @@ cd docket
 PYTHONPATH=src python3 -m pytest tests -ra
 ```
 
-That is 1400 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1400 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
+That is 1448 tests in about three minutes, fully offline: no API keys, no network, no provider account. The whole gate is `make check` (1448 tests plus lint, the security audit, the Node verifier, the conformance corpus, and the deployment checks), which additionally needs Node.js 20+, `ruff`, and `pyyaml` from the `dev` and `deploy` extras.
 
 Two rules matter more than style:
 

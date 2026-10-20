@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from .canon import merkle_root, sha256_hex, usd, verify_merkle_proof
+from .evidence import check_retained
 from .latency import REPORTED, check_summary, is_latency
 from .ledger import Event, Ledger
 from .pricing import recompute_totals
@@ -124,6 +125,60 @@ def _amount(value: Any) -> Decimal:
             raise ValueError(f"not a finite amount: {value!r}")
         return parsed
     raise ValueError(f"not an amount: {value!r} ({type(value).__name__})")
+
+
+def _check_retained_responses(events: Sequence[Any], ledger_path: str | Path, add: Any) -> None:
+    """Re-hash every retained provider response the ledger names.
+
+    Skipped, with a stated reason, when the caller handed over a receipt without the ledger it
+    came from: the paths are relative to the run directory, and a path resolved against the wrong
+    place is a path to a file that does not exist. Reporting that as a failure would blame the
+    verifier's own input.
+    """
+    run_root = Path(ledger_path).parent.parent
+    checked = 0
+    prefixes = 0
+    for event in events:
+        data = getattr(event, "data", None)
+        if not isinstance(data, dict) or not data.get("response_retained"):
+            continue
+        rel = data.get("response_path")
+        digest = data.get("response_stored_sha256")
+        if not isinstance(rel, str) or not rel:
+            add(
+                "retained-responses",
+                "fail",
+                f"event #{getattr(event, 'seq', '?')} says a response was retained but names no path",
+            )
+            continue
+        if not isinstance(digest, str) or not digest:
+            add(
+                "retained-responses",
+                "fail",
+                f"event #{getattr(event, 'seq', '?')} retained {rel} but recorded no digest to check it against",
+            )
+            continue
+        if data.get("response_truncated"):
+            prefixes += 1
+        ok, detail = check_retained(run_root / rel, digest)
+        if not ok:
+            add("retained-responses", "fail", f"event #{getattr(event, 'seq', '?')}: {detail}")
+            return
+        checked += 1
+    if checked:
+        if prefixes:
+            add(
+                "retained-responses",
+                "pass",
+                f"{checked} retained bodies re-hashed and matched, {prefixes} of them a stored prefix "
+                "(the digest covers the bytes written, not the whole response)",
+            )
+        else:
+            add(
+                "retained-responses",
+                "pass",
+                f"{checked} retained bodies re-hashed and matched",
+            )
 
 
 def verify_receipt(
@@ -264,6 +319,20 @@ def verify_receipt(
             chain_ok = False
             seq, reason = chain_problem
             add("ledger-chain", "fail", f"broken at event #{seq}: {reason}")
+        # -- 3a. retained provider responses -------------------------------- #
+        #
+        # A `model.response` event can carry a path to a response body the boundary kept
+        # (`[evidence] record_responses`), together with the digest of the bytes actually written.
+        # Without this check that file is decoration: it sits on disk, the event names it, and
+        # nothing ever looks at it. With it, the retained body is *re-derived* rather than trusted,
+        # so a body edited after the run — or swapped for a friendlier one — fails here.
+        #
+        # The check is deliberately narrow about what it proves. A body longer than the retention
+        # cap is stored as a prefix, so the digest on the event covers the prefix and cannot be
+        # recomputed from the whole body. This check verifies the bytes that were written and says
+        # how many of them are prefixes. It does not claim to verify a body it was not given.
+        if ledger_path is not None:
+            _check_retained_responses(events, ledger_path, add)
         # Every downstream comparison uses *recomputed* hashes, never the hashes stored
         # in the file: a receipt issued over an intact ledger is unaffected, and a
         # ledger whose contents were edited after the fact fails here too instead of

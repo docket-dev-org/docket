@@ -74,9 +74,21 @@ is deliberately refused with a reason. The short version, as of this commit:
       block, and never touches the originals. `tests/test_redact.py` asserts every profile on
       its own leaves a verifying pair, and that the strings a client should not see are absent
       from both files.
-- [ ] honest coverage: record provider responses the boundary saw *without* parsing them
-      (unknown providers get recorded, not skipped)
-- [ ] packaging: `pipx`-friendly docs, `uv tool install` snippet, Homebrew formula 💰
+- [x] honest coverage: record provider responses the boundary saw *without* parsing them, so an
+      unknown provider is recorded rather than reduced to a guess about itself. Every
+      `model.response` event now carries `response_sha256` over the exact bytes returned to the
+      agent, and `[evidence] record_responses` additionally keeps a bounded copy of each body,
+      named by that digest, in a `responses` sub-directory of the run directory. `docket verify` re-hashes every retained body, so
+      one that was edited or deleted after the run fails. The point is the case Docket cannot read:
+      a fourth usage-block shape has its tokens *estimated* from the response text, and that text
+      used to be discarded, so the estimate could never be checked. `tests/test_evidence_retention.py`
+      covers the digest, truncation, the reserved-headroom boundary, a write that fails, the
+      verifier's re-hash, and what `--redact` does with a path it cannot carry.
+- [x] packaging: `uv tool install docket-ai` is executed by `tests/test_packaging.py` in a clean
+      virtual environment, end to end (`init` → `run` → `verify`), and the install path is what the
+      action tests need the `docket` console script for. **Still open: `pipx` is not installed in any
+      environment this project has been measured in, so no `pipx` claim is made here**; and a Homebrew
+      formula needs a tap repository and a released bottle, which is a separate piece of work.
 
 **How this page is kept honest.** Every `[x]` above is a claim that something exists, and a claim
 about code that nothing checks is the same failure mode as a stale test count: it was true when
