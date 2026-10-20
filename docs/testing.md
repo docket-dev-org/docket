@@ -320,6 +320,40 @@ $ python3 tools/mutate.py --file src/docket/verify.py --seed 42 --max-mutants 20
       --json /tmp/verify.json --markdown /tmp/verify.md
 ```
 
+### The hand-written harnesses in `tools/mutation/`
+
+`tools/mutate.py` generates its mutants mechanically, which means it can only ask about the sites it
+knows how to rewrite. Some guards are not made of those sites: `test_release_workflow.py` reads a
+YAML file and `test_evidence_retention.py` checks a policy, so the defects that matter are missing
+steps, missing dependencies and anchors that no longer exist. Those are written by hand, one mutation
+per named defect, and each one restores the file it touched before reporting.
+
+```console
+$ PYTHONPATH=src python3 tools/mutation/mutate_evidence.py       # 15 mutations of evidence.py's retention policy
+$ PYTHONPATH=src python3 tools/mutation/mutate_release.py        # 8 mutations of .github/workflows/release.yml
+$ PYTHONPATH=src python3 tools/mutation/mutate_release_version.py  # the release version guards
+```
+
+| harness | mutations | caught | what each mutation reintroduces |
+| --- | --- | --- | --- |
+| `mutate_evidence.py` | 15 | 15 | a nonsensical cap accepted, a capture whose numbers disagree, a body filed under another digest, a retention the boundary could not perform going undisclosed, a free-space check bypassed, a write failure swallowed, and nine more of the retention policy's own rules |
+| `mutate_release.py` | 8 | 8 | the package under test never installed, `cryptography` dropped from the release job's dependencies, a subset run instead of the `tests` directory, `-qq` instead of `-ra`, a tag with no notes published anyway, a `twine upload` step, a long-lived secret instead of `github.token`, the tag trigger removed |
+| `mutate_release_version.py` | 1 | 1 | a tag that disagrees with the declared version reported but not fatal |
+
+Two defects in these harnesses were found by running them rather than by reading them:
+
+- **`mutate_release_version.py` applied its mutation and returned.** It wrote the mutated
+  `.github/workflows/release.yml` and left it there, so running the three harnesses in sequence left
+  the repository's own release workflow in a mutated state — a shipped tool that damages the
+  repository it ships with. It now applies, runs the guard, restores, and refuses to report success
+  unless the file it read back is byte-identical to what it read.
+- **`mutate_evidence.py` counted a stale anchor as an uncaught mutation.** One anchor carried eight
+  spaces of indentation where the source line carried four, after a refactor moved an `if` out of a
+  nested block, so the mutation was never applied and the harness reported "1 of 15 mutations were
+  not caught" — which says something is wrong without saying what. A mutation that was never applied
+  has not been caught and has not escaped; it has not been asked. It now reports `STALE`, names the
+  mutation, and still fails the run, because an unexercised guard is not a guarded one.
+
 Properties of the harness itself, because a mutation score is only as good as its tool:
 
 - **It falsifies itself first.** Splicing every site back verbatim must be a byte-for-byte

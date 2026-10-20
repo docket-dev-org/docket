@@ -1,4 +1,24 @@
 ## [Unreleased]
+- **Two defects in the shipped mutation harnesses, found by running them rather than reading them.**
+
+  `tools/mutation/mutate_release_version.py` applied its mutation and returned: it wrote the mutated
+  `.github/workflows/release.yml` and left it there, so running the three harnesses in sequence left
+  the repository's own release workflow in a mutated state. A shipped tool that damages the repository
+  it ships with is not a tool. It now applies, runs the guard, restores, and refuses to report success
+  unless the file it reads back is byte-identical to what it read.
+
+  `tools/mutation/mutate_evidence.py` counted a stale anchor as an uncaught mutation. One anchor
+  carried eight spaces of indentation where the source line carried four, after a refactor moved an
+  `if` out of a nested block, so the mutation was never applied and the harness reported "1 of 15
+  mutations were not caught" — which says something is wrong without saying what. A mutation that was
+  never applied has not been caught and has not escaped; it has not been asked. The anchor is
+  re-pointed, all 15 are caught again, and a stale anchor is now reported as `STALE`, named, and still
+  fails the run, because an unexercised guard is not a guarded one.
+
+  The three harnesses in `tools/mutation/` were tracked in the repository and therefore public, and
+  nothing in the documentation named them or said how to run them. `docs/testing.md` now carries their
+  commands, their mutation counts and scores, and both repairs above.
+
 
 ## [0.2.5] - 2026-10-20
 

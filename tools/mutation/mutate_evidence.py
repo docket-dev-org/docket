@@ -31,7 +31,7 @@ MUTATIONS: list[tuple[str, str, str, str]] = [
     (
         "a full disk is ignored and the body is written anyway",
         "src/docket/evidence.py",
-        "        if min_free_bytes is not None and free is not None and free - need < min_free_bytes:",
+        "    if min_free_bytes is not None and free is not None and free - need < min_free_bytes:",
         "        if False:",
     ),
     (
@@ -128,12 +128,17 @@ def main() -> int:
         return 2
 
     escaped = 0
+    stale = 0
     for name, relative, old, new in MUTATIONS:
         target = ROOT / relative
         original = target.read_text()
         if original.count(old) != 1:
-            print(f"SKIP  {name}: the anchor appears {original.count(old)} times, not once")
-            escaped += 1
+            # A mutation that was never applied has not been caught and has not escaped; it has not
+            # been asked. Counting it beside an escaped mutant reports a failure without saying
+            # what, which is how this one survived a refactor that moved an `if` out of a nested
+            # block and changed its indentation.
+            print(f"STALE {name}: the anchor appears {original.count(old)} times, not once")
+            stale += 1
             continue
         target.write_text(original.replace(old, new, 1))
         try:
@@ -147,8 +152,14 @@ def main() -> int:
             print(f"caught   {name}")
 
     print()
+    if stale:
+        print(
+            f"{stale} of {len(MUTATIONS)} mutations were not applied: the anchor no longer matches "
+            f"the source. Fix the anchor — an unexercised guard is not a guarded one."
+        )
+        return 1
     if escaped:
-        print(f"{escaped} of {len(MUTATIONS)} mutations were not caught")
+        print(f"{escaped} of {len(MUTATIONS)} mutations escaped")
         return 1
     print(f"all {len(MUTATIONS)} mutations caught")
     return 0
