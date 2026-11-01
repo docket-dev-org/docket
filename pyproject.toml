@@ -64,7 +64,7 @@ dev = [
   # contributor a `make lint` that fails on files CI calls formatted — and a `make fmt` that
   # rewrites twenty-four of them. Moving the pin is a deliberate change: reformat, then bump both
   # places together.
-  "ruff==0.17.0",
+  "ruff==0.17.3",
   "mkdocs-material>=9.5",
   "pyyaml>=6",
 ]
