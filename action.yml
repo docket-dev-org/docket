@@ -230,7 +230,7 @@ runs:
 
     - name: Upload the evidence
       if: always() && inputs.upload-evidence == 'true'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.artifact-name }}-${{ github.run_id }}
         path: |
